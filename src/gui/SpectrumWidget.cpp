@@ -91,6 +91,12 @@ int SpectrumWidget::mhzToX(double mhz) const
     return static_cast<int>((mhz - startMhz) / m_bandwidthMhz * width());
 }
 
+double SpectrumWidget::xToMhz(int x) const
+{
+    const double startMhz = m_centerMhz - m_bandwidthMhz / 2.0;
+    return startMhz + (static_cast<double>(x) / width()) * m_bandwidthMhz;
+}
+
 // ─── Mouse ────────────────────────────────────────────────────────────────────
 
 // Snap a frequency (MHz) to the nearest multiple of m_stepHz.
@@ -138,6 +144,27 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         return;
     }
 
+    // Check for click on filter edges in FFT area (5px grab zone)
+    if (y < specH) {
+        const int mx = static_cast<int>(ev->position().x());
+        const int loX = mhzToX(m_vfoFreqMhz + m_filterLowHz / 1.0e6);
+        const int hiX = mhzToX(m_vfoFreqMhz + m_filterHighHz / 1.0e6);
+        constexpr int GRAB = 5;
+
+        if (std::abs(mx - loX) <= GRAB) {
+            m_draggingFilter = FilterEdge::Low;
+            setCursor(Qt::SizeHorCursor);
+            ev->accept();
+            return;
+        }
+        if (std::abs(mx - hiX) <= GRAB) {
+            m_draggingFilter = FilterEdge::High;
+            setCursor(Qt::SizeHorCursor);
+            ev->accept();
+            return;
+        }
+    }
+
     // Click in FFT area → tune immediately
     const double startMhz = m_centerMhz - m_bandwidthMhz / 2.0;
     const double rawMhz = startMhz + (ev->position().x() / width()) * m_bandwidthMhz;
@@ -183,6 +210,25 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
         return;
     }
 
+    if (m_draggingFilter != FilterEdge::None) {
+        const int mx = static_cast<int>(ev->position().x());
+        // Convert pixel position to Hz offset from VFO
+        const double mhz = xToMhz(mx);
+        int hz = static_cast<int>(std::round((mhz - m_vfoFreqMhz) * 1.0e6));
+
+        if (m_draggingFilter == FilterEdge::Low) {
+            hz = std::clamp(hz, m_filterMinHz, m_filterHighHz - 10);
+            m_filterLowHz = hz;
+        } else {
+            hz = std::clamp(hz, m_filterLowHz + 10, m_filterMaxHz);
+            m_filterHighHz = hz;
+        }
+        update();
+        emit filterChangeRequested(m_filterLowHz, m_filterHighHz);
+        ev->accept();
+        return;
+    }
+
     if (m_draggingPan) {
         const int dx = static_cast<int>(ev->position().x()) - m_panDragStartX;
         // Dragging right moves the view right → center shifts left
@@ -198,14 +244,24 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
     // Update cursor based on hover position
     const int specH = static_cast<int>(contentH * m_spectrumFrac);
     const int wfY = specH + DIVIDER_H + FREQ_SCALE_H;
-    if (y >= specH && y < specH + DIVIDER_H)
+
+    if (y >= specH && y < specH + DIVIDER_H) {
         setCursor(Qt::SplitVCursor);
-    else if (y >= specH + DIVIDER_H && y < wfY)
+    } else if (y >= specH + DIVIDER_H && y < wfY) {
         setCursor(Qt::SizeHorCursor);
-    else if (y >= wfY)
+    } else if (y < specH) {
+        // In FFT area: check if hovering over a filter edge
+        const int mx = static_cast<int>(ev->position().x());
+        const int loX = mhzToX(m_vfoFreqMhz + m_filterLowHz / 1.0e6);
+        const int hiX = mhzToX(m_vfoFreqMhz + m_filterHighHz / 1.0e6);
+        constexpr int GRAB = 5;
+        if (std::abs(mx - loX) <= GRAB || std::abs(mx - hiX) <= GRAB)
+            setCursor(Qt::SizeHorCursor);
+        else
+            setCursor(Qt::CrossCursor);
+    } else {
         setCursor(Qt::CrossCursor);
-    else
-        setCursor(Qt::CrossCursor);
+    }
 }
 
 void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
@@ -220,6 +276,12 @@ void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
     }
     if (m_draggingBandwidth) {
         m_draggingBandwidth = false;
+        setCursor(Qt::CrossCursor);
+        ev->accept();
+        return;
+    }
+    if (m_draggingFilter != FilterEdge::None) {
+        m_draggingFilter = FilterEdge::None;
         setCursor(Qt::CrossCursor);
         ev->accept();
         return;

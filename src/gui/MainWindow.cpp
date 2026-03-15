@@ -115,6 +115,10 @@ MainWindow::MainWindow(QWidget* parent)
             &m_radioModel, &RadioModel::setPanBandwidth);
     connect(spectrum(), &SpectrumWidget::centerChangeRequested,
             &m_radioModel, &RadioModel::setPanCenter);
+    connect(spectrum(), &SpectrumWidget::filterChangeRequested,
+            this, [this](int lo, int hi) {
+        if (auto* s = activeSlice()) s->setFilterWidth(lo, hi);
+    });
 
     // ── Click-to-tune on the spectrum ─────────────────────────────────────
     connect(spectrum(), &SpectrumWidget::frequencyClicked,
@@ -481,6 +485,24 @@ void MainWindow::onSliceAdded(SliceModel* s)
         m_updatingFromModel = false;
     });
     connect(s, &SliceModel::filterChanged, spectrum(), &SpectrumWidget::setVfoFilter);
+
+    // Update filter limits when mode changes (per FlexLib Slice.cs)
+    auto updateFilterLimits = [this](const QString& mode) {
+        int minHz, maxHz;
+        if (mode == "LSB" || mode == "DIGL" || mode == "CWL") {
+            minHz = -12000; maxHz = 0;
+        } else if (mode == "AM" || mode == "SAM" || mode == "DSB") {
+            minHz = -12000; maxHz = 12000;
+        } else if (mode == "FM" || mode == "NFM" || mode == "DFM") {
+            minHz = -12000; maxHz = 12000;  // FM filters are fixed by radio
+        } else {
+            // USB, DIGU, CW, RTTY, etc.
+            minHz = 0; maxHz = 12000;
+        }
+        spectrum()->setFilterLimits(minHz, maxHz);
+    };
+    updateFilterLimits(s->mode());
+    connect(s, &SliceModel::modeChanged, this, updateFilterLimits);
 }
 
 void MainWindow::onSliceRemoved(int /*id*/) {}

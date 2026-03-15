@@ -51,6 +51,9 @@ public:
     // Set the click/scroll tuning step size in Hz (default 100).
     void setStepSize(int hz) { m_stepHz = hz; }
 
+    // Set the per-mode filter limits (Hz). Called when mode changes.
+    void setFilterLimits(int minHz, int maxHz) { m_filterMinHz = minHz; m_filterMaxHz = maxHz; }
+
 signals:
     // Emitted when the user clicks or scrolls in the panadapter area.
     void frequencyClicked(double mhz);
@@ -58,6 +61,8 @@ signals:
     void bandwidthChangeRequested(double newBandwidthMhz);
     // Emitted when the user drags the waterfall to pan the center frequency.
     void centerChangeRequested(double newCenterMhz);
+    // Emitted when the user drags a filter edge to resize the passband.
+    void filterChangeRequested(int lowHz, int highHz);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -81,6 +86,8 @@ private:
 
     // Pixel x coordinate for a given frequency in MHz (0 = left edge).
     int mhzToX(double mhz) const;
+    // Convert pixel x back to MHz.
+    double xToMhz(int x) const;
 
     QVector<float> m_bins;       // raw FFT frame (dBm)
     QVector<float> m_smoothed;   // exponential-smoothed for visual stability
@@ -88,8 +95,10 @@ private:
     double m_centerMhz{14.225};
     double m_bandwidthMhz{0.200};
     double m_vfoFreqMhz{14.225};
-    int    m_filterLowHz{-1500};   // Hz below slice center
-    int    m_filterHighHz{1500};   // Hz above slice center
+    int    m_filterLowHz{-1500};   // Hz offset from VFO
+    int    m_filterHighHz{1500};   // Hz offset from VFO
+    int    m_filterMinHz{-12000};  // per-mode lower bound
+    int    m_filterMaxHz{12000};   // per-mode upper bound
 
     float m_refLevel{-50.0f};       // top of display (dBm)
     float m_dynamicRange{100.0f};   // dB range shown in spectrum (-50 to -150)
@@ -127,6 +136,9 @@ private:
     bool m_draggingPan{false};
     int  m_panDragStartX{0};
     double m_panDragStartCenter{0.0};
+    // Filter edge drag state
+    enum class FilterEdge { None, Low, High };
+    FilterEdge m_draggingFilter{FilterEdge::None};
 };
 
 } // namespace AetherSDR
