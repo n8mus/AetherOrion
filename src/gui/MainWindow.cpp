@@ -46,6 +46,21 @@ MainWindow::MainWindow(QWidget* parent)
     buildUI();
 
     // ── Wire up discovery ──────────────────────────────────────────────────
+    // ── Collapsible connection panel ─────────────────────────────────────
+    connect(m_connPanel, &ConnectionPanel::collapsedChanged,
+            this, [this](bool collapsed) {
+        auto sizes = m_splitter->sizes();
+        if (collapsed) {
+            sizes[1] += sizes[0] - 28;
+            sizes[0] = 28;
+        } else {
+            m_userExpandedPanel = true;
+            sizes[1] -= (260 - sizes[0]);
+            sizes[0] = 260;
+        }
+        m_splitter->setSizes(sizes);
+    });
+
     connect(&m_discovery, &RadioDiscovery::radioDiscovered,
             m_connPanel, &ConnectionPanel::onRadioDiscovered);
     connect(&m_discovery, &RadioDiscovery::radioUpdated,
@@ -425,6 +440,9 @@ void MainWindow::onConnectionStateChanged(bool connected)
         m_radioInfoLabel->setText(info);
         m_connPanel->setStatusText("Connected");
         m_audio.startRxStream();
+        // Auto-collapse the connection panel unless the user manually expanded it
+        if (!m_userExpandedPanel)
+            m_connPanel->setCollapsed(true);
     } else {
         m_connStatusLabel->setText("Disconnected");
         m_radioInfoLabel->setText("");

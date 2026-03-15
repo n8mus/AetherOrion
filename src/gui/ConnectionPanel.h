@@ -19,6 +19,10 @@ public:
 
     void setConnected(bool connected);
     void setStatusText(const QString& text);
+    void setCollapsed(bool collapsed);
+
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 public slots:
     void onRadioDiscovered(const RadioInfo& radio);
@@ -28,19 +32,25 @@ public slots:
 signals:
     void connectRequested(const RadioInfo& radio);
     void disconnectRequested();
+    void collapsedChanged(bool collapsed);
 
 private slots:
     void onConnectClicked();
     void onListSelectionChanged();
 
 private:
+
     QListWidget* m_radioList;
     QPushButton* m_connectBtn;
+    QPushButton* m_collapseBtn;
     QLabel*      m_statusLabel;
     QLabel*      m_indicatorLabel;
+    QWidget*     m_radioGroup;       // "Discovered Radios" group box
 
     QList<RadioInfo> m_radios;   // mirror of what's in the list
     bool m_connected{false};
+    bool m_collapsed{false};
+    int  m_expandedWidth{260};
 };
 
 } // namespace AetherSDR
