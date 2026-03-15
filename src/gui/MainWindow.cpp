@@ -246,10 +246,35 @@ void MainWindow::buildMenuBar()
     auto* helpMenu = menuBar()->addMenu("&Help");
     helpMenu->addAction("About AetherSDR", this, [this]{
         const QString text = QString(
-            "<b>AetherSDR</b> v%1<br>"
-            "Linux-native SmartSDR-compatible client.<br>"
-            "Built with Qt6 and C++20."
-            ).arg(QCoreApplication::applicationVersion());
+            "<div style='text-align:center;'>"
+            "<h2 style='margin-bottom:2px;'>AetherSDR</h2>"
+            "<p style='margin-top:0;'>v%1</p>"
+            "<p>Linux-native SmartSDR-compatible client<br>"
+            "for FlexRadio transceivers.</p>"
+            "<p style='font-size:11px; color:#8aa8c0;'>"
+            "Built with Qt %2 &middot; C++20<br>"
+            "Compiled: %3</p>"
+            "<hr>"
+            "<p style='font-size:11px;'>"
+            "<b>Contributors</b><br>"
+            "Jeremy (KK7GWY)<br>"
+            "Claude &middot; Anthropic<br>"
+            "Dependabot</p>"
+            "<hr>"
+            "<p style='font-size:11px; color:#8aa8c0;'>"
+            "&copy; 2026 AetherSDR Contributors<br>"
+            "Licensed under "
+            "<a href='https://www.gnu.org/licenses/gpl-3.0.html' style='color:#00b4d8;'>GPLv3</a></p>"
+            "<p style='font-size:11px;'>"
+            "<a href='https://github.com/ten9876/AetherSDR' style='color:#00b4d8;'>"
+            "github.com/ten9876/AetherSDR</a></p>"
+            "<hr>"
+            "<p style='font-size:10px; color:#6a8090;'>"
+            "SmartSDR protocol &copy; FlexRadio Systems</p>"
+            "</div>"
+            ).arg(QCoreApplication::applicationVersion(),
+                  qVersion(),
+                  QStringLiteral(__DATE__));
         QMessageBox about(this);
         about.setWindowTitle("About AetherSDR");
         about.setIconPixmap(QPixmap(":/icon.png").scaled(128, 128, Qt::KeepAspectRatio, Qt::SmoothTransformation));
