@@ -5,6 +5,7 @@
 #include "core/AudioEngine.h"
 
 #include <QMainWindow>
+#include <QSplitter>
 #include <QLabel>
 #include <QStatusBar>
 
@@ -50,6 +51,7 @@ private:
     ConnectionPanel* m_connPanel{nullptr};
 
     // GUI — main area
+    QSplitter*        m_splitter{nullptr};
     PanadapterApplet* m_panApplet{nullptr};
 
     // GUI — right applet panel
@@ -58,6 +60,11 @@ private:
     // Status bar labels
     QLabel* m_connStatusLabel{nullptr};
     QLabel* m_radioInfoLabel{nullptr};
+    QLabel* m_gpsTimeLabel{nullptr};
+    QLabel* m_networkLabel{nullptr};
+    QLabel* m_paTempLabel{nullptr};
+    QLabel* m_gpsLabel{nullptr};
+    QLabel* m_gridLabel{nullptr};
 
     // Guard: set true while updating controls from the model, so that
     // onFrequencyChanged doesn't echo the change back to the radio.

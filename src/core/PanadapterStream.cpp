@@ -134,6 +134,18 @@ void PanadapterStream::processDatagram(const QByteArray& data)
                  << "trailer=" << hasTrailer;
     }
 
+    // Track packet sequence for network quality monitoring.
+    // VITA-49 packet count is a 4-bit field (bits 19:16 of word0).
+    const int seq = (word0 >> 16) & 0x0F;
+    auto& stats = m_streamStats[pcc];
+    stats.totalCount++;
+    if (stats.lastSeq >= 0) {
+        const int expected = (stats.lastSeq + 1) & 0x0F;
+        if (seq != expected)
+            stats.errorCount++;
+    }
+    stats.lastSeq = seq;
+
     // Route by PacketClassCode
     switch (pcc) {
     case PCC_IF_NARROW:
@@ -360,6 +372,22 @@ void PanadapterStream::decodeMeterData(const uchar* raw, int totalBytes, bool ha
     }
 
     emit meterDataReady(ids, vals);
+}
+
+int PanadapterStream::packetErrorCount() const
+{
+    int total = 0;
+    for (auto it = m_streamStats.constBegin(); it != m_streamStats.constEnd(); ++it)
+        total += it->errorCount;
+    return total;
+}
+
+int PanadapterStream::packetTotalCount() const
+{
+    int total = 0;
+    for (auto it = m_streamStats.constBegin(); it != m_streamStats.constEnd(); ++it)
+        total += it->totalCount;
+    return total;
 }
 
 } // namespace AetherSDR

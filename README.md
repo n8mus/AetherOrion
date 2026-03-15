@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.jpg" alt="AetherSDR Logo" width="400">
+</p>
+
 # AetherSDR Linux Native SDR Client for FlexRadios
 
 [![CI](https://github.com/ten9876/AetherSDR/actions/workflows/ci.yml/badge.svg)](https://github.com/ten9876/AetherSDR/actions/workflows/ci.yml)

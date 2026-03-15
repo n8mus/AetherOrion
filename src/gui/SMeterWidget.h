@@ -74,7 +74,7 @@ private:
 
     // Mode state
     TxMode  m_txMode{TxMode::Power};
-    RxMode  m_rxMode{RxMode::SMeterPeak};
+    RxMode  m_rxMode{RxMode::SMeter};
     bool    m_transmitting{false};
 
     QTimer  m_peakDecay;

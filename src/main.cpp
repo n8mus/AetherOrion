@@ -10,7 +10,7 @@ int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
     app.setApplicationName("AetherSDR");
-    app.setApplicationVersion("0.1.1");
+    app.setApplicationVersion(AETHERSDR_VERSION);
     app.setOrganizationName("AetherSDR");
 
     // Use Fusion style as a clean cross-platform base

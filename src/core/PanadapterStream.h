@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QUdpSocket>
 #include <QVector>
+#include <QMap>
 
 namespace AetherSDR {
 
@@ -92,12 +93,25 @@ private:
         bool isComplete() const { return totalBins > 0 && binsReceived >= totalBins; }
     };
 
+    // Per-stream packet sequence tracking (4-bit count in VITA-49 word0 bits 19:16)
+    struct StreamStats {
+        int  lastSeq{-1};
+        int  errorCount{0};
+        int  totalCount{0};
+    };
+
     QUdpSocket      m_socket;
     quint16         m_localPort{0};
     float           m_minDbm{-130.0f};
     float           m_maxDbm{-20.0f};
     RadioConnection* m_conn{nullptr};
     FrameAssembler  m_frame;
+    QMap<quint16, StreamStats> m_streamStats;  // keyed by PCC
+
+public:
+    // Packet error/total counts across all streams (for network quality monitor).
+    int packetErrorCount() const;
+    int packetTotalCount() const;
 };
 
 } // namespace AetherSDR

@@ -103,7 +103,7 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     rxLabel->setAlignment(Qt::AlignCenter);
     m_rxSelect = new QComboBox(selectRow);
     m_rxSelect->addItems({"S-Meter", "S-Meter Peak"});
-    m_rxSelect->setCurrentIndex(1);  // default to S-Meter Peak
+    m_rxSelect->setCurrentIndex(0);  // default to S-Meter
     m_rxSelect->setStyleSheet(comboStyle);
 
     auto* rxCol = new QVBoxLayout;

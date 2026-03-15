@@ -13,6 +13,7 @@
 #include <QList>
 #include <QMap>
 #include <QTimer>
+#include <QElapsedTimer>
 
 namespace AetherSDR {
 
@@ -73,6 +74,15 @@ signals:
     void antListChanged(QStringList ants);
     // Emitted when a power amplifier (e.g. PGXL) is detected or lost.
     void amplifierChanged(bool present);
+    // Emitted when GPS status changes (from "sub gps all").
+    void gpsStatusChanged(const QString& status, int tracked, int visible,
+                          const QString& grid, const QString& altitude,
+                          const QString& lat, const QString& lon,
+                          const QString& utcTime);
+    // Emitted when network quality assessment changes.
+    // quality: "Excellent", "Very Good", "Good", "Fair", "Poor"
+    // pingMs: round-trip time in milliseconds
+    void networkQualityChanged(const QString& quality, int pingMs);
 
 private slots:
     void onStatusReceived(const QString& object, const QMap<QString, QString>& kvs);
@@ -92,6 +102,7 @@ private:
 
     void configurePan();
     void configureWaterfall();
+    void handleGpsStatus(const QString& rawBody);
 
     // Standalone mode: create a panadapter then attach a slice to it.
     void createDefaultSlice(const QString& freqMhz = "14.225000",
@@ -107,7 +118,8 @@ private:
 
     QString     m_name;
     QString     m_model;
-    QString     m_version;
+    QString     m_version;          // software version from discovery (e.g. "4.1.5")
+    QString     m_protocolVersion;  // protocol version from V line (e.g. "1.4.0.0")
     float       m_paTemp{0.0f};
     float       m_txPower{0.0f};
     QStringList m_antList;
@@ -121,11 +133,38 @@ private:
 
     bool    m_hasAmplifier{false};  // true if a power amp (PGXL) is detected
 
+    // GPS state
+    QString m_gpsStatus;           // "Locked", "Present", "Not Present"
+    int     m_gpsTracked{0};
+    int     m_gpsVisible{0};
+    QString m_gpsGrid;
+    QString m_gpsAltitude;
+    QString m_gpsLat;
+    QString m_gpsLon;
+    QString m_gpsTime;
+
     QList<SliceModel*> m_slices;
 
     RadioInfo m_lastInfo;               // stored for auto-reconnect
     bool      m_intentionalDisconnect{false};
     QTimer    m_reconnectTimer;
+
+    // ── Network quality monitor (matches FlexLib MonitorNetworkQuality) ──
+    void startNetworkMonitor();
+    void stopNetworkMonitor();
+    void evaluateNetworkQuality();
+
+    enum class NetState { Off, Excellent, VeryGood, Good, Fair, Poor };
+    static constexpr int LAN_PING_FAIR_MS = 50;
+    static constexpr int LAN_PING_POOR_MS = 100;
+
+    QTimer        m_pingTimer;           // 1-second interval
+    QElapsedTimer m_pingStopwatch;       // measures RTT
+    int           m_lastPingRtt{0};      // ms
+    int           m_lastErrorCount{0};   // snapshot for delta
+    NetState      m_netState{NetState::Off};
+    NetState      m_nextState{NetState::Off};
+    int           m_stateCountdown{0};
 };
 
 } // namespace AetherSDR

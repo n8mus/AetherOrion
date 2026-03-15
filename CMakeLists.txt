@@ -64,7 +64,9 @@ set(ALL_SOURCES
     ${GUI_SOURCES}
 )
 
-add_executable(AetherSDR ${ALL_SOURCES})
+qt_add_resources(RESOURCES resources.qrc)
+
+add_executable(AetherSDR ${ALL_SOURCES} ${RESOURCES})
 
 target_include_directories(AetherSDR PRIVATE
     src/
@@ -82,6 +84,11 @@ if(PORTAUDIO_FOUND)
     target_include_directories(AetherSDR PRIVATE ${PORTAUDIO_INCLUDE_DIRS})
     target_link_libraries(AetherSDR PRIVATE ${PORTAUDIO_LIBRARIES})
 endif()
+
+# Pass project version to code
+target_compile_definitions(AetherSDR PRIVATE
+    AETHERSDR_VERSION="${PROJECT_VERSION}"
+)
 
 # Compiler warnings
 target_compile_options(AetherSDR PRIVATE

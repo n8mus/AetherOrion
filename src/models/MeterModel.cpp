@@ -28,6 +28,10 @@ void MeterModel::defineMeter(const MeterDef& def)
         m_compLevelIdx = def.index;
     else if (def.name == "HWALC")
         m_alcIdx = def.index;
+    else if (def.name == "PATEMP")
+        m_paTempIdx = def.index;
+    else if (def.name == "+13.8A")
+        m_supplyIdx = def.index;
 
     qDebug() << "MeterModel: defined meter" << def.index
              << def.source << def.sourceIndex << def.name
@@ -47,16 +51,19 @@ void MeterModel::removeMeter(int index)
     if (index == m_micLevelIdx)  m_micLevelIdx = -1;
     if (index == m_compLevelIdx) m_compLevelIdx = -1;
     if (index == m_alcIdx)       m_alcIdx = -1;
+    if (index == m_paTempIdx)    m_paTempIdx = -1;
+    if (index == m_supplyIdx)    m_supplyIdx = -1;
 }
 
 float MeterModel::convertRaw(const MeterDef& def, qint16 raw) const
 {
     // Conversion factors from FlexLib Meter.cs UpdateValue()
-    // Firmware v1.4.0.0: volt_denom = 1024 (version < 1.11.0.0)
+    // FlexLib uses volt_denom=1024 for fw < 1.11.0.0, 256 for newer.
+    // FLEX-8600 fw v1.4.0.0 is a newer product and uses 256.
     if (def.unit == "dBm" || def.unit == "dB" || def.unit == "dBFS" || def.unit == "SWR")
         return static_cast<float>(raw) / 128.0f;
     if (def.unit == "Volts" || def.unit == "Amps")
-        return static_cast<float>(raw) / 1024.0f;  // v1.4.0.0
+        return static_cast<float>(raw) / 256.0f;
     if (def.unit == "degF" || def.unit == "degC")
         return static_cast<float>(raw) / 64.0f;
     return static_cast<float>(raw);
@@ -69,6 +76,7 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
     bool txChanged = false;
     bool micChanged = false;
     bool alcChanged = false;
+    bool hwChanged = false;
 
     for (int i = 0; i < n; ++i) {
         const int idx = static_cast<int>(ids[i]);
@@ -102,6 +110,12 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
         } else if (idx == m_alcIdx) {
             m_alc = v;
             alcChanged = true;
+        } else if (idx == m_paTempIdx) {
+            m_paTemp = v;
+            hwChanged = true;
+        } else if (idx == m_supplyIdx) {
+            m_supplyVolts = v;  // "+13.8A" = supply voltage at point A (before fuse)
+            hwChanged = true;
         }
 
         emit meterUpdated(idx, v);
@@ -115,6 +129,8 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
         emit micMetersChanged(m_micLevel, m_compLevel, m_micPeak, m_compPeak);
     if (alcChanged)
         emit this->alcChanged(m_alc);
+    if (hwChanged)
+        emit hwTelemetryChanged(m_paTemp, m_supplyVolts);
 }
 
 const MeterDef* MeterModel::meterDef(int index) const

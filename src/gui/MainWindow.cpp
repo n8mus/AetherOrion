@@ -17,6 +17,8 @@
 #include "models/EqualizerModel.h"
 
 #include <QApplication>
+#include <QIcon>
+#include <QPixmap>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -35,6 +37,7 @@ MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
     setWindowTitle("AetherSDR");
+    setWindowIcon(QIcon(":/icon.jpg"));
     setMinimumSize(1024, 600);
     resize(1400, 800);
 
@@ -161,6 +164,44 @@ MainWindow::MainWindow(QWidget* parent)
     // ── EQ applet: graphic equalizer ─────────────────────────────────────────
     m_appletPanel->eqApplet()->setEqualizerModel(m_radioModel.equalizerModel());
 
+    // ── Status bar telemetry ──────────────────────────────────────────────────
+    connect(&m_radioModel, &RadioModel::networkQualityChanged,
+            this, [this](const QString& quality, int pingMs) {
+        // Color code: Excellent/VeryGood=green, Good=cyan, Fair=amber, Poor=red
+        QString color = "#00cc66";
+        if (quality == "Fair") color = "#cc9900";
+        else if (quality == "Poor") color = "#cc3333";
+        else if (quality == "Good") color = "#00b4d8";
+        Q_UNUSED(pingMs);
+        m_networkLabel->setText(QString("Network: [<span style='color:%1'>%2</span>]")
+            .arg(color, quality));
+        m_networkLabel->setTextFormat(Qt::RichText);
+    });
+
+    connect(m_radioModel.meterModel(), &MeterModel::hwTelemetryChanged,
+            this, [this](float paTemp, float supplyVolts) {
+        m_paTempLabel->setText(QString("PA %1\u00B0C  |  %2 V")
+            .arg(paTemp, 0, 'f', 0)
+            .arg(supplyVolts, 0, 'f', 1));
+    });
+
+    connect(&m_radioModel, &RadioModel::gpsStatusChanged,
+            this, [this](const QString& status, int tracked, int visible,
+                         const QString& grid, const QString& /*alt*/,
+                         const QString& /*lat*/, const QString& /*lon*/,
+                         const QString& utcTime) {
+        m_gpsLabel->setText(QString("GPS %1/%2 [%3]")
+            .arg(tracked).arg(visible).arg(status));
+
+        // Grid square
+        if (!grid.isEmpty())
+            m_gridLabel->setText(grid);
+
+        // GPS UTC time (center of status bar)
+        if (!utcTime.isEmpty())
+            m_gpsTimeLabel->setText(utcTime);
+    });
+
     // Start discovery
     m_discovery.startListening();
 
@@ -168,6 +209,8 @@ MainWindow::MainWindow(QWidget* parent)
     QSettings settings("AetherSDR", "AetherSDR");
     restoreGeometry(settings.value("geometry").toByteArray());
     restoreState(settings.value("windowState").toByteArray());
+    if (settings.contains("splitterState"))
+        m_splitter->restoreState(settings.value("splitterState").toByteArray());
 }
 
 MainWindow::~MainWindow() = default;
@@ -175,8 +218,9 @@ MainWindow::~MainWindow() = default;
 void MainWindow::closeEvent(QCloseEvent* event)
 {
     QSettings settings("AetherSDR", "AetherSDR");
-    settings.setValue("geometry",    saveGeometry());
-    settings.setValue("windowState", saveState());
+    settings.setValue("geometry",      saveGeometry());
+    settings.setValue("windowState",   saveState());
+    settings.setValue("splitterState", m_splitter->saveState());
     m_discovery.stopListening();
     m_radioModel.disconnectFromRadio();
     m_audio.stopRxStream();
@@ -201,18 +245,25 @@ void MainWindow::buildMenuBar()
 
     auto* helpMenu = menuBar()->addMenu("&Help");
     helpMenu->addAction("About AetherSDR", this, [this]{
-        QMessageBox::about(this, "About AetherSDR",
-            "<b>AetherSDR</b> v0.1<br>"
+        const QString text = QString(
+            "<b>AetherSDR</b> v%1<br>"
             "Linux-native SmartSDR-compatible client.<br>"
-            "Built with Qt6 and C++20.");
+            "Built with Qt6 and C++20."
+            ).arg(QCoreApplication::applicationVersion());
+        QMessageBox about(this);
+        about.setWindowTitle("About AetherSDR");
+        about.setIconPixmap(QPixmap(":/icon.jpg").scaled(128, 128, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        about.setText(text);
+        about.exec();
     });
 }
 
 void MainWindow::buildUI()
 {
     // ── Central splitter: [sidebar | spectrum | applets] ──────────────────
-    auto* splitter = new QSplitter(Qt::Horizontal, this);
-    setCentralWidget(splitter);
+    m_splitter = new QSplitter(Qt::Horizontal, this);
+    setCentralWidget(m_splitter);
+    auto* splitter = m_splitter;
 
     // Left sidebar — connection panel
     m_connPanel = new ConnectionPanel(splitter);
@@ -228,12 +279,44 @@ void MainWindow::buildUI()
     m_appletPanel = new AppletPanel(splitter);
     splitter->addWidget(m_appletPanel);
     splitter->setStretchFactor(2, 0);
+    splitter->setCollapsible(2, false);
+
+    // Set initial splitter sizes: left=260, center=stretch, right=260
+    // The center pane gets whatever is left after the fixed-width sidebars.
+    const int centerWidth = qMax(400, width() - 260 - 260);
+    splitter->setSizes({260, centerWidth, 260});
 
     // ── Status bar ─────────────────────────────────────────────────────────
+    const QString statusStyle = "QLabel { color: #8aa8c0; font-size: 11px; background: transparent; }";
+
     m_connStatusLabel = new QLabel("Disconnected", this);
-    m_radioInfoLabel  = new QLabel("", this);
+    m_connStatusLabel->setStyleSheet(statusStyle);
     statusBar()->addWidget(m_connStatusLabel);
-    statusBar()->addPermanentWidget(m_radioInfoLabel);
+
+    m_networkLabel = new QLabel("", this);
+    m_networkLabel->setStyleSheet(statusStyle);
+    statusBar()->addWidget(m_networkLabel);
+
+    m_radioInfoLabel = new QLabel("", this);
+    m_radioInfoLabel->setStyleSheet(statusStyle);
+    statusBar()->addWidget(m_radioInfoLabel);
+
+    m_gpsTimeLabel = new QLabel("", this);
+    m_gpsTimeLabel->setStyleSheet(statusStyle);
+    m_gpsTimeLabel->setAlignment(Qt::AlignCenter);
+    statusBar()->addWidget(m_gpsTimeLabel, 1);
+
+    m_paTempLabel = new QLabel("", this);
+    m_paTempLabel->setStyleSheet(statusStyle);
+    statusBar()->addPermanentWidget(m_paTempLabel);
+
+    m_gpsLabel = new QLabel("", this);
+    m_gpsLabel->setStyleSheet(statusStyle);
+    statusBar()->addPermanentWidget(m_gpsLabel);
+
+    m_gridLabel = new QLabel("", this);
+    m_gridLabel->setStyleSheet(statusStyle);
+    statusBar()->addPermanentWidget(m_gridLabel);
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────

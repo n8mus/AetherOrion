@@ -75,6 +75,12 @@ public:
     // Convenience: ALC level (0–100 scale, from TX "HWALC" meter).
     float alc() const { return m_alc; }
 
+    // Convenience: PA heatsink temperature (°C).
+    float paTemp() const { return m_paTemp; }
+
+    // Convenience: supply voltage (Volts, from "+13.8A" meter — measurement point A, before fuse).
+    float supplyVolts() const { return m_supplyVolts; }
+
 signals:
     // Emitted when the S-meter value changes (dBm).
     void sLevelChanged(float dbm);
@@ -89,6 +95,9 @@ signals:
 
     // Emitted when ALC meter changes (0–100 scale).
     void alcChanged(float alc);
+
+    // Emitted when hardware telemetry meters change (PA temp, supply voltage).
+    void hwTelemetryChanged(float paTemp, float supplyVolts);
 
     // Emitted when any meter value changes (for debug/generic display).
     void meterUpdated(int index, float value);
@@ -108,6 +117,8 @@ private:
     int m_micLevelIdx{-1};   // "TX" / "MIC" (instantaneous)
     int m_compLevelIdx{-1};  // "TX" / "COMP" (instantaneous)
     int m_alcIdx{-1};        // "TX" / "HWALC"
+    int m_paTempIdx{-1};     // "RAD" / "PATEMP"
+    int m_supplyIdx{-1};     // "RAD" / "+13.8A" (supply voltage, point A = before fuse)
 
     // Cached values
     float m_sLevel{-130.0f};
@@ -118,6 +129,8 @@ private:
     float m_micLevel{-50.0f};
     float m_compLevel{0.0f};
     float m_alc{0.0f};
+    float m_paTemp{0.0f};
+    float m_supplyVolts{0.0f};
 };
 
 } // namespace AetherSDR

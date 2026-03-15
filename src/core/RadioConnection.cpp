@@ -70,7 +70,8 @@ quint32 RadioConnection::sendCommand(const QString& command, ResponseCallback ca
         m_pendingCallbacks.insert(seq, std::move(callback));
 
     const QByteArray data = CommandParser::buildCommand(seq, command);
-    qDebug() << "TX:" << data.trimmed();
+    if (!command.startsWith("ping"))
+        qDebug() << "TX:" << data.trimmed();
     m_socket.write(data);
     return seq;
 }
@@ -125,7 +126,11 @@ void RadioConnection::onHeartbeat()
 
 void RadioConnection::processLine(const QString& line)
 {
-    qDebug() << "RX:" << line;
+    // Suppress noisy high-frequency messages (ping replies, GPS status)
+    const bool isGps = line.contains("|gps ");
+    const bool isPingReply = line.startsWith("R") && line.endsWith("|0|");
+    if (!isGps && !isPingReply)
+        qDebug() << "RX:" << line;
 
     ParsedMessage msg = CommandParser::parseLine(line);
     emit messageReceived(msg);

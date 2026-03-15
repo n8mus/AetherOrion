@@ -69,8 +69,9 @@ void RadioModel::connectToRadio(const RadioInfo& info)
     m_lastInfo = info;
     m_intentionalDisconnect = false;
     m_reconnectTimer.stop();
-    m_name  = info.name;
-    m_model = info.model;
+    m_name    = info.name;
+    m_model   = info.model;
+    m_version = info.version;   // software version from discovery (e.g. "4.1.5")
     m_connection.connectToRadio(info);
 }
 
@@ -93,6 +94,7 @@ void RadioModel::onConnected()
     qDebug() << "RadioModel: connected";
     m_panResized = false;
     emit connectionStateChanged(true);
+    startNetworkMonitor();
 
     // Full command sequence — each step waits for its R response before sending the next.
     // sub slice all → sub pan all → sub tx all → sub atu all → sub amplifier all
@@ -104,6 +106,7 @@ void RadioModel::onConnected()
         m_connection.sendCommand("sub amplifier all", [this](int, const QString&) {
           m_connection.sendCommand("sub meter all", [this](int, const QString&) {
             m_connection.sendCommand("sub audio all", [this](int, const QString&) {
+            m_connection.sendCommand("sub gps all", [this](int, const QString&) {
             // EQ status arrives automatically — no subscription needed on fw v1.4.0.0
             m_connection.sendCommand("client gui", [this](int code, const QString&) {
         if (code != 0)
@@ -172,6 +175,7 @@ void RadioModel::onConnected()
                     });
             });
     }); // client gui
+            }); // sub gps all
             }); // sub audio all
           }); // sub meter all
         }); // sub amplifier all
@@ -184,6 +188,7 @@ void RadioModel::onConnected()
 void RadioModel::onDisconnected()
 {
     qDebug() << "RadioModel: disconnected";
+    stopNetworkMonitor();
     m_panStream.stop();
     m_panId.clear();
     m_waterfallId.clear();
@@ -206,8 +211,130 @@ void RadioModel::onConnectionError(const QString& msg)
 
 void RadioModel::onVersionReceived(const QString& v)
 {
-    m_version = v;
+    // The V line from the radio is the protocol version (e.g. "1.4.0.0").
+    // We prefer the software version from discovery (e.g. "4.1.5").
+    // Only use protocol version as fallback if discovery didn't provide one.
+    if (m_version.isEmpty())
+        m_version = v;
+    m_protocolVersion = v;
     emit infoChanged();
+}
+
+// ─── Network quality monitor (matches FlexLib MonitorNetworkQuality) ─────────
+
+void RadioModel::startNetworkMonitor()
+{
+    m_netState = NetState::Excellent;
+    m_nextState = NetState::Excellent;
+    m_stateCountdown = 0;
+    m_lastErrorCount = 0;
+    m_lastPingRtt = 0;
+
+    connect(&m_pingTimer, &QTimer::timeout, this, [this]() {
+        if (!m_connection.isConnected()) {
+            stopNetworkMonitor();
+            return;
+        }
+        // Send ping and measure RTT
+        m_pingStopwatch.restart();
+        m_connection.sendCommand("ping", [this](int code, const QString&) {
+            if (code != 0) return;
+            m_lastPingRtt = static_cast<int>(m_pingStopwatch.elapsed());
+            evaluateNetworkQuality();
+        });
+    });
+    m_pingTimer.start(1000);
+}
+
+void RadioModel::stopNetworkMonitor()
+{
+    m_pingTimer.stop();
+    m_pingTimer.disconnect();
+    m_netState = NetState::Off;
+    m_nextState = NetState::Off;
+}
+
+void RadioModel::evaluateNetworkQuality()
+{
+    // Check for new packet errors since last evaluation
+    const int currentErrors = m_panStream.packetErrorCount();
+    const bool packetLost = (currentErrors > m_lastErrorCount);
+    m_lastErrorCount = currentErrors;
+
+    const int ping = m_lastPingRtt;
+
+    // State machine from FlexLib MonitorNetworkQualityTask
+    switch (m_netState) {
+    case NetState::Excellent:
+        if (ping >= LAN_PING_POOR_MS)
+            m_nextState = NetState::Poor;
+        else if (ping >= LAN_PING_FAIR_MS)
+            m_nextState = NetState::Good;
+        else if (packetLost)
+            m_nextState = NetState::VeryGood;
+        break;
+
+    case NetState::VeryGood:
+        if (ping >= LAN_PING_POOR_MS) {
+            m_nextState = NetState::Poor;
+            m_stateCountdown = 5;
+        } else if (ping >= LAN_PING_FAIR_MS || packetLost) {
+            m_nextState = NetState::Good;
+            m_stateCountdown = 5;
+        } else {
+            if (m_stateCountdown-- <= 0) {
+                m_nextState = NetState::Excellent;
+                m_stateCountdown = 5;
+            }
+        }
+        break;
+
+    case NetState::Good:
+        if (ping >= LAN_PING_POOR_MS) {
+            m_nextState = NetState::Poor;
+            m_stateCountdown = 5;
+        } else if (packetLost) {
+            m_nextState = NetState::Fair;
+            m_stateCountdown = 5;
+        } else if (ping < LAN_PING_FAIR_MS) {
+            if (m_stateCountdown-- <= 0) {
+                m_nextState = NetState::VeryGood;
+                m_stateCountdown = 5;
+            }
+        }
+        break;
+
+    case NetState::Fair:
+        if (ping >= LAN_PING_POOR_MS || packetLost) {
+            m_nextState = NetState::Poor;
+            m_stateCountdown = 5;
+        } else {
+            if (m_stateCountdown-- <= 0) {
+                m_nextState = NetState::Good;
+                m_stateCountdown = 5;
+            }
+        }
+        break;
+
+    case NetState::Poor:
+        if (ping < LAN_PING_POOR_MS) {
+            if (m_stateCountdown-- <= 0) {
+                m_nextState = NetState::Fair;
+                m_stateCountdown = 5;
+            }
+        }
+        break;
+
+    case NetState::Off:
+        m_nextState = NetState::Poor;
+        m_stateCountdown = 5;
+        break;
+    }
+
+    m_netState = m_nextState;
+
+    static const char* names[] = {"Off", "Excellent", "Very Good", "Good", "Fair", "Poor"};
+    emit networkQualityChanged(names[static_cast<int>(m_netState)], ping);
 }
 
 // ─── Raw message handler (for meter status with '#' separators) ──────────────
@@ -233,6 +360,12 @@ void RadioModel::onMessageReceived(const ParsedMessage& msg)
     }
     if (body.startsWith("profile mic ")) {
         handleProfileStatusRaw("mic", body.mid(12));  // skip "profile mic "
+        return;
+    }
+
+    // GPS status: "gps lat=...#lon=...#grid=...#tracked=...#visible=...#status=..."
+    if (body.startsWith("gps ")) {
+        handleGpsStatus(body.mid(4));  // skip "gps "
         return;
     }
 
@@ -463,6 +596,33 @@ void RadioModel::handleMeterStatus(const QString& rawBody)
 
         m_meterModel.defineMeter(def);
     }
+}
+
+void RadioModel::handleGpsStatus(const QString& rawBody)
+{
+    // GPS status uses '#' as separator, same as meter status.
+    // Example: "lat=48.27#lon=-116.56#grid=DN18rg#altitude=644 m#tracked=16#
+    //           visible=31#speed=0 kts#freq_error=0 ppb#status=Fine Lock#time=05:25:20Z"
+    const QStringList tokens = rawBody.split('#', Qt::SkipEmptyParts);
+    for (const QString& token : tokens) {
+        const int eq = token.indexOf('=');
+        if (eq < 1) continue;
+        const QString key   = token.left(eq).toLower();
+        const QString value = token.mid(eq + 1);
+
+        if      (key == "status")   m_gpsStatus   = value;
+        else if (key == "tracked")  m_gpsTracked  = value.toInt();
+        else if (key == "visible")  m_gpsVisible  = value.toInt();
+        else if (key == "grid")     m_gpsGrid     = value;
+        else if (key == "altitude") m_gpsAltitude = value;
+        else if (key == "lat")      m_gpsLat      = value;
+        else if (key == "lon")      m_gpsLon      = value;
+        else if (key == "time")     m_gpsTime     = value;
+    }
+
+    emit gpsStatusChanged(m_gpsStatus, m_gpsTracked, m_gpsVisible,
+                           m_gpsGrid, m_gpsAltitude, m_gpsLat, m_gpsLon,
+                           m_gpsTime);
 }
 
 void RadioModel::handlePanadapterStatus(const QMap<QString, QString>& kvs)
