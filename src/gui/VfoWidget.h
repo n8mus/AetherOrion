@@ -9,6 +9,7 @@ class QLabel;
 class QStackedWidget;
 class QSlider;
 class QComboBox;
+class QGridLayout;
 
 namespace AetherSDR {
 
@@ -48,6 +49,10 @@ private:
     void updateFreqLabel();
     void updateFilterLabel();
     void updateModeTab();
+    void rebuildFilterButtons();
+    void updateFilterHighlight();
+    void applyFilterPreset(int widthHz);
+    static QString formatFilterLabel(int hz);
 
     SliceModel*    m_slice{nullptr};
     TransmitModel* m_txModel{nullptr};
@@ -93,7 +98,10 @@ private:
     QPushButton* m_anflBtn{nullptr};
     QPushButton* m_anftBtn{nullptr};
     // Mode tab
-    QVector<QPushButton*> m_modeBtns;
+    QComboBox* m_modeCombo{nullptr};
+    QGridLayout* m_filterGrid{nullptr};
+    QVector<QPushButton*> m_filterBtns;
+    QVector<int> m_filterWidths;
     // RIT/XIT tab
     QPushButton* m_ritBtn{nullptr};
     QPushButton* m_xitBtn{nullptr};

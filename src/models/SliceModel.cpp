@@ -247,6 +247,15 @@ void SliceModel::setXit(bool on, int hz)
     emit xitChanged(on, hz);
 }
 
+void SliceModel::setDaxChannel(int ch)
+{
+    ch = std::clamp(ch, 0, 8);
+    if (m_daxChannel == ch) return;
+    m_daxChannel = ch;
+    sendCommand(QString("slice set %1 dax=%2").arg(m_id).arg(ch));
+    emit daxChannelChanged(ch);
+}
+
 void SliceModel::setTxSlice(bool on)
 {
     sendCommand(QString("slice set %1 tx=%2").arg(m_id).arg(on ? 1 : 0));
@@ -497,6 +506,10 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
         if (kvs.contains("xit_on"))   m_xitOn   = kvs["xit_on"] == "1";
         if (kvs.contains("xit_freq")) m_xitFreq = kvs["xit_freq"].toInt();
         emit xitChanged(m_xitOn, m_xitFreq);
+    }
+    if (kvs.contains("dax")) {
+        int ch = kvs["dax"].toInt();
+        if (m_daxChannel != ch) { m_daxChannel = ch; emit daxChannelChanged(ch); }
     }
 
     // FM duplex/repeater status

@@ -435,28 +435,61 @@ void VfoWidget::buildTabContent()
         m_tabStack->addWidget(dspTab);
     }
 
-    // Tab 2: Mode
+    // Tab 2: Mode — dropdown + filter preset grid
     {
-        auto* m_modeTab = new QWidget;
-        auto* grid = new QGridLayout(m_modeTab);
-        grid->setContentsMargins(2, 2, 2, 2);
-        grid->setSpacing(2);
+        auto* modeTab = new QWidget;
+        auto* vb = new QVBoxLayout(modeTab);
+        vb->setContentsMargins(2, 2, 2, 2);
+        vb->setSpacing(3);
 
-        const QStringList modes = {"USB", "LSB", "CW", "AM", "SAM", "FM",
-                                    "NFM", "DFM", "DIGU", "DIGL", "RTTY"};
-        for (int i = 0; i < modes.size(); ++i) {
-            auto* btn = new QPushButton(modes[i]);
-            btn->setCheckable(true);
-            btn->setFixedHeight(24);
+        // Mode dropdown (same style as RxApplet)
+        m_modeCombo = new QComboBox;
+        m_modeCombo->setFixedHeight(26);
+        m_modeCombo->addItems({"USB", "LSB", "CW", "AM", "SAM", "FM",
+                                "NFM", "DFM", "DIGU", "DIGL", "RTTY"});
+        m_modeCombo->setStyleSheet(QString(
+            "QComboBox { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
+            " color: #c8d8e8; font-size: 10px; font-weight: bold;"
+            " padding: 0px 2px; margin: 0px; }"
+            "QComboBox::drop-down { border-left: 1px solid #205070; width: 14px;"
+            " subcontrol-origin: padding; subcontrol-position: center right; }"
+            "QComboBox::down-arrow { image: url(%1); width: 8px; height: 6px; }"
+            "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8;"
+            " selection-background-color: #00b4d8; }").arg(comboArrowPath()));
+        m_modeCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+        connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int) {
+            if (m_modeCombo->signalsBlocked()) return;
+            if (!m_updatingFromModel && m_slice)
+                m_slice->setMode(m_modeCombo->currentText());
+        });
+
+        // Top row: dropdown + 3 quick-mode buttons (USB, CW, AM)
+        // All 4 columns equal width using a grid row
+        auto* modeRow = new QHBoxLayout;
+        modeRow->setSpacing(2);
+        modeRow->addWidget(m_modeCombo, 1);
+        for (const char* mode : {"USB", "CW", "AM"}) {
+            auto* btn = new QPushButton(mode);
+            btn->setFixedHeight(26);
             btn->setStyleSheet(kModeBtn);
-            connect(btn, &QPushButton::clicked, this, [this, mode = modes[i]] {
-                if (m_slice) m_slice->setMode(mode);
+            connect(btn, &QPushButton::clicked, this, [this, m = QString(mode)] {
+                if (m_slice) m_slice->setMode(m);
             });
-            grid->addWidget(btn, i / 4, i % 4);
-            m_modeBtns.append(btn);
+            modeRow->addWidget(btn, 1);
         }
+        vb->addLayout(modeRow);
 
-        m_tabStack->addWidget(m_modeTab);
+        // Filter preset grid (4 columns, rebuilt on mode change)
+        auto* filterContainer = new QWidget;
+        m_filterGrid = new QGridLayout(filterContainer);
+        m_filterGrid->setContentsMargins(0, 0, 0, 0);
+        m_filterGrid->setSpacing(2);
+        for (int c = 0; c < 4; ++c)
+            m_filterGrid->setColumnStretch(c, 1);
+        vb->addWidget(filterContainer);
+
+        m_tabStack->addWidget(modeTab);
     }
 
     // Tab 3: X/RIT
@@ -528,6 +561,12 @@ void VfoWidget::buildTabContent()
             "color: #c8d8e8; selection-background-color: #0070c0; }");
         row->addWidget(m_daxCmb, 1);
         vb->addLayout(row);
+
+        connect(m_daxCmb, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int idx) {
+            if (!m_updatingFromModel && m_slice)
+                m_slice->setDaxChannel(idx);  // 0=Off, 1-4=channels
+        });
 
         m_tabStack->addWidget(daxTab);
     }
@@ -709,7 +748,10 @@ void VfoWidget::setSlice(SliceModel* slice)
         updateModeTab();
     });
     // Filter
-    connect(m_slice, &SliceModel::filterChanged, this, [this](int, int) { updateFilterLabel(); });
+    connect(m_slice, &SliceModel::filterChanged, this, [this](int, int) {
+        updateFilterLabel();
+        updateFilterHighlight();
+    });
     // Antennas
     connect(m_slice, &SliceModel::rxAntennaChanged, this, [this](const QString& ant) {
         m_updatingFromModel = true; m_rxAntBtn->setText(ant); m_updatingFromModel = false;
@@ -794,6 +836,13 @@ void VfoWidget::setSlice(SliceModel* slice)
         m_xitLabel->setText(QString("%1%2 Hz").arg(hz >= 0 ? "+" : "").arg(hz));
         m_updatingFromModel = false;
     });
+    // DAX
+    connect(m_slice, &SliceModel::daxChannelChanged, this, [this](int ch) {
+        m_updatingFromModel = true;
+        QSignalBlocker sb(m_daxCmb);
+        m_daxCmb->setCurrentIndex(ch);
+        m_updatingFromModel = false;
+    });
 
     syncFromSlice();
 }
@@ -867,6 +916,12 @@ void VfoWidget::syncFromSlice()
     m_ritLabel->setText(QString("%1%2 Hz").arg(m_slice->ritFreq() >= 0 ? "+" : "").arg(m_slice->ritFreq()));
     m_xitLabel->setText(QString("%1%2 Hz").arg(m_slice->xitFreq() >= 0 ? "+" : "").arg(m_slice->xitFreq()));
 
+    // DAX
+    {
+        QSignalBlocker sb(m_daxCmb);
+        m_daxCmb->setCurrentIndex(m_slice->daxChannel());
+    }
+
     m_updatingFromModel = false;
 }
 
@@ -893,14 +948,115 @@ void VfoWidget::updateFilterLabel()
         m_filterWidthLbl->setText(QString::number(w));
 }
 
+// ── Mode tab helpers ──────────────────────────────────────────────────────────
+
+struct ModeFilterPresets {
+    QVector<int> filterWidths;
+};
+
+static const ModeFilterPresets& filterPresetsFor(const QString& mode)
+{
+    // From docs/vfo_mode_filters.csv — 8 presets per mode, 4x2 grid
+    static const ModeFilterPresets usb{{1800, 2100, 2400, 2700, 2900, 3300, 4000, 6000}};
+    static const ModeFilterPresets am {{5600, 6000, 8000, 10000, 12000, 14000, 16000, 20000}};
+    static const ModeFilterPresets cw {{50, 100, 250, 400, 500, 800, 1000, 3000}};
+    static const ModeFilterPresets dig{{100, 300, 600, 1000, 1500, 2000, 3000, 6000}};
+    static const ModeFilterPresets rtty{{250, 300, 350, 400, 500, 1000, 1500, 3000}};
+    static const ModeFilterPresets dfm{{6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000}};
+    static const ModeFilterPresets fm{{}};
+
+    if (mode == "USB" || mode == "LSB") return usb;
+    if (mode == "AM" || mode == "SAM") return am;
+    if (mode == "CW") return cw;
+    if (mode == "DIGU" || mode == "DIGL") return dig;
+    if (mode == "RTTY") return rtty;
+    if (mode == "DFM") return dfm;
+    if (mode == "FM" || mode == "NFM") return fm;
+    return usb;
+}
+
 void VfoWidget::updateModeTab()
 {
     if (!m_slice) return;
     const QString& cur = m_slice->mode();
-    for (auto* btn : m_modeBtns) {
-        QSignalBlocker sb(btn);
-        btn->setChecked(btn->text() == cur);
+
+    // Sync combo
+    {
+        QSignalBlocker sb(m_modeCombo);
+        int idx = m_modeCombo->findText(cur);
+        if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
     }
+
+    // Rebuild filter presets for new mode
+    m_filterWidths = filterPresetsFor(cur).filterWidths;
+    rebuildFilterButtons();
+}
+
+QString VfoWidget::formatFilterLabel(int hz)
+{
+    if (hz >= 1000) return QString("%1K").arg(hz / 1000.0, 0, 'f', (hz % 1000) ? 1 : 0);
+    return QString::number(hz);
+}
+
+void VfoWidget::rebuildFilterButtons()
+{
+    for (auto* btn : m_filterBtns) delete btn;
+    m_filterBtns.clear();
+
+    for (int i = 0; i < m_filterWidths.size(); ++i) {
+        const int w = m_filterWidths[i];
+        auto* btn = new QPushButton(formatFilterLabel(w));
+        btn->setCheckable(true);
+        btn->setFixedHeight(26);
+        btn->setStyleSheet(kModeBtn);
+        connect(btn, &QPushButton::clicked, this, [this, w](bool) {
+            applyFilterPreset(w);
+        });
+        m_filterBtns.append(btn);
+        m_filterGrid->addWidget(btn, i / 4, i % 4);
+    }
+    updateFilterHighlight();
+}
+
+void VfoWidget::updateFilterHighlight()
+{
+    if (!m_slice) return;
+    const int width = m_slice->filterHigh() - m_slice->filterLow();
+    int bestIdx = -1, bestDist = INT_MAX;
+    for (int i = 0; i < m_filterWidths.size(); ++i) {
+        int dist = std::abs(width - m_filterWidths[i]);
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    }
+    if (bestIdx >= 0 && bestDist > m_filterWidths[bestIdx] / 10)
+        bestIdx = -1;
+    for (int i = 0; i < m_filterBtns.size(); ++i) {
+        QSignalBlocker sb(m_filterBtns[i]);
+        m_filterBtns[i]->setChecked(i == bestIdx);
+    }
+}
+
+void VfoWidget::applyFilterPreset(int widthHz)
+{
+    if (!m_slice) return;
+    int lo, hi;
+    const QString& mode = m_slice->mode();
+
+    if (mode == "LSB" || mode == "DIGL") {
+        lo = -widthHz; hi = 0;
+    } else if (mode == "CW") {
+        int pitch = m_txModel ? m_txModel->cwPitch() : 600;
+        lo = pitch - widthHz / 2;
+        hi = pitch + widthHz / 2;
+    } else if (mode == "CWL") {
+        int pitch = m_txModel ? m_txModel->cwPitch() : 600;
+        lo = -(pitch + widthHz / 2);
+        hi = -(pitch - widthHz / 2);
+    } else if (mode == "AM" || mode == "SAM" || mode == "DSB") {
+        lo = -(widthHz / 2); hi = (widthHz / 2);
+    } else {
+        lo = 0; hi = widthHz;
+    }
+    m_slice->setFilterWidth(lo, hi);
 }
 
 void VfoWidget::setAntennaList(const QStringList& ants)

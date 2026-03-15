@@ -119,7 +119,7 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
         {"ANT",       1, nullptr},   // 3 — toggleAntPanel
         {"DSP",       2, nullptr},   // 4 — toggleDspPanel
         {"Display",  -1, &SpectrumOverlayMenu::displayClicked}, // 5
-        {"DAX",      -1, &SpectrumOverlayMenu::daxClicked},     // 6
+        {"DAX",       3, nullptr},   // 6 — toggleDaxPanel
     };
 
     for (const auto& def : defs) {
@@ -130,6 +130,8 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
             connect(btn, &QPushButton::clicked, this, &SpectrumOverlayMenu::toggleAntPanel);
         else if (def.specialIdx == 2)
             connect(btn, &QPushButton::clicked, this, &SpectrumOverlayMenu::toggleDspPanel);
+        else if (def.specialIdx == 3)
+            connect(btn, &QPushButton::clicked, this, &SpectrumOverlayMenu::toggleDaxPanel);
         else
             connect(btn, &QPushButton::clicked, this, def.sig);
         m_menuBtns.append(btn);
@@ -138,6 +140,7 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
     buildBandPanel();
     buildAntPanel();
     buildDspPanel();
+    buildDaxPanel();
     updateLayout();
 }
 
@@ -394,8 +397,17 @@ void SpectrumOverlayMenu::setSlice(SliceModel* slice)
         });
     }
 
+    // DAX
+    connect(m_slice, &SliceModel::daxChannelChanged, this, [this](int ch) {
+        m_updatingFromModel = true;
+        QSignalBlocker sb(m_daxCmb);
+        m_daxCmb->setCurrentIndex(ch);
+        m_updatingFromModel = false;
+    });
+
     syncAntPanel();
     syncDspPanel();
+    syncDaxPanel();
 }
 
 void SpectrumOverlayMenu::syncAntPanel()
@@ -534,6 +546,71 @@ void SpectrumOverlayMenu::toggleDspPanel()
     }
 }
 
+// ── DAX sub-panel ─────────────────────────────────────────────────────────────
+
+void SpectrumOverlayMenu::buildDaxPanel()
+{
+    m_daxPanel = new QWidget(parentWidget());
+    m_daxPanel->setStyleSheet(kPanelStyle);
+    m_daxPanel->hide();
+
+    auto* vb = new QVBoxLayout(m_daxPanel);
+    vb->setContentsMargins(6, 6, 6, 6);
+    vb->setSpacing(4);
+
+    auto* row = new QHBoxLayout;
+    row->setSpacing(4);
+    auto* lbl = new QLabel("DAX Ch");
+    lbl->setStyleSheet(kLabelStyle);
+    row->addWidget(lbl);
+    m_daxCmb = new QComboBox;
+    m_daxCmb->addItems({"Off", "1", "2", "3", "4"});
+    m_daxCmb->setStyleSheet(
+        "QComboBox { background: #1a2a3a; border: 1px solid #304050; "
+        "border-radius: 2px; color: #c8d8e8; font-size: 11px; "
+        "font-weight: bold; padding: 1px 4px; }"
+        "QComboBox::drop-down { border: none; }"
+        "QComboBox QAbstractItemView { background: #1a2a3a; "
+        "border: 1px solid #304050; color: #c8d8e8; "
+        "selection-background-color: #0070c0; }");
+    row->addWidget(m_daxCmb, 1);
+    vb->addLayout(row);
+
+    connect(m_daxCmb, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int idx) {
+        if (!m_updatingFromModel && m_slice)
+            m_slice->setDaxChannel(idx);
+    });
+
+    m_daxPanel->setFixedWidth(140);
+    m_daxPanel->adjustSize();
+}
+
+void SpectrumOverlayMenu::syncDaxPanel()
+{
+    if (!m_slice) return;
+    m_updatingFromModel = true;
+    QSignalBlocker sb(m_daxCmb);
+    m_daxCmb->setCurrentIndex(m_slice->daxChannel());
+    m_updatingFromModel = false;
+}
+
+void SpectrumOverlayMenu::toggleDaxPanel()
+{
+    bool wasVisible = m_daxPanelVisible;
+    hideAllSubPanels();
+    if (!wasVisible) {
+        syncDaxPanel();
+        m_daxPanelVisible = true;
+        int btnCenterY = m_menuBtns[6]->y() + m_menuBtns[6]->height() / 2;
+        int panelY = y() + btnCenterY - m_daxPanel->sizeHint().height() / 2;
+        m_daxPanel->move(x() + width(), std::max(0, panelY));
+        m_daxPanel->raise();
+        m_daxPanel->show();
+        m_menuBtns[6]->setStyleSheet(kMenuBtnActive);
+    }
+}
+
 // ── Sub-panel toggle helpers ──────────────────────────────────────────────────
 
 void SpectrumOverlayMenu::hideAllSubPanels()
@@ -541,9 +618,11 @@ void SpectrumOverlayMenu::hideAllSubPanels()
     if (m_bandPanelVisible) { m_bandPanelVisible = false; m_bandPanel->hide(); }
     if (m_antPanelVisible)  { m_antPanelVisible = false;  m_antPanel->hide(); }
     if (m_dspPanelVisible)  { m_dspPanelVisible = false;  m_dspPanel->hide(); }
+    if (m_daxPanelVisible)  { m_daxPanelVisible = false;  m_daxPanel->hide(); }
     m_menuBtns[2]->setStyleSheet(kMenuBtnNormal);  // Band
     m_menuBtns[3]->setStyleSheet(kMenuBtnNormal);  // ANT
     m_menuBtns[4]->setStyleSheet(kMenuBtnNormal);  // DSP
+    m_menuBtns[6]->setStyleSheet(kMenuBtnNormal);  // DAX
 }
 
 void SpectrumOverlayMenu::toggleBandPanel()

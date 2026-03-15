@@ -64,6 +64,7 @@ public:
     int     ritFreq()     const { return m_ritFreq; }
     bool    xitOn()       const { return m_xitOn; }
     int     xitFreq()     const { return m_xitFreq; }
+    int     daxChannel()  const { return m_daxChannel; }
 
     // Getters — FM duplex/repeater
     QString fmToneMode()          const { return m_fmToneMode; }
@@ -106,6 +107,7 @@ public:
     void setSquelch(bool on, int level);
     void setRit(bool on, int hz);
     void setXit(bool on, int hz);
+    void setDaxChannel(int ch);
     void setTxSlice(bool on);
 
     // Setters — FM duplex/repeater
@@ -157,6 +159,7 @@ signals:
     void squelchChanged(bool on, int level);
     void ritChanged(bool on, int hz);
     void xitChanged(bool on, int hz);
+    void daxChannelChanged(int ch);
 
     // FM duplex/repeater signals
     void fmToneModeChanged(const QString& mode);
@@ -210,6 +213,7 @@ private:
     int     m_ritFreq{0};
     bool    m_xitOn{false};
     int     m_xitFreq{0};
+    int     m_daxChannel{0};
 
     // FM duplex/repeater state
     QString m_fmToneMode{"off"};

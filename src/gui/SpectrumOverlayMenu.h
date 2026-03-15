@@ -55,6 +55,9 @@ private:
     void toggleDspPanel();
     void buildDspPanel();
     void syncDspPanel();
+    void toggleDaxPanel();
+    void buildDaxPanel();
+    void syncDaxPanel();
     void hideAllSubPanels();
     void syncAntPanel();
 
@@ -85,6 +88,11 @@ private:
         QLabel*      valueLbl{nullptr};
     };
     QVector<DspRow> m_dspRows;
+
+    // DAX sub-panel
+    QWidget*   m_daxPanel{nullptr};
+    bool       m_daxPanelVisible{false};
+    QComboBox* m_daxCmb{nullptr};
 
     QStringList  m_antList;
     SliceModel*  m_slice{nullptr};
