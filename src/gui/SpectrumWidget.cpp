@@ -1,5 +1,6 @@
 #include "SpectrumWidget.h"
 #include "SpectrumOverlayMenu.h"
+#include "VfoWidget.h"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -30,6 +31,10 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
     // Floating overlay menu (child widget, stays on top)
     m_overlayMenu = new SpectrumOverlayMenu(this);
     m_overlayMenu->raise();
+
+    // VFO info widget (attached to VFO marker)
+    m_vfoWidget = new VfoWidget(this);
+    m_vfoWidget->raise();
 }
 
 void SpectrumWidget::setFrequencyRange(double centerMhz, double bandwidthMhz)
@@ -557,6 +562,12 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
     drawWaterfall(p, wfRect);
     drawVfoMarker(p, specRect, wfRect);
     drawOffScreenVfo(p, specRect);
+
+    // Reposition VFO widget to follow the marker
+    if (m_vfoWidget) {
+        int vfoX = mhzToX(m_vfoFreqMhz);
+        m_vfoWidget->updatePosition(vfoX, specRect.top());
+    }
 
     // ── WNB / RF Gain indicators (top-right of FFT area) ──────────────────
     if (m_wnbActive || m_rfGainValue != 0) {

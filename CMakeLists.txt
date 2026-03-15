@@ -48,6 +48,7 @@ set(GUI_SOURCES
     src/gui/ConnectionPanel.cpp
     src/gui/SpectrumWidget.cpp
     src/gui/SpectrumOverlayMenu.cpp
+    src/gui/VfoWidget.cpp
     src/gui/PanadapterApplet.cpp
     src/gui/AppletPanel.cpp
     src/gui/RxApplet.cpp

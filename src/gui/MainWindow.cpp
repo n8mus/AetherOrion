@@ -3,6 +3,7 @@
 #include "PanadapterApplet.h"
 #include "SpectrumWidget.h"
 #include "SpectrumOverlayMenu.h"
+#include "VfoWidget.h"
 #include "AppletPanel.h"
 #include "RxApplet.h"
 #include "SMeterWidget.h"
@@ -184,10 +185,14 @@ MainWindow::MainWindow(QWidget* parent)
             m_appletPanel, &AppletPanel::setAntennaList);
     connect(&m_radioModel, &RadioModel::antListChanged,
             spectrum()->overlayMenu(), &SpectrumOverlayMenu::setAntennaList);
+    connect(&m_radioModel, &RadioModel::antListChanged,
+            spectrum()->vfoWidget(), &VfoWidget::setAntennaList);
 
     // ── S-Meter: MeterModel → SMeterWidget ────────────────────────────────
     connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
             m_appletPanel->sMeterWidget(), &SMeterWidget::setLevel);
+    connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
+            spectrum()->vfoWidget(), &VfoWidget::setSignalLevel);
     connect(m_radioModel.meterModel(), &MeterModel::txMetersChanged,
             m_appletPanel->sMeterWidget(), &SMeterWidget::setTxMeters);
     connect(m_radioModel.meterModel(), &MeterModel::micMetersChanged,
@@ -527,6 +532,8 @@ void MainWindow::onSliceAdded(SliceModel* s)
         m_panApplet->setSliceId(s->sliceId());
         m_appletPanel->setSlice(s);
         spectrum()->overlayMenu()->setSlice(s);
+        spectrum()->vfoWidget()->setSlice(s);
+        spectrum()->vfoWidget()->setTransmitModel(m_radioModel.transmitModel());
 
         // Detect initial band from radio's frequency
         if (m_bandSettings.currentBand().isEmpty())

@@ -7,6 +7,7 @@
 namespace AetherSDR {
 
 class SpectrumOverlayMenu;
+class VfoWidget;
 
 // Panadapter / spectrum display widget.
 //
@@ -69,6 +70,9 @@ public:
 
     // Access the floating overlay menu (for wiring signals).
     SpectrumOverlayMenu* overlayMenu() const { return m_overlayMenu; }
+
+    // Access the VFO info widget.
+    VfoWidget* vfoWidget() const { return m_vfoWidget; }
 
     // WNB and RF gain state for on-screen indicators.
     bool wnbActive()   const { return m_wnbActive; }
@@ -189,6 +193,8 @@ private:
 
     // Floating overlay menu (child widget, anchored top-left)
     SpectrumOverlayMenu* m_overlayMenu{nullptr};
+    // VFO info widget (child widget, attached to VFO marker)
+    VfoWidget* m_vfoWidget{nullptr};
 };
 
 } // namespace AetherSDR

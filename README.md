@@ -17,7 +17,7 @@ built with **Qt6** and **C++20**.
 
 Current version: **0.1.10**
 
-![AetherSDR Screenshot](docs/screenshot-v1.png)
+![AetherSDR Screenshot](docs/screenshot-v2.png)
 
 ---
 
