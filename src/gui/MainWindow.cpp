@@ -476,6 +476,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
     if (m_radioModel.slices().size() == 1) {
         spectrum()->setVfoFrequency(s->frequency());
         spectrum()->setVfoFilter(s->filterLow(), s->filterHigh());
+        spectrum()->setSliceInfo(s->sliceId(), s->isTxSlice());
         m_panApplet->setSliceId(s->sliceId());
         m_appletPanel->setSlice(s);
     }
@@ -506,6 +507,11 @@ void MainWindow::onSliceAdded(SliceModel* s)
     };
     updateFilterLimits(s->mode());
     connect(s, &SliceModel::modeChanged, this, updateFilterLimits);
+
+    // Track TX slice changes for the off-screen VFO indicator
+    connect(s, &SliceModel::txSliceChanged, this, [this, s](bool tx) {
+        spectrum()->setSliceInfo(s->sliceId(), tx);
+    });
 }
 
 void MainWindow::onSliceRemoved(int /*id*/) {}

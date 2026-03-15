@@ -144,6 +144,13 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         return;
     }
 
+    // Click on off-screen VFO indicator → absorb (double-click recenters)
+    if (!m_offScreenVfoRect.isNull() &&
+        m_offScreenVfoRect.contains(QPoint(static_cast<int>(ev->position().x()), y))) {
+        ev->accept();
+        return;
+    }
+
     // Check for click on dBm scale strip (right edge of FFT area)
     if (y < specH) {
         const int mx = static_cast<int>(ev->position().x());
@@ -201,10 +208,12 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         }
     }
 
-    // Click in FFT area → tune immediately
-    const double startMhz = m_centerMhz - m_bandwidthMhz / 2.0;
-    const double rawMhz = startMhz + (ev->position().x() / width()) * m_bandwidthMhz;
-    emit frequencyClicked(snapToStep(rawMhz, m_stepHz));
+    // Click in FFT area → start pan drag (tune on double-click only)
+    m_draggingPan = true;
+    m_panDragStartX = static_cast<int>(ev->position().x());
+    m_panDragStartCenter = m_centerMhz;
+    setCursor(Qt::ClosedHandCursor);
+    ev->accept();
 }
 
 void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
@@ -306,23 +315,34 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
         setCursor(Qt::SizeHorCursor);
     } else if (y < specH) {
         const int mx = static_cast<int>(ev->position().x());
-        const int stripX = width() - DBM_STRIP_W;
+        const QPoint pos(mx, y);
 
-        // Hovering over dBm scale strip
-        if (mx >= stripX) {
-            if (y < DBM_ARROW_H)
-                setCursor(Qt::PointingHandCursor);
-            else
-                setCursor(Qt::SizeVerCursor);
+        // Check off-screen VFO indicator hover
+        bool wasHovering = m_hoveringOffScreenVfo;
+        m_hoveringOffScreenVfo = !m_offScreenVfoRect.isNull() && m_offScreenVfoRect.contains(pos);
+        if (m_hoveringOffScreenVfo != wasHovering) update();
+
+        if (m_hoveringOffScreenVfo) {
+            setCursor(Qt::PointingHandCursor);
         } else {
-            // Check if hovering over a filter edge
-            const int loX = mhzToX(m_vfoFreqMhz + m_filterLowHz / 1.0e6);
-            const int hiX = mhzToX(m_vfoFreqMhz + m_filterHighHz / 1.0e6);
-            constexpr int GRAB = 5;
-            if (std::abs(mx - loX) <= GRAB || std::abs(mx - hiX) <= GRAB)
-                setCursor(Qt::SizeHorCursor);
-            else
-                setCursor(Qt::CrossCursor);
+            const int stripX = width() - DBM_STRIP_W;
+
+            // Hovering over dBm scale strip
+            if (mx >= stripX) {
+                if (y < DBM_ARROW_H)
+                    setCursor(Qt::PointingHandCursor);
+                else
+                    setCursor(Qt::SizeVerCursor);
+            } else {
+                // Check if hovering over a filter edge
+                const int loX = mhzToX(m_vfoFreqMhz + m_filterLowHz / 1.0e6);
+                const int hiX = mhzToX(m_vfoFreqMhz + m_filterHighHz / 1.0e6);
+                constexpr int GRAB = 5;
+                if (std::abs(mx - loX) <= GRAB || std::abs(mx - hiX) <= GRAB)
+                    setCursor(Qt::SizeHorCursor);
+                else
+                    setCursor(Qt::CrossCursor);
+            }
         }
     } else {
         setCursor(Qt::CrossCursor);
@@ -371,9 +391,19 @@ void SpectrumWidget::mouseDoubleClickEvent(QMouseEvent* ev)
     const int specH = static_cast<int>(contentH * m_spectrumFrac);
     const int wfY = specH + DIVIDER_H + FREQ_SCALE_H;
     const int y = static_cast<int>(ev->position().y());
+    const int mx = static_cast<int>(ev->position().x());
 
-    // Double-click in waterfall → tune to clicked frequency
-    if (y >= wfY) {
+    // Double-click on off-screen VFO indicator → recenter on VFO
+    if (!m_offScreenVfoRect.isNull() && m_offScreenVfoRect.contains(QPoint(mx, y))) {
+        m_centerMhz = m_vfoFreqMhz;
+        update();
+        emit centerChangeRequested(m_vfoFreqMhz);
+        ev->accept();
+        return;
+    }
+
+    // Double-click in FFT or waterfall → tune to clicked frequency
+    if (y < specH || y >= wfY) {
         const double startMhz = m_centerMhz - m_bandwidthMhz / 2.0;
         const double rawMhz = startMhz + (ev->position().x() / width()) * m_bandwidthMhz;
         emit frequencyClicked(snapToStep(rawMhz, m_stepHz));
@@ -513,6 +543,7 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
     drawFreqScale(p, scaleRect);
     drawWaterfall(p, wfRect);
     drawVfoMarker(p, specRect, wfRect);
+    drawOffScreenVfo(p, specRect);
 }
 
 // ─── Grid ─────────────────────────────────────────────────────────────────────
@@ -779,6 +810,107 @@ void SpectrumWidget::drawDbmScale(QPainter& p, const QRect& specRect)
         p.setPen(QColor(0x80, 0xa0, 0xb0));
         p.drawText(stripX + 6, y + fm.ascent() / 2, label);
     }
+}
+
+// ─── Off-screen VFO indicator ─────────────────────────────────────────────────
+
+void SpectrumWidget::drawOffScreenVfo(QPainter& p, const QRect& specRect)
+{
+    const double startMhz = m_centerMhz - m_bandwidthMhz / 2.0;
+    const double endMhz   = m_centerMhz + m_bandwidthMhz / 2.0;
+
+    // Only draw when VFO is off-screen
+    if (m_vfoFreqMhz >= startMhz && m_vfoFreqMhz <= endMhz) {
+        m_offScreenVfoRect = QRect();
+        return;
+    }
+
+    const bool vfoIsRight = (m_vfoFreqMhz > endMhz);
+
+    // Build label text: "TX A ▶ 14.100" or "◀ A 14.100"
+    const QChar letter = QChar('A' + m_sliceId);
+    // Format freq as MM.KKK
+    long long hz = static_cast<long long>(std::round(m_vfoFreqMhz * 1e6));
+    int mhzPart = static_cast<int>(hz / 1000000);
+    int khzPart = static_cast<int>((hz / 1000) % 1000);
+    const QString freqStr = QString("%1.%2")
+        .arg(mhzPart).arg(khzPart, 3, 10, QChar('0'));
+
+    const int alpha = m_hoveringOffScreenVfo ? 230 : 128;
+    const int padH = 4;
+    const int boxY = specRect.top() + 20;
+
+    // ── Top line: TX (small) + slice letter + chevron (large) ────────────
+    QFont bigFont = p.font();
+    bigFont.setPointSize(16);
+    bigFont.setBold(true);
+
+    QFont smallFont = p.font();
+    smallFont.setPointSize(10);
+    smallFont.setBold(true);
+
+    const QFontMetrics bigFm(bigFont);
+    const QFontMetrics smallFm(smallFont);
+
+    const QString chevron = vfoIsRight ? " >" : "< ";
+    const QString sliceAndChevron = vfoIsRight
+        ? QString(letter) + chevron : chevron + letter;
+
+    // Measure top line width
+    int topLineW = bigFm.horizontalAdvance(sliceAndChevron);
+    int txW = 0;
+    if (m_isTxSlice) {
+        txW = smallFm.horizontalAdvance("TX ");
+        topLineW += txW;
+    }
+
+    // ── Bottom line: frequency (small) ───────────────────────────────────
+    const int freqW = smallFm.horizontalAdvance(freqStr);
+
+    const int boxW = std::max(topLineW, freqW) + 2 * padH;
+    const int boxH = bigFm.height() + smallFm.height() + 4;
+
+    int boxX;
+    if (vfoIsRight)
+        boxX = specRect.right() - DBM_STRIP_W - boxW - 4;
+    else
+        boxX = specRect.left() + 4;
+
+    m_offScreenVfoRect = QRect(boxX, boxY, boxW, boxH);
+
+    // Draw top line
+    p.setPen(QColor(0xff, 0xff, 0xff, alpha));
+    int tx = boxX + padH;
+    const int topBaseline = boxY + bigFm.ascent();
+
+    if (vfoIsRight) {
+        // TX (small, top-aligned) then A > (large)
+        if (m_isTxSlice) {
+            p.setFont(smallFont);
+            p.drawText(tx, boxY + smallFm.ascent(), "TX ");
+            tx += txW;
+        }
+        p.setFont(bigFont);
+        p.drawText(tx, topBaseline, sliceAndChevron);
+    } else {
+        // < A (large) then TX (small, top-aligned)
+        p.setFont(bigFont);
+        p.drawText(tx, topBaseline, sliceAndChevron);
+        tx += bigFm.horizontalAdvance(sliceAndChevron);
+        if (m_isTxSlice) {
+            p.setFont(smallFont);
+            p.drawText(tx, boxY + smallFm.ascent(), " TX");
+        }
+    }
+
+    // Draw bottom line (frequency, small, right-aligned to match top)
+    p.setFont(smallFont);
+    p.setPen(QColor(0xff, 0xff, 0xff, alpha));
+    const int freqY = topBaseline + smallFm.height() + 2;
+    if (vfoIsRight)
+        p.drawText(boxX + boxW - padH - freqW, freqY, freqStr);
+    else
+        p.drawText(boxX + padH, freqY, freqStr);
 }
 
 } // namespace AetherSDR

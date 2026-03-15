@@ -57,6 +57,11 @@ public:
     // Set the current demod mode (for zoom centering behavior).
     void setMode(const QString& mode) { m_mode = mode; }
 
+    // Set slice info for the off-screen VFO indicator.
+    void setSliceInfo(int sliceId, bool isTxSlice) {
+        m_sliceId = sliceId; m_isTxSlice = isTxSlice;
+    }
+
 signals:
     // Emitted when the user clicks or scrolls in the panadapter area.
     void frequencyClicked(double mhz);
@@ -85,6 +90,7 @@ private:
     void drawWaterfall(QPainter& p, const QRect& r);
     void drawFreqScale(QPainter& p, const QRect& r);
     void drawDbmScale(QPainter& p, const QRect& specRect);
+    void drawOffScreenVfo(QPainter& p, const QRect& specRect);
 
     void pushWaterfallRow(const QVector<float>& bins, int destWidth,
                           double tileLowMhz = -1, double tileHighMhz = -1);
@@ -106,6 +112,8 @@ private:
     int    m_filterMinHz{-12000};  // per-mode lower bound
     int    m_filterMaxHz{12000};   // per-mode upper bound
     QString m_mode{"USB"};         // current demod mode
+    int     m_sliceId{0};          // slice index (0=A, 1=B, etc.)
+    bool    m_isTxSlice{false};    // whether this is the TX slice
 
     float m_refLevel{-50.0f};       // top of display (dBm)
     float m_dynamicRange{100.0f};   // dB range shown in spectrum (-50 to -150)
@@ -152,6 +160,9 @@ private:
     bool  m_draggingDbm{false};
     int   m_dbmDragStartY{0};
     float m_dbmDragStartRef{0.0f};
+    // Off-screen VFO indicator hit rect (for hover/double-click)
+    QRect m_offScreenVfoRect;
+    bool  m_hoveringOffScreenVfo{false};
 };
 
 } // namespace AetherSDR
