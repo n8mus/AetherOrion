@@ -13,8 +13,61 @@
 #include <QGridLayout>
 #include <QMenu>
 #include <QSignalBlocker>
+#include <QDir>
+#include <QFile>
+#include <QPixmap>
 #include <QEvent>
+#include <QMouseEvent>
 #include <cmath>
+
+// Slider that resets to a default value on double-click.
+class ResetSlider : public QSlider {
+public:
+    explicit ResetSlider(int resetVal, Qt::Orientation o, QWidget* parent = nullptr)
+        : QSlider(o, parent), m_resetVal(resetVal) {}
+protected:
+    void mouseDoubleClickEvent(QMouseEvent*) override { setValue(m_resetVal); }
+private:
+    int m_resetVal;
+};
+
+// ResetSlider with a small center-mark dot painted on the groove.
+class CenterMarkSlider : public ResetSlider {
+public:
+    explicit CenterMarkSlider(int resetVal, Qt::Orientation o, QWidget* parent = nullptr)
+        : ResetSlider(resetVal, o, parent) {}
+protected:
+    void paintEvent(QPaintEvent* ev) override {
+        ResetSlider::paintEvent(ev);
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        int cx = width() / 2;
+        int cy = height() / 2;
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor("#608090"));
+        p.drawEllipse(QPointF(cx, cy), 2.5, 2.5);
+    }
+};
+
+// Generate a small down-arrow PNG for combo boxes (shared temp file).
+static QString comboArrowPath()
+{
+    static QString path;
+    if (!path.isEmpty()) return path;
+    path = QDir::temp().filePath("aethersdr_combo_arrow.png");
+    if (QFile::exists(path)) return path;
+    QPixmap pm(8, 6);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0x8a, 0xa8, 0xc0));
+    const QPointF tri[] = {{0, 0}, {8, 0}, {4, 6}};
+    p.drawPolygon(tri, 3);
+    p.end();
+    pm.save(path, "PNG");
+    return path;
+}
 
 namespace AetherSDR {
 
@@ -223,44 +276,117 @@ void VfoWidget::buildTabContent()
         vb->setContentsMargins(2, 2, 2, 2);
         vb->setSpacing(2);
 
+        // AF row: mute toggle (speaker emoji) + gain slider
         auto* gainRow = new QHBoxLayout;
         gainRow->setSpacing(3);
-        auto* gainLbl = new QLabel("AF");
-        gainLbl->setStyleSheet(kLabelStyle);
-        gainLbl->setFixedWidth(26);
-        gainRow->addWidget(gainLbl);
+        m_muteBtn = new QPushButton(QString::fromUtf8("\xF0\x9F\x94\x8A")); // 🔊
+        m_muteBtn->setCheckable(true);
+        m_muteBtn->setFlat(true);
+        m_muteBtn->setFixedSize(26, 20);
+        m_muteBtn->setStyleSheet(kFlatBtn + "QPushButton { font-size: 14px; padding: 0; }");
+        gainRow->addWidget(m_muteBtn);
         m_afGainSlider = new QSlider(Qt::Horizontal);
         m_afGainSlider->setRange(0, 100);
         m_afGainSlider->setStyleSheet(kSliderStyle);
         gainRow->addWidget(m_afGainSlider, 1);
         vb->addLayout(gainRow);
 
+        // Pan row: L + slider (with center marker) + R
         auto* panRow = new QHBoxLayout;
         panRow->setSpacing(3);
-        auto* panLbl = new QLabel("Pan");
-        panLbl->setStyleSheet(kLabelStyle);
-        panLbl->setFixedWidth(26);
-        panRow->addWidget(panLbl);
-        m_panSlider = new QSlider(Qt::Horizontal);
+        auto* panL = new QLabel("L");
+        panL->setStyleSheet(kLabelStyle);
+        panL->setFixedWidth(10);
+        panL->setAlignment(Qt::AlignCenter);
+        panRow->addWidget(panL);
+        m_panSlider = new CenterMarkSlider(50, Qt::Horizontal);
         m_panSlider->setRange(0, 100);
         m_panSlider->setValue(50);
         m_panSlider->setStyleSheet(kSliderStyle);
         panRow->addWidget(m_panSlider, 1);
-        m_muteBtn = new QPushButton("\xF0\x9F\x94\x87");
-        m_muteBtn->setCheckable(true);
-        m_muteBtn->setFixedSize(30, 24);
-        m_muteBtn->setStyleSheet(kDspToggle);
-        panRow->addWidget(m_muteBtn);
+        auto* panR = new QLabel("R");
+        panR->setStyleSheet(kLabelStyle);
+        panR->setFixedWidth(10);
+        panR->setAlignment(Qt::AlignCenter);
+        panRow->addWidget(panR);
         vb->addLayout(panRow);
 
         connect(m_afGainSlider, &QSlider::valueChanged, this, [this](int v) {
-            if (!m_updatingFromModel && m_slice) m_slice->setAudioGain(v);
+            if (!m_updatingFromModel) {
+                if (m_slice) m_slice->setAudioGain(v);
+                emit afGainChanged(v);
+            }
         });
         connect(m_panSlider, &QSlider::valueChanged, this, [this](int v) {
             if (!m_updatingFromModel && m_slice) m_slice->setAudioPan(v);
         });
         connect(m_muteBtn, &QPushButton::toggled, this, [this](bool on) {
             if (!m_updatingFromModel && m_slice) m_slice->setAudioMute(on);
+            m_muteBtn->setText(on ? QString::fromUtf8("\xF0\x9F\x94\x87")    // 🔇
+                                  : QString::fromUtf8("\xF0\x9F\x94\x8A"));  // 🔊
+        });
+
+        // SQL row: toggle + slider
+        auto* sqlRow = new QHBoxLayout;
+        sqlRow->setSpacing(3);
+        m_sqlBtn = new QPushButton("SQL");
+        m_sqlBtn->setCheckable(true);
+        m_sqlBtn->setFixedHeight(20);
+        m_sqlBtn->setStyleSheet(kDspToggle);
+        sqlRow->addWidget(m_sqlBtn);
+        m_sqlSlider = new QSlider(Qt::Horizontal);
+        m_sqlSlider->setRange(0, 100);
+        m_sqlSlider->setValue(20);
+        m_sqlSlider->setStyleSheet(kSliderStyle);
+        sqlRow->addWidget(m_sqlSlider, 1);
+        vb->addLayout(sqlRow);
+
+        connect(m_sqlBtn, &QPushButton::toggled, this, [this](bool on) {
+            if (!m_updatingFromModel && m_slice)
+                m_slice->setSquelch(on, m_sqlSlider->value());
+        });
+        connect(m_sqlSlider, &QSlider::valueChanged, this, [this](int v) {
+            if (!m_updatingFromModel && m_slice)
+                m_slice->setSquelch(m_sqlBtn->isChecked(), v);
+        });
+
+        // AGC-T row: mode combo + threshold slider
+        auto* agcRow = new QHBoxLayout;
+        agcRow->setSpacing(3);
+        m_agcCmb = new QComboBox;
+        m_agcCmb->addItems({"Off", "Slow", "Med", "Fast"});
+        m_agcCmb->setFixedHeight(20);
+        m_agcCmb->setFixedWidth(60);
+        m_sqlBtn->setFixedWidth(60);  // match AGC combo width
+        m_agcCmb->setStyleSheet(QString(
+            "QComboBox { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
+            " color: #c8d8e8; font-size: 10px; font-weight: bold; padding: 1px 4px; }"
+            "QComboBox::drop-down { border-left: 1px solid #205070; width: 16px;"
+            " subcontrol-origin: padding; subcontrol-position: center right; }"
+            "QComboBox::down-arrow { image: url(%1); width: 8px; height: 6px; }"
+            "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8;"
+            " selection-background-color: #00b4d8; }").arg(comboArrowPath()));
+        agcRow->addWidget(m_agcCmb);
+        m_agcTSlider = new QSlider(Qt::Horizontal);
+        m_agcTSlider->setRange(0, 100);
+        m_agcTSlider->setValue(65);
+        m_agcTSlider->setStyleSheet(kSliderStyle);
+        agcRow->addWidget(m_agcTSlider, 1);
+        vb->addLayout(agcRow);
+
+        connect(m_agcCmb, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+            if (!m_updatingFromModel && m_slice) {
+                // Map display text to protocol value
+                QString mode = text.toLower();
+                if (mode == "off") mode = "off";
+                else if (mode == "slow") mode = "slow";
+                else if (mode == "med") mode = "med";
+                else if (mode == "fast") mode = "fast";
+                m_slice->setAgcMode(mode);
+            }
+        });
+        connect(m_agcTSlider, &QSlider::valueChanged, this, [this](int v) {
+            if (!m_updatingFromModel && m_slice) m_slice->setAgcThreshold(v);
         });
 
         m_tabStack->addWidget(m_audioTab);
@@ -549,6 +675,7 @@ void VfoWidget::paintEvent(QPaintEvent* event)
         int tx = barX + static_cast<int>(sf * barW);
         p.drawText(tx - 6, lblY, "+40");
     }
+
 }
 
 // ── Signal level ──────────────────────────────────────────────────────────────
@@ -590,10 +717,18 @@ void VfoWidget::setSlice(SliceModel* slice)
         m_txBadge->setVisible(tx);
     });
     // Audio
+    connect(m_slice, &SliceModel::audioGainChanged, this, [this](float g) {
+        m_updatingFromModel = true;
+        QSignalBlocker sb(m_afGainSlider);
+        m_afGainSlider->setValue(static_cast<int>(g));
+        m_updatingFromModel = false;
+    });
     connect(m_slice, &SliceModel::audioMuteChanged, this, [this](bool mute) {
         m_updatingFromModel = true;
         QSignalBlocker sb(m_muteBtn);
         m_muteBtn->setChecked(mute);
+        m_muteBtn->setText(mute ? QString::fromUtf8("\xF0\x9F\x94\x87")
+                                : QString::fromUtf8("\xF0\x9F\x94\x8A"));
         m_updatingFromModel = false;
     });
     // DSP toggles
@@ -611,6 +746,31 @@ void VfoWidget::setSlice(SliceModel* slice)
     connectDsp(&SliceModel::nrlChanged, m_nrlBtn);
     connectDsp(&SliceModel::nrsChanged, m_nrsBtn);
     connectDsp(&SliceModel::rnnChanged, m_rnnBtn);
+    // Squelch
+    connect(m_slice, &SliceModel::squelchChanged, this, [this](bool on, int level) {
+        m_updatingFromModel = true;
+        QSignalBlocker b1(m_sqlBtn), b2(m_sqlSlider);
+        m_sqlBtn->setChecked(on);
+        m_sqlSlider->setValue(level);
+        m_updatingFromModel = false;
+    });
+    // AGC
+    connect(m_slice, &SliceModel::agcModeChanged, this, [this](const QString& mode) {
+        m_updatingFromModel = true;
+        QSignalBlocker sb(m_agcCmb);
+        // Map protocol value to display text
+        if (mode == "off") m_agcCmb->setCurrentText("Off");
+        else if (mode == "slow") m_agcCmb->setCurrentText("Slow");
+        else if (mode == "med") m_agcCmb->setCurrentText("Med");
+        else if (mode == "fast") m_agcCmb->setCurrentText("Fast");
+        m_updatingFromModel = false;
+    });
+    connect(m_slice, &SliceModel::agcThresholdChanged, this, [this](int v) {
+        m_updatingFromModel = true;
+        QSignalBlocker sb(m_agcTSlider);
+        m_agcTSlider->setValue(v);
+        m_updatingFromModel = false;
+    });
     // RIT/XIT
     connect(m_slice, &SliceModel::ritChanged, this, [this](bool on, int hz) {
         m_updatingFromModel = true;
@@ -653,7 +813,27 @@ void VfoWidget::syncFromSlice()
     m_panSlider->setValue(m_slice->audioPan());
     {
         QSignalBlocker sb(m_muteBtn);
-        m_muteBtn->setChecked(m_slice->audioMute());
+        bool muted = m_slice->audioMute();
+        m_muteBtn->setChecked(muted);
+        m_muteBtn->setText(muted ? QString::fromUtf8("\xF0\x9F\x94\x87")
+                                 : QString::fromUtf8("\xF0\x9F\x94\x8A"));
+    }
+    {
+        QSignalBlocker b1(m_sqlBtn), b2(m_sqlSlider);
+        m_sqlBtn->setChecked(m_slice->squelchOn());
+        m_sqlSlider->setValue(m_slice->squelchLevel());
+    }
+    {
+        QSignalBlocker sb(m_agcCmb);
+        const QString& mode = m_slice->agcMode();
+        if (mode == "off") m_agcCmb->setCurrentText("Off");
+        else if (mode == "slow") m_agcCmb->setCurrentText("Slow");
+        else if (mode == "med") m_agcCmb->setCurrentText("Med");
+        else if (mode == "fast") m_agcCmb->setCurrentText("Fast");
+    }
+    {
+        QSignalBlocker sb(m_agcTSlider);
+        m_agcTSlider->setValue(m_slice->agcThreshold());
     }
 
     // DSP

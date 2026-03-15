@@ -33,6 +33,9 @@ public:
     // Reposition relative to VFO marker x coordinate.
     void updatePosition(int vfoX, int specTop);
 
+Q_SIGNALS:
+    void afGainChanged(int value);
+
 protected:
     void paintEvent(QPaintEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
@@ -75,6 +78,10 @@ private:
     QSlider* m_afGainSlider{nullptr};
     QSlider* m_panSlider{nullptr};
     QPushButton* m_muteBtn{nullptr};
+    QPushButton* m_sqlBtn{nullptr};
+    QSlider* m_sqlSlider{nullptr};
+    QComboBox* m_agcCmb{nullptr};
+    QSlider* m_agcTSlider{nullptr};
     // DSP tab
     QPushButton* m_nbBtn{nullptr};
     QPushButton* m_nrBtn{nullptr};

@@ -306,11 +306,12 @@ void SliceModel::setFmDeviation(int hz)
 
 void SliceModel::setAudioGain(float gain)
 {
-    m_audioGain = qBound(0.0f, gain, 100.0f);
-    sendCommand(QString("audio gain 0x%1 slice %2 %3")
-                    .arg(0, 8, 16, QChar('0'))
-                    .arg(m_id)
-                    .arg(static_cast<int>(m_audioGain)));
+    gain = qBound(0.0f, gain, 100.0f);
+    if (m_audioGain == gain) return;
+    m_audioGain = gain;
+    // Note: "audio gain" command not supported on fw v1.4.0.0.
+    // Volume is controlled client-side via AudioEngine::setRxVolume().
+    emit audioGainChanged(m_audioGain);
 }
 
 void SliceModel::setRfGain(float gain)

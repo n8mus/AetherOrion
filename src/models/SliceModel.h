@@ -128,6 +128,7 @@ signals:
     void filterChanged(int low, int high);
     void activeChanged(bool active);
     void txSliceChanged(bool tx);
+    void audioGainChanged(float gain);
     void audioPanChanged(int pan);
     void rxAntennaChanged(const QString& ant);
     void txAntennaChanged(const QString& ant);

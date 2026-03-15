@@ -174,6 +174,9 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_appletPanel->rxApplet(), &RxApplet::afGainChanged, this, [this](int v) {
         m_audio.setRxVolume(v / 100.0f);
     });
+    connect(spectrum()->vfoWidget(), &VfoWidget::afGainChanged, this, [this](int v) {
+        m_audio.setRxVolume(v / 100.0f);
+    });
 
     // ── Tuning step size → spectrum widget ─────────────────────────────────
     connect(m_appletPanel->rxApplet(), &RxApplet::stepSizeChanged,

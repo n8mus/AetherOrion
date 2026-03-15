@@ -736,6 +736,7 @@ void RxApplet::buildUI()
 
         connect(m_afSlider, &QSlider::valueChanged, this, [this](int v) {
             m_afSlider->setToolTip(QString::number(v));
+            if (m_slice) m_slice->setAudioGain(v);
             emit afGainChanged(v);
         });
         rightCol->addLayout(row);
@@ -1132,6 +1133,13 @@ void RxApplet::connectSlice(SliceModel* s)
         m_sqlBtn->setChecked(s->squelchOn());
         m_sqlSlider->setValue(s->squelchLevel());
     }
+    // AF gain sync (volume is client-side, but model tracks the value)
+    m_afSlider->setValue(static_cast<int>(s->audioGain()));
+    connect(s, &SliceModel::audioGainChanged, this, [this](float g) {
+        QSignalBlocker sb(m_afSlider);
+        m_afSlider->setValue(static_cast<int>(g));
+    });
+
     connect(s, &SliceModel::squelchChanged, this, [this](bool on, int level) {
         QSignalBlocker b1(m_sqlBtn), b2(m_sqlSlider);
         m_sqlBtn->setChecked(on);
