@@ -113,6 +113,27 @@ void RadioModel::setPanDbmRange(float minDbm, float maxDbm)
             .arg(static_cast<double>(maxDbm), 0, 'f', 2));
 }
 
+void RadioModel::setPanWnb(bool on)
+{
+    if (m_panId.isEmpty()) return;
+    m_connection.sendCommand(
+        QString("display pan set %1 wnb=%2").arg(m_panId).arg(on ? 1 : 0));
+}
+
+void RadioModel::setPanWnbLevel(int level)
+{
+    if (m_panId.isEmpty()) return;
+    m_connection.sendCommand(
+        QString("display pan set %1 wnb_level=%2").arg(m_panId).arg(level));
+}
+
+void RadioModel::setPanRfGain(int gain)
+{
+    if (m_panId.isEmpty()) return;
+    m_connection.sendCommand(
+        QString("display pan set %1 rfgain=%2").arg(m_panId).arg(gain));
+}
+
 // ─── Connection slots ─────────────────────────────────────────────────────────
 
 void RadioModel::onConnected()

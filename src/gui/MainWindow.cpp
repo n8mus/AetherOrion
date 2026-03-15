@@ -136,6 +136,20 @@ MainWindow::MainWindow(QWidget* parent)
         onFrequencyChanged(freqMhz);
     });
 
+    // ── WNB toggle from overlay menu → panadapter + indicator ──────────────
+    connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::wnbToggled,
+            this, [this](bool on) {
+        m_radioModel.setPanWnb(on);
+        spectrum()->setWnbActive(on);
+    });
+    connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::wnbLevelChanged,
+            &m_radioModel, &RadioModel::setPanWnbLevel);
+    connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::rfGainChanged,
+            this, [this](int gain) {
+        m_radioModel.setPanRfGain(gain);
+        spectrum()->setRfGain(gain);
+    });
+
     // ── Panadapter stream → audio engine ──────────────────────────────────
     // All VITA-49 traffic arrives on the single client udpport socket owned
     // by PanadapterStream. It strips the header from IF-Data packets and emits
@@ -156,6 +170,8 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Antenna list from radio → applet panel ─────────────────────────────
     connect(&m_radioModel, &RadioModel::antListChanged,
             m_appletPanel, &AppletPanel::setAntennaList);
+    connect(&m_radioModel, &RadioModel::antListChanged,
+            spectrum()->overlayMenu(), &SpectrumOverlayMenu::setAntennaList);
 
     // ── S-Meter: MeterModel → SMeterWidget ────────────────────────────────
     connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
@@ -489,6 +505,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
         spectrum()->setSliceInfo(s->sliceId(), s->isTxSlice());
         m_panApplet->setSliceId(s->sliceId());
         m_appletPanel->setSlice(s);
+        spectrum()->overlayMenu()->setSlice(s);
     }
 
     // Forward slice frequency/mode changes → spectrum

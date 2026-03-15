@@ -61,6 +61,9 @@ public:
     void setPanBandwidth(double bandwidthMhz);
     void setPanCenter(double centerMhz);
     void setPanDbmRange(float minDbm, float maxDbm);
+    void setPanWnb(bool on);
+    void setPanWnbLevel(int level);
+    void setPanRfGain(int gain);
 
 signals:
     void infoChanged();

@@ -62,6 +62,10 @@ public:
     // Access the floating overlay menu (for wiring signals).
     SpectrumOverlayMenu* overlayMenu() const { return m_overlayMenu; }
 
+    // Set WNB and RF gain state for on-screen indicators.
+    void setWnbActive(bool on) { m_wnbActive = on; update(); }
+    void setRfGain(int gain) { m_rfGainValue = gain; update(); }
+
     // Set slice info for the off-screen VFO indicator.
     void setSliceInfo(int sliceId, bool isTxSlice) {
         m_sliceId = sliceId; m_isTxSlice = isTxSlice;
@@ -168,6 +172,10 @@ private:
     // Off-screen VFO indicator hit rect (for hover/double-click)
     QRect m_offScreenVfoRect;
     bool  m_hoveringOffScreenVfo{false};
+
+    // On-screen indicators (WNB, RF Gain)
+    bool m_wnbActive{false};
+    int  m_rfGainValue{0};
 
     // Floating overlay menu (child widget, anchored top-left)
     SpectrumOverlayMenu* m_overlayMenu{nullptr};

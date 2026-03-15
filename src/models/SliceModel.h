@@ -131,6 +131,7 @@ signals:
     void agcModeChanged(const QString& mode);
     void agcThresholdChanged(int value);
     void audioMuteChanged(bool mute);
+    void rfGainChanged(float gain);
     void squelchChanged(bool on, int level);
     void ritChanged(bool on, int hz);
     void xitChanged(bool on, int hz);

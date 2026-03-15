@@ -310,8 +310,10 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
             emit txSliceChanged(tx);
         }
     }
-    if (kvs.contains("rf_gain"))
-        m_rfGain = kvs["rf_gain"].toFloat();
+    if (kvs.contains("rf_gain")) {
+        float g = kvs["rf_gain"].toFloat();
+        if (m_rfGain != g) { m_rfGain = g; emit rfGainChanged(g); }
+    }
     if (kvs.contains("audio_gain"))
         m_audioGain = kvs["audio_gain"].toFloat();
     if (kvs.contains("audio_pan")) {

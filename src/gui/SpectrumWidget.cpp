@@ -549,6 +549,39 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
     drawWaterfall(p, wfRect);
     drawVfoMarker(p, specRect, wfRect);
     drawOffScreenVfo(p, specRect);
+
+    // ── WNB / RF Gain indicators (top-right of FFT area) ──────────────────
+    if (m_wnbActive || m_rfGainValue != 0) {
+        QFont indFont = p.font();
+        indFont.setPointSize(18);
+        indFont.setBold(true);
+        p.setFont(indFont);
+        p.setPen(QColor(255, 255, 255, 84));
+
+        const QFontMetrics fm(indFont);
+        const int rightEdge = specRect.right() - DBM_STRIP_W - 6;
+        const int topY = specRect.top() + fm.ascent() + 2;
+
+        int x = rightEdge;
+
+        // RF Gain (rightmost)
+        if (m_rfGainValue != 0) {
+            QString gainStr = (m_rfGainValue > 0)
+                ? QString("+%1dB").arg(m_rfGainValue)
+                : QString("%1dB").arg(m_rfGainValue);
+            int gw = fm.horizontalAdvance(gainStr);
+            x -= gw;
+            p.drawText(x, topY, gainStr);
+            x -= 10;  // gap between labels
+        }
+
+        // WNB (to the left of RF Gain)
+        if (m_wnbActive) {
+            int ww = fm.horizontalAdvance("WNB");
+            x -= ww;
+            p.drawText(x, topY, "WNB");
+        }
+    }
 }
 
 // ─── Grid ─────────────────────────────────────────────────────────────────────
