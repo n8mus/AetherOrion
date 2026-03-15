@@ -15,7 +15,7 @@ namespace AetherSDR {
 //
 // Overlays (drawn on top of spectrum + waterfall):
 //   - Filter passband: semi-transparent band from filterLow to filterHigh Hz
-//   - Slice marker: vertical orange line at slice center frequency
+//   - VFO marker: vertical orange line at the tuned VFO frequency
 //
 // Click anywhere in the spectrum/waterfall area to emit frequencyClicked().
 class SpectrumWidget : public QWidget {
@@ -42,11 +42,11 @@ public:
     // Update the dBm range used for the waterfall colour map and spectrum Y axis.
     void setDbmRange(float minDbm, float maxDbm);
 
-    // Set the active slice center frequency (draws the orange marker).
-    void setSliceFrequency(double freqMhz);
+    // Set the VFO frequency (draws the orange VFO marker).
+    void setVfoFrequency(double freqMhz);
 
-    // Set the active slice filter edges (Hz offsets from slice center).
-    void setSliceFilter(int lowHz, int highHz);
+    // Set the filter edges (Hz offsets from VFO frequency).
+    void setVfoFilter(int lowHz, int highHz);
 
     // Set the click/scroll tuning step size in Hz (default 100).
     void setStepSize(int hz) { m_stepHz = hz; }
@@ -71,7 +71,7 @@ protected:
 private:
     void drawGrid(QPainter& p, const QRect& r);
     void drawSpectrum(QPainter& p, const QRect& r);
-    void drawSliceOverlay(QPainter& p, const QRect& specRect, const QRect& wfRect);
+    void drawVfoMarker(QPainter& p, const QRect& specRect, const QRect& wfRect);
     void drawWaterfall(QPainter& p, const QRect& r);
     void drawFreqScale(QPainter& p, const QRect& r);
 
@@ -87,7 +87,7 @@ private:
 
     double m_centerMhz{14.225};
     double m_bandwidthMhz{0.200};
-    double m_sliceFreqMhz{14.225};
+    double m_vfoFreqMhz{14.225};
     int    m_filterLowHz{-1500};   // Hz below slice center
     int    m_filterHighHz{1500};   // Hz above slice center
 

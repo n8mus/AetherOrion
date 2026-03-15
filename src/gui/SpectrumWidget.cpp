@@ -41,13 +41,13 @@ void SpectrumWidget::setDbmRange(float minDbm, float maxDbm)
     update();
 }
 
-void SpectrumWidget::setSliceFrequency(double freqMhz)
+void SpectrumWidget::setVfoFrequency(double freqMhz)
 {
-    m_sliceFreqMhz = freqMhz;
+    m_vfoFreqMhz = freqMhz;
     update();
 }
 
-void SpectrumWidget::setSliceFilter(int lowHz, int highHz)
+void SpectrumWidget::setVfoFilter(int lowHz, int highHz)
 {
     m_filterLowHz  = lowHz;
     m_filterHighHz = highHz;
@@ -170,14 +170,15 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
 
     if (m_draggingBandwidth) {
         const int dx = static_cast<int>(ev->position().x()) - m_bwDragStartX;
-        // Drag right = zoom in (narrower BW), drag left = zoom out (wider BW)
         // 4x multiplier: dragging 1/4 of widget width doubles/halves bandwidth
         const double scale = std::pow(2.0, static_cast<double>(-dx) / (width() / 4.0));
         const double newBw = std::clamp(m_bwDragStartBw * scale, 0.004, 14.0);
-        // Update local display immediately for responsive feel
+        // Recenter on VFO frequency so the marker stays in place while zooming
         m_bandwidthMhz = newBw;
+        m_centerMhz = m_vfoFreqMhz;
         update();
         emit bandwidthChangeRequested(newBw);
+        emit centerChangeRequested(m_vfoFreqMhz);
         ev->accept();
         return;
     }
@@ -265,7 +266,7 @@ void SpectrumWidget::wheelEvent(QWheelEvent* ev)
     const int ticks = ev->angleDelta().y() / 120;   // +1 per notch up, -1 per notch down
     if (ticks == 0) { ev->ignore(); return; }
 
-    const double newMhz = snapToStep(m_sliceFreqMhz + ticks * m_stepHz / 1e6, m_stepHz);
+    const double newMhz = snapToStep(m_vfoFreqMhz + ticks * m_stepHz / 1e6, m_stepHz);
     emit frequencyClicked(newMhz);
     ev->accept();
 }
@@ -377,7 +378,7 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
 
     drawFreqScale(p, scaleRect);
     drawWaterfall(p, wfRect);
-    drawSliceOverlay(p, specRect, wfRect);
+    drawVfoMarker(p, specRect, wfRect);
 }
 
 // ─── Grid ─────────────────────────────────────────────────────────────────────
@@ -473,18 +474,18 @@ void SpectrumWidget::drawWaterfall(QPainter& p, const QRect& r)
     p.drawImage(r, m_waterfall);
 }
 
-// ─── Slice overlay (filter passband + center line) ────────────────────────────
+// ─── VFO marker (filter passband + tuned frequency line) ──────────────────────
 
-void SpectrumWidget::drawSliceOverlay(QPainter& p, const QRect& specRect, const QRect& wfRect)
+void SpectrumWidget::drawVfoMarker(QPainter& p, const QRect& specRect, const QRect& wfRect)
 {
     const double startMhz = m_centerMhz - m_bandwidthMhz / 2.0;
     const double endMhz   = m_centerMhz + m_bandwidthMhz / 2.0;
-    if (m_sliceFreqMhz < startMhz || m_sliceFreqMhz > endMhz) return;
+    if (m_vfoFreqMhz < startMhz || m_vfoFreqMhz > endMhz) return;
 
-    const double filterLowMhz  = m_sliceFreqMhz + m_filterLowHz  / 1.0e6;
-    const double filterHighMhz = m_sliceFreqMhz + m_filterHighHz / 1.0e6;
+    const double filterLowMhz  = m_vfoFreqMhz + m_filterLowHz  / 1.0e6;
+    const double filterHighMhz = m_vfoFreqMhz + m_filterHighHz / 1.0e6;
 
-    const int sliceX   = mhzToX(m_sliceFreqMhz);
+    const int vfoX   = mhzToX(m_vfoFreqMhz);
     const int filterX1 = mhzToX(filterLowMhz);
     const int filterX2 = mhzToX(filterHighMhz);
     const int filterW  = filterX2 - filterX1;
@@ -507,15 +508,15 @@ void SpectrumWidget::drawSliceOverlay(QPainter& p, const QRect& specRect, const 
     // ── Slice center line ────────────────────────────────────────────────────
 
     p.setPen(QPen(QColor(0xff, 0xa0, 0x00, 220), 1.5));
-    p.drawLine(sliceX, specRect.top(), sliceX, wfRect.bottom());
+    p.drawLine(vfoX, specRect.top(), vfoX, wfRect.bottom());
 
     // Triangle marker at top of spectrum
     p.setPen(Qt::NoPen);
     p.setBrush(QColor(0xff, 0xa0, 0x00));
     QPolygon tri;
-    tri << QPoint(sliceX - 6, specRect.top())
-        << QPoint(sliceX + 6, specRect.top())
-        << QPoint(sliceX, specRect.top() + 10);
+    tri << QPoint(vfoX - 6, specRect.top())
+        << QPoint(vfoX + 6, specRect.top())
+        << QPoint(vfoX, specRect.top() + 10);
     p.drawPolygon(tri);
 }
 

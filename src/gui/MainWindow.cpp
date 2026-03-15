@@ -468,8 +468,8 @@ void MainWindow::onSliceAdded(SliceModel* s)
     qDebug() << "MainWindow: slice added" << s->sliceId();
     // Update controls to reflect the first (active) slice
     if (m_radioModel.slices().size() == 1) {
-        spectrum()->setSliceFrequency(s->frequency());
-        spectrum()->setSliceFilter(s->filterLow(), s->filterHigh());
+        spectrum()->setVfoFrequency(s->frequency());
+        spectrum()->setVfoFilter(s->filterLow(), s->filterHigh());
         m_panApplet->setSliceId(s->sliceId());
         m_appletPanel->setSlice(s);
     }
@@ -477,10 +477,10 @@ void MainWindow::onSliceAdded(SliceModel* s)
     // Forward slice frequency/mode changes → spectrum
     connect(s, &SliceModel::frequencyChanged, this, [this](double mhz){
         m_updatingFromModel = true;
-        spectrum()->setSliceFrequency(mhz);
+        spectrum()->setVfoFrequency(mhz);
         m_updatingFromModel = false;
     });
-    connect(s, &SliceModel::filterChanged, spectrum(), &SpectrumWidget::setSliceFilter);
+    connect(s, &SliceModel::filterChanged, spectrum(), &SpectrumWidget::setVfoFilter);
 }
 
 void MainWindow::onSliceRemoved(int /*id*/) {}
@@ -503,12 +503,12 @@ void MainWindow::onFrequencyChanged(double mhz)
     // If the slice is locked, snap spectrum back to the current freq.
     if (auto* s = activeSlice(); s && s->isLocked()) {
         m_updatingFromModel = true;
-        spectrum()->setSliceFrequency(s->frequency());
+        spectrum()->setVfoFrequency(s->frequency());
         m_updatingFromModel = false;
         return;
     }
 
-    spectrum()->setSliceFrequency(mhz);
+    spectrum()->setVfoFrequency(mhz);
     if (!m_updatingFromModel) {
         if (auto* s = activeSlice())
             s->setFrequency(mhz);
