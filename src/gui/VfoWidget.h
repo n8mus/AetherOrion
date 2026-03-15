@@ -89,6 +89,9 @@ private:
     QPushButton* m_nrlBtn{nullptr};
     QPushButton* m_nrsBtn{nullptr};
     QPushButton* m_rnnBtn{nullptr};
+    QPushButton* m_nrfBtn{nullptr};
+    QPushButton* m_anflBtn{nullptr};
+    QPushButton* m_anftBtn{nullptr};
     // Mode tab
     QVector<QPushButton*> m_modeBtns;
     // RIT/XIT tab

@@ -392,42 +392,47 @@ void VfoWidget::buildTabContent()
         m_tabStack->addWidget(m_audioTab);
     }
 
-    // Tab 1: DSP
+    // Tab 1: DSP — 4-column grid matching SmartSDR layout
     {
-        auto* m_dspTab = new QWidget;
-        auto* vb = new QVBoxLayout(m_dspTab);
-        vb->setContentsMargins(2, 2, 2, 2);
-        vb->setSpacing(2);
+        auto* dspTab = new QWidget;
+        auto* grid = new QGridLayout(dspTab);
+        grid->setContentsMargins(2, 2, 2, 2);
+        grid->setSpacing(3);
 
-        auto* row1 = new QHBoxLayout;
-        row1->setSpacing(2);
         auto makeDsp = [&](const QString& text) {
             auto* b = new QPushButton(text);
             b->setCheckable(true);
-            b->setFixedHeight(24);
+            b->setFixedHeight(26);
             b->setStyleSheet(kDspToggle);
             return b;
         };
-        m_nbBtn  = makeDsp("NB");  row1->addWidget(m_nbBtn);
-        m_nrBtn  = makeDsp("NR");  row1->addWidget(m_nrBtn);
-        m_anfBtn = makeDsp("ANF"); row1->addWidget(m_anfBtn);
-        vb->addLayout(row1);
 
-        auto* row2 = new QHBoxLayout;
-        row2->setSpacing(2);
-        m_nrlBtn = makeDsp("NRL"); row2->addWidget(m_nrlBtn);
-        m_nrsBtn = makeDsp("NRS"); row2->addWidget(m_nrsBtn);
-        m_rnnBtn = makeDsp("RNN"); row2->addWidget(m_rnnBtn);
-        vb->addLayout(row2);
+        // Row 0: NR, NB, ANF, NRL
+        m_nrBtn  = makeDsp("NR");   grid->addWidget(m_nrBtn,  0, 0);
+        m_nbBtn  = makeDsp("NB");   grid->addWidget(m_nbBtn,  0, 1);
+        m_anfBtn = makeDsp("ANF");  grid->addWidget(m_anfBtn, 0, 2);
+        m_nrlBtn = makeDsp("NRL");  grid->addWidget(m_nrlBtn, 0, 3);
 
-        connect(m_nbBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNb(on); });
-        connect(m_nrBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNr(on); });
-        connect(m_anfBtn, &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setAnf(on); });
-        connect(m_nrlBtn, &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNrl(on); });
-        connect(m_nrsBtn, &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNrs(on); });
-        connect(m_rnnBtn, &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setRnn(on); });
+        // Row 1: NRS, RNN, NRF, ANFL
+        m_nrsBtn  = makeDsp("NRS");  grid->addWidget(m_nrsBtn,  1, 0);
+        m_rnnBtn  = makeDsp("RNN");  grid->addWidget(m_rnnBtn,  1, 1);
+        m_nrfBtn  = makeDsp("NRF");  grid->addWidget(m_nrfBtn,  1, 2);
+        m_anflBtn = makeDsp("ANFL"); grid->addWidget(m_anflBtn, 1, 3);
 
-        m_tabStack->addWidget(m_dspTab);
+        // Row 2: ANFT (alone)
+        m_anftBtn = makeDsp("ANFT"); grid->addWidget(m_anftBtn, 2, 0);
+
+        connect(m_nrBtn,   &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNr(on); });
+        connect(m_nbBtn,   &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNb(on); });
+        connect(m_anfBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setAnf(on); });
+        connect(m_nrlBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNrl(on); });
+        connect(m_nrsBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNrs(on); });
+        connect(m_rnnBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setRnn(on); });
+        connect(m_nrfBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNrf(on); });
+        connect(m_anflBtn, &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setAnfl(on); });
+        connect(m_anftBtn, &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setAnft(on); });
+
+        m_tabStack->addWidget(dspTab);
     }
 
     // Tab 2: Mode
@@ -746,6 +751,9 @@ void VfoWidget::setSlice(SliceModel* slice)
     connectDsp(&SliceModel::nrlChanged, m_nrlBtn);
     connectDsp(&SliceModel::nrsChanged, m_nrsBtn);
     connectDsp(&SliceModel::rnnChanged, m_rnnBtn);
+    connectDsp(&SliceModel::nrfChanged, m_nrfBtn);
+    connectDsp(&SliceModel::anflChanged, m_anflBtn);
+    connectDsp(&SliceModel::anftChanged, m_anftBtn);
     // Squelch
     connect(m_slice, &SliceModel::squelchChanged, this, [this](bool on, int level) {
         m_updatingFromModel = true;
@@ -846,6 +854,9 @@ void VfoWidget::syncFromSlice()
     syncDsp(m_nrlBtn, m_slice->nrlOn());
     syncDsp(m_nrsBtn, m_slice->nrsOn());
     syncDsp(m_rnnBtn, m_slice->rnnOn());
+    syncDsp(m_nrfBtn, m_slice->nrfOn());
+    syncDsp(m_anflBtn, m_slice->anflOn());
+    syncDsp(m_anftBtn, m_slice->anftOn());
 
     // RIT/XIT
     {
