@@ -404,6 +404,10 @@ void TransmitModel::setCwPitch(int hz)
 
 void TransmitModel::setCwBreakIn(bool on)
 {
+    if (m_cwBreakIn != on) {
+        m_cwBreakIn = on;
+        emit phoneStateChanged();
+    }
     emit commandReady(QString("cw break_in %1").arg(on ? 1 : 0));
 }
 

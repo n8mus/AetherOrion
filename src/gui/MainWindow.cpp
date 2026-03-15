@@ -165,6 +165,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_radioModel.meterModel(), &MeterModel::txMetersChanged,
             m_appletPanel->txApplet(), &TxApplet::updateMeters);
     m_appletPanel->txApplet()->setTransmitModel(m_radioModel.transmitModel());
+    m_appletPanel->rxApplet()->setTransmitModel(m_radioModel.transmitModel());
 
     // ── P/CW applet: mic meters + ALC meter + model ────────────────────────
     connect(m_radioModel.meterModel(), &MeterModel::micMetersChanged,

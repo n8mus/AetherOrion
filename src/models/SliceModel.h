@@ -58,6 +58,14 @@ public:
     bool    xitOn()       const { return m_xitOn; }
     int     xitFreq()     const { return m_xitFreq; }
 
+    // Getters — FM duplex/repeater
+    QString fmToneMode()          const { return m_fmToneMode; }
+    QString fmToneValue()         const { return m_fmToneValue; }
+    QString repeaterOffsetDir()   const { return m_repeaterOffsetDir; }
+    double  fmRepeaterOffsetFreq()const { return m_fmRepeaterOffsetFreq; }
+    double  txOffsetFreq()        const { return m_txOffsetFreq; }
+    int     fmDeviation()         const { return m_fmDeviation; }
+
     // Setters (emit signals AND send radio commands)
     void setFrequency(double mhz);
     void setMode(const QString& mode);
@@ -85,6 +93,14 @@ public:
     void setRit(bool on, int hz);
     void setXit(bool on, int hz);
     void setTxSlice(bool on);
+
+    // Setters — FM duplex/repeater
+    void setFmToneMode(const QString& mode);
+    void setFmToneValue(const QString& value);
+    void setRepeaterOffsetDir(const QString& dir);
+    void setFmRepeaterOffsetFreq(double mhz);
+    void setTxOffsetFreq(double mhz);
+    void setFmDeviation(int hz);
 
     // Apply a batch of KV pairs from a status message.
     void applyStatus(const QMap<QString, QString>& kvs);
@@ -118,6 +134,15 @@ signals:
     void squelchChanged(bool on, int level);
     void ritChanged(bool on, int hz);
     void xitChanged(bool on, int hz);
+
+    // FM duplex/repeater signals
+    void fmToneModeChanged(const QString& mode);
+    void fmToneValueChanged(const QString& value);
+    void repeaterOffsetDirChanged(const QString& dir);
+    void fmRepeaterOffsetFreqChanged(double mhz);
+    void txOffsetFreqChanged(double mhz);
+    void fmDeviationChanged(int hz);
+
     void commandReady(const QString& cmd);  // ready to send to radio
 
 private:
@@ -155,6 +180,14 @@ private:
     int     m_ritFreq{0};
     bool    m_xitOn{false};
     int     m_xitFreq{0};
+
+    // FM duplex/repeater state
+    QString m_fmToneMode{"off"};
+    QString m_fmToneValue{"100.0"};
+    QString m_repeaterOffsetDir{"simplex"};
+    double  m_fmRepeaterOffsetFreq{0.0};
+    double  m_txOffsetFreq{0.0};
+    int     m_fmDeviation{5000};
 
     void sendCommand(const QString& cmd);
 

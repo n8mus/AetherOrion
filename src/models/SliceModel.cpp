@@ -69,8 +69,10 @@ void SliceModel::setLocked(bool locked)
 
 void SliceModel::setQsk(bool on)
 {
+    // QSK is read-only on the slice — controlled via CW applet break_in.
+    // This setter exists for model consistency but sends no command.
+    if (m_qsk == on) return;
     m_qsk = on;
-    sendCommand(QString("transmit set qsk_enabled=%1").arg(on ? 1 : 0));
     emit qskChanged(on);
 }
 
@@ -185,6 +187,58 @@ void SliceModel::setXit(bool on, int hz)
 void SliceModel::setTxSlice(bool on)
 {
     sendCommand(QString("slice set %1 tx=%2").arg(m_id).arg(on ? 1 : 0));
+}
+
+// ─── FM duplex/repeater setters ──────────────────────────────────────────────
+
+void SliceModel::setFmToneMode(const QString& mode)
+{
+    if (m_fmToneMode == mode) return;
+    m_fmToneMode = mode;
+    sendCommand(QString("slice set %1 fm_tone_mode=%2").arg(m_id).arg(mode));
+    emit fmToneModeChanged(mode);
+}
+
+void SliceModel::setFmToneValue(const QString& value)
+{
+    if (m_fmToneValue == value) return;
+    m_fmToneValue = value;
+    sendCommand(QString("slice set %1 fm_tone_value=%2").arg(m_id).arg(value));
+    emit fmToneValueChanged(value);
+}
+
+void SliceModel::setRepeaterOffsetDir(const QString& dir)
+{
+    if (m_repeaterOffsetDir == dir) return;
+    m_repeaterOffsetDir = dir;
+    sendCommand(QString("slice set %1 repeater_offset_dir=%2").arg(m_id).arg(dir));
+    emit repeaterOffsetDirChanged(dir);
+}
+
+void SliceModel::setFmRepeaterOffsetFreq(double mhz)
+{
+    if (qFuzzyCompare(m_fmRepeaterOffsetFreq, mhz)) return;
+    m_fmRepeaterOffsetFreq = mhz;
+    sendCommand(QString("slice set %1 fm_repeater_offset_freq=%2")
+                    .arg(m_id).arg(mhz, 0, 'f', 6));
+    emit fmRepeaterOffsetFreqChanged(mhz);
+}
+
+void SliceModel::setTxOffsetFreq(double mhz)
+{
+    if (qFuzzyCompare(m_txOffsetFreq, mhz)) return;
+    m_txOffsetFreq = mhz;
+    sendCommand(QString("slice set %1 tx_offset_freq=%2")
+                    .arg(m_id).arg(mhz, 0, 'f', 6));
+    emit txOffsetFreqChanged(mhz);
+}
+
+void SliceModel::setFmDeviation(int hz)
+{
+    if (m_fmDeviation == hz) return;
+    m_fmDeviation = hz;
+    sendCommand(QString("slice set %1 fm_deviation=%2").arg(m_id).arg(hz));
+    emit fmDeviationChanged(hz);
 }
 
 void SliceModel::setAudioGain(float gain)
@@ -348,6 +402,32 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
         if (kvs.contains("xit_on"))   m_xitOn   = kvs["xit_on"] == "1";
         if (kvs.contains("xit_freq")) m_xitFreq = kvs["xit_freq"].toInt();
         emit xitChanged(m_xitOn, m_xitFreq);
+    }
+
+    // FM duplex/repeater status
+    if (kvs.contains("fm_tone_mode")) {
+        m_fmToneMode = kvs["fm_tone_mode"];
+        emit fmToneModeChanged(m_fmToneMode);
+    }
+    if (kvs.contains("fm_tone_value")) {
+        m_fmToneValue = kvs["fm_tone_value"];
+        emit fmToneValueChanged(m_fmToneValue);
+    }
+    if (kvs.contains("repeater_offset_dir")) {
+        m_repeaterOffsetDir = kvs["repeater_offset_dir"];
+        emit repeaterOffsetDirChanged(m_repeaterOffsetDir);
+    }
+    if (kvs.contains("fm_repeater_offset_freq")) {
+        m_fmRepeaterOffsetFreq = kvs["fm_repeater_offset_freq"].toDouble();
+        emit fmRepeaterOffsetFreqChanged(m_fmRepeaterOffsetFreq);
+    }
+    if (kvs.contains("tx_offset_freq")) {
+        m_txOffsetFreq = kvs["tx_offset_freq"].toDouble();
+        emit txOffsetFreqChanged(m_txOffsetFreq);
+    }
+    if (kvs.contains("fm_deviation")) {
+        m_fmDeviation = kvs["fm_deviation"].toInt();
+        emit fmDeviationChanged(m_fmDeviation);
     }
 
     if (freqChanged)    emit frequencyChanged(m_frequency);

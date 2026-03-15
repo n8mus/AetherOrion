@@ -86,6 +86,7 @@ private:
     ConnectionState m_state{ConnectionState::Disconnected};
     quint32 m_handle{0};
     std::atomic<quint32> m_seqCounter{1};
+    quint32 m_lastPingSeq{0};
 
     QMap<quint32, ResponseCallback> m_pendingCallbacks;
 };

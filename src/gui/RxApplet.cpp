@@ -1,5 +1,6 @@
 #include "RxApplet.h"
 #include "models/SliceModel.h"
+#include "models/TransmitModel.h"
 
 #include <QPushButton>
 #include <QSlider>
@@ -12,6 +13,7 @@
 #include <QAction>
 #include <QPainter>
 #include <QWheelEvent>
+#include <QDoubleSpinBox>
 #include <QDir>
 #include <cmath>
 
@@ -158,6 +160,78 @@ static QString comboArrowPath()
     return path;
 }
 
+// ── Per-mode filter widths and step sizes (from SmartSDR) ─────────────────────
+
+struct ModeSettings {
+    QVector<int> filterWidths;   // Hz — empty means no filter presets (FM modes)
+    QVector<int> stepSizes;      // Hz
+};
+
+static const ModeSettings& modeSettingsFor(const QString& mode)
+{
+    // USB / LSB (default)
+    static const ModeSettings ssbSettings{
+        {1800, 2100, 2400, 2700, 3300, 6000},
+        {1, 10, 50, 100, 500, 1000, 2000, 3000}
+    };
+    // AM / SAM — double-sideband: width split ±half around carrier
+    static const ModeSettings amSettings{
+        {5600, 6000, 8000, 10000, 14000, 20000},
+        {250, 500, 2500, 3000, 5000, 9000, 10000}
+    };
+    // CW
+    static const ModeSettings cwSettings{
+        {50, 100, 250, 400, 800, 3000},
+        {1, 5, 10, 50, 100, 200, 400}
+    };
+    // DIGL / DIGU
+    static const ModeSettings digSettings{
+        {100, 300, 600, 1000, 3000, 6000},
+        {1, 5, 10, 20, 100, 250, 500, 1000}
+    };
+    // RTTY
+    static const ModeSettings rttySettings{
+        {250, 300, 350, 400, 1000, 3000},
+        {1, 5, 10, 20, 100, 250, 500, 1000}
+    };
+    // FM / NFM / DFM — no filter presets
+    static const ModeSettings fmSettings{
+        {},
+        {50, 250, 500, 2500, 3000, 5000, 10000, 12500}
+    };
+
+    if (mode == "USB" || mode == "LSB")  return ssbSettings;
+    if (mode == "AM"  || mode == "SAM")  return amSettings;
+    if (mode == "CW")                    return cwSettings;
+    if (mode == "DIGU" || mode == "DIGL") return digSettings;
+    if (mode == "RTTY")                  return rttySettings;
+    if (mode == "FM" || mode == "NFM" || mode == "DFM") return fmSettings;
+    return ssbSettings;  // fallback
+}
+
+// ── Standard CTCSS tone table (EIA/TIA-603) ──────────────────────────────────
+
+struct CTCSSTone {
+    int code;
+    const char* designation;
+    double frequency;
+};
+
+static constexpr CTCSSTone CTCSS_TONES[] = {
+    { 1, "XZ", 67.0},  { 2, "XA", 71.9},  { 3, "WA", 74.4},  { 4, "XB", 77.0},
+    { 5, "WB", 79.7},  { 6, "YZ", 82.5},  { 7, "YA", 85.4},  { 8, "YB", 88.5},
+    { 9, "ZZ", 91.5},  {10, "ZA", 94.8},  {11, "ZB", 97.4},  {12, "1Z",100.0},
+    {13, "1A",103.5},  {14, "1B",107.2},  {15, "2Z",110.9},  {16, "2A",114.8},
+    {17, "2B",118.8},  {18, "3Z",123.0},  {19, "3A",127.3},  {20, "3B",131.8},
+    {21, "4Z",136.5},  {22, "4A",141.3},  {23, "4B",146.2},  {24, "5Z",151.4},
+    {25, "5A",156.7},  {26, "5B",162.2},  {27, "6Z",167.9},  {28, "6A",173.8},
+    {29, "6B",179.9},  {30, "7Z",186.2},  {31, "7A",192.8},  {32, "M1",203.5},
+    {33, "8Z",206.5},  {34, "M2",210.7},  {35, "M3",218.1},  {36, "M4",225.7},
+    {37, "9Z",229.1},  {38, "M5",233.6},  {39, "M6",241.8},  {40, "M7",250.3},
+    {41, "0Z",254.1},
+};
+static constexpr int CTCSS_COUNT = sizeof(CTCSS_TONES) / sizeof(CTCSS_TONES[0]);
+
 // Small checkable button used throughout the applet.
 static QPushButton* mkToggle(const QString& text, QWidget* parent = nullptr)
 {
@@ -277,17 +351,15 @@ void RxApplet::buildUI()
 
         row->addStretch(1);
 
-        // QSK toggle (flat text, amber when active)
+        // QSK indicator (read-only — controlled via CW applet Breakin button)
         m_qskBtn = new QPushButton("QSK");
         m_qskBtn->setCheckable(true);
         m_qskBtn->setFlat(true);
+        m_qskBtn->setEnabled(false);
         m_qskBtn->setStyleSheet(
             "QPushButton { color: #8090a0; background: transparent; border: none; "
             "font-size: 10px; font-weight: bold; padding: 0 2px; }"
             "QPushButton:checked { color: #ffb800; }");
-        connect(m_qskBtn, &QPushButton::toggled, this, [this](bool on) {
-            if (m_slice) m_slice->setQsk(on);
-        });
         row->addWidget(m_qskBtn);
 
         root->addLayout(row);
@@ -367,30 +439,25 @@ void RxApplet::buildUI()
         row->addWidget(lbl);
 
         m_stepDown  = mkLeft();
-        m_stepLabel = new QLabel("100");
+        m_stepLabel = new QLabel(formatStepLabel(m_stepSizes[m_stepIdx]));
         m_stepLabel->setAlignment(Qt::AlignCenter);
         m_stepLabel->setStyleSheet(
             "QLabel { font-size: 11px; background: #0a0a18; border: 1px solid #1e2e3e; "
             "border-radius: 3px; padding: 1px 2px; }");
         m_stepUp = mkRight();
 
-        auto fmtStep = [](int hz) -> QString {
-            if (hz >= 1000) return QString("%1K").arg(hz / 1000);
-            return QString::number(hz);
-        };
-
-        connect(m_stepDown, &QPushButton::clicked, this, [this, fmtStep] {
+        connect(m_stepDown, &QPushButton::clicked, this, [this] {
             if (m_stepIdx > 0) {
                 m_stepIdx--;
-                m_stepLabel->setText(fmtStep(STEP_SIZES[m_stepIdx]));
-                emit stepSizeChanged(STEP_SIZES[m_stepIdx]);
+                m_stepLabel->setText(formatStepLabel(m_stepSizes[m_stepIdx]));
+                emit stepSizeChanged(m_stepSizes[m_stepIdx]);
             }
         });
-        connect(m_stepUp, &QPushButton::clicked, this, [this, fmtStep] {
-            if (m_stepIdx < 8) {
+        connect(m_stepUp, &QPushButton::clicked, this, [this] {
+            if (m_stepIdx < m_stepSizes.size() - 1) {
                 m_stepIdx++;
-                m_stepLabel->setText(fmtStep(STEP_SIZES[m_stepIdx]));
-                emit stepSizeChanged(STEP_SIZES[m_stepIdx]);
+                m_stepLabel->setText(formatStepLabel(m_stepSizes[m_stepIdx]));
+                emit stepSizeChanged(m_stepSizes[m_stepIdx]);
             }
         });
 
@@ -400,105 +467,238 @@ void RxApplet::buildUI()
         leftCol->addLayout(row);
     }
 
-    // Filter presets
+    // Filter presets (dynamically rebuilt on mode change)
     {
-        auto* grid = new QGridLayout;
-        grid->setSpacing(2);
-        const char* labels[] = {"1.8K","2.1K","2.4K","2.7K","3.3K","6.0K"};
-        for (int i = 0; i < 6; ++i) {
-            m_filterBtns[i] = mkToggle(labels[i]);
-            m_filterBtns[i]->setStyleSheet(QString(kButtonBase) + kBlueActive);
-            const int w = FILTER_WIDTHS[i];
-            connect(m_filterBtns[i], &QPushButton::clicked, this, [this, w](bool) {
-                applyFilterPreset(w);
+        m_filterContainer = new QWidget;
+        m_filterGrid = new QGridLayout(m_filterContainer);
+        m_filterGrid->setContentsMargins(0, 0, 0, 0);
+        m_filterGrid->setSpacing(2);
+        rebuildFilterButtons();
+        leftCol->addWidget(m_filterContainer);
+    }
+
+    // FM duplex/repeater controls (hidden by default, shown for FM modes)
+    {
+        m_fmContainer = new QWidget;
+        m_fmContainer->setVisible(false);
+        auto* fmLayout = new QVBoxLayout(m_fmContainer);
+        fmLayout->setContentsMargins(0, 0, 0, 0);
+        fmLayout->setSpacing(2);
+
+        // Tone mode dropdown
+        {
+            auto* row = new QHBoxLayout;
+            row->setSpacing(4);
+            m_toneModeCmb = new QComboBox;
+            m_toneModeCmb->addItem("Off",      QString("off"));
+            m_toneModeCmb->addItem("CTCSS TX", QString("ctcss_tx"));
+            m_toneModeCmb->setStyleSheet(kComboStyle);
+            row->addWidget(m_toneModeCmb, 1);
+            fmLayout->addLayout(row);
+
+            connect(m_toneModeCmb, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                    this, [this](int idx) {
+                if (m_toneModeCmb->signalsBlocked()) return;
+                const QString mode = m_toneModeCmb->itemData(idx).toString();
+                if (m_slice) m_slice->setFmToneMode(mode);
+                m_toneValueCmb->setEnabled(mode == "ctcss_tx");
             });
-            grid->addWidget(m_filterBtns[i], i / 3, i % 3);
         }
-        leftCol->addLayout(grid);
+
+        // CTCSS tone value dropdown
+        {
+            m_toneValueCmb = new QComboBox;
+            for (int i = 0; i < CTCSS_COUNT; ++i) {
+                const auto& t = CTCSS_TONES[i];
+                m_toneValueCmb->addItem(
+                    QString("%1 %2 %3").arg(t.code).arg(t.designation)
+                        .arg(t.frequency, 0, 'f', 1),
+                    QString::number(t.frequency, 'f', 1));
+            }
+            m_toneValueCmb->setStyleSheet(kComboStyle);
+            m_toneValueCmb->setEnabled(false);  // enabled only when CTCSS TX
+            fmLayout->addWidget(m_toneValueCmb);
+
+            connect(m_toneValueCmb, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                    this, [this](int idx) {
+                if (m_toneValueCmb->signalsBlocked()) return;
+                if (m_slice)
+                    m_slice->setFmToneValue(m_toneValueCmb->itemData(idx).toString());
+            });
+        }
+
+        // Offset frequency
+        {
+            auto* row = new QHBoxLayout;
+            row->setSpacing(4);
+            auto* lbl = new QLabel("Offset:");
+            lbl->setStyleSheet(kDimLabelStyle);
+            row->addWidget(lbl);
+
+            m_offsetSpin = new QDoubleSpinBox;
+            m_offsetSpin->setRange(0.0, 100.0);
+            m_offsetSpin->setDecimals(3);
+            m_offsetSpin->setSingleStep(0.1);
+            m_offsetSpin->setValue(0.0);
+            m_offsetSpin->setSuffix(" Mhz");
+            m_offsetSpin->setStyleSheet(
+                "QDoubleSpinBox { background: #0a0a18; border: 1px solid #1e2e3e; "
+                "border-radius: 3px; color: #c8d8e8; font-size: 10px; padding: 1px 2px; }"
+                "QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { width: 0; }");
+            row->addWidget(m_offsetSpin, 1);
+            fmLayout->addLayout(row);
+
+            connect(m_offsetSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                    this, [this](double val) {
+                if (m_offsetSpin->signalsBlocked()) return;
+                if (m_slice) {
+                    m_slice->setFmRepeaterOffsetFreq(val);
+                    // Recompute tx_offset_freq based on current direction
+                    applyOffsetDir(m_slice->repeaterOffsetDir());
+                }
+            });
+        }
+
+        // Offset direction: − | Simplex | + | REV
+        {
+            auto* row = new QHBoxLayout;
+            row->setSpacing(2);
+
+            m_offsetDown = mkToggle(QString::fromUtf8("\xe2\x88\x92")); // −
+            m_offsetDown->setStyleSheet(QString(kButtonBase) + kBlueActive);
+            connect(m_offsetDown, &QPushButton::clicked, this, [this] {
+                applyOffsetDir("down");
+            });
+            row->addWidget(m_offsetDown);
+
+            m_simplexBtn = mkToggle("Simplex");
+            m_simplexBtn->setStyleSheet(QString(kButtonBase) + kBlueActive);
+            m_simplexBtn->setChecked(true);
+            connect(m_simplexBtn, &QPushButton::clicked, this, [this] {
+                applyOffsetDir("simplex");
+            });
+            row->addWidget(m_simplexBtn);
+
+            m_offsetUp = mkToggle("+");
+            m_offsetUp->setStyleSheet(QString(kButtonBase) + kBlueActive);
+            connect(m_offsetUp, &QPushButton::clicked, this, [this] {
+                applyOffsetDir("up");
+            });
+            row->addWidget(m_offsetUp);
+
+            m_revBtn = mkToggle("REV");
+            m_revBtn->setStyleSheet(QString(kButtonBase) + kAmberActive);
+            connect(m_revBtn, &QPushButton::toggled, this, [this](bool on) {
+                if (m_revBtn->signalsBlocked()) return;
+                if (!m_slice) return;
+                // REV flips the sign of tx_offset_freq
+                double offset = m_slice->fmRepeaterOffsetFreq();
+                const QString& dir = m_slice->repeaterOffsetDir();
+                if (dir == "up")
+                    m_slice->setTxOffsetFreq(on ? -offset : offset);
+                else if (dir == "down")
+                    m_slice->setTxOffsetFreq(on ? offset : -offset);
+            });
+            row->addWidget(m_revBtn);
+
+            fmLayout->addLayout(row);
+        }
+
+        leftCol->addWidget(m_fmContainer);
     }
 
-    // NB / NR / ANF (sized like filter buttons)
+    // DSP toggles (wrapped in container for FM hide)
     {
-        auto* row = new QHBoxLayout;
-        row->setSpacing(2);
+        m_dspContainer = new QWidget;
+        auto* dspLayout = new QVBoxLayout(m_dspContainer);
+        dspLayout->setContentsMargins(0, 0, 0, 0);
+        dspLayout->setSpacing(2);
 
-        m_nbBtn  = mkToggle("NB");
-        m_nrBtn  = mkToggle("NR");
-        m_anfBtn = mkToggle("ANF");
+        // NB / NR / ANF
+        {
+            auto* row = new QHBoxLayout;
+            row->setSpacing(2);
 
-        for (auto* b : {m_nbBtn, m_nrBtn, m_anfBtn})
-            b->setStyleSheet(QString(kButtonBase) + kGreenActive);
+            m_nbBtn  = mkToggle("NB");
+            m_nrBtn  = mkToggle("NR");
+            m_anfBtn = mkToggle("ANF");
 
-        connect(m_nbBtn,  &QPushButton::toggled, this, [this](bool on) {
-            if (m_slice) m_slice->setNb(on);
-        });
-        connect(m_nrBtn,  &QPushButton::toggled, this, [this](bool on) {
-            if (m_slice) m_slice->setNr(on);
-        });
-        connect(m_anfBtn, &QPushButton::toggled, this, [this](bool on) {
-            if (m_slice) m_slice->setAnf(on);
-        });
+            for (auto* b : {m_nbBtn, m_nrBtn, m_anfBtn})
+                b->setStyleSheet(QString(kButtonBase) + kGreenActive);
 
-        row->addWidget(m_nbBtn);
-        row->addWidget(m_nrBtn);
-        row->addWidget(m_anfBtn);
-        leftCol->addLayout(row);
-    }
+            connect(m_nbBtn,  &QPushButton::toggled, this, [this](bool on) {
+                if (m_slice) m_slice->setNb(on);
+            });
+            connect(m_nrBtn,  &QPushButton::toggled, this, [this](bool on) {
+                if (m_slice) m_slice->setNr(on);
+            });
+            connect(m_anfBtn, &QPushButton::toggled, this, [this](bool on) {
+                if (m_slice) m_slice->setAnf(on);
+            });
 
-    // NRL / NRS / RNN
-    {
-        auto* row = new QHBoxLayout;
-        row->setSpacing(2);
+            row->addWidget(m_nbBtn);
+            row->addWidget(m_nrBtn);
+            row->addWidget(m_anfBtn);
+            dspLayout->addLayout(row);
+        }
 
-        m_nrlBtn = mkToggle("NRL");
-        m_nrsBtn = mkToggle("NRS");
-        m_rnnBtn = mkToggle("RNN");
+        // NRL / NRS / RNN
+        {
+            auto* row = new QHBoxLayout;
+            row->setSpacing(2);
 
-        for (auto* b : {m_nrlBtn, m_nrsBtn, m_rnnBtn})
-            b->setStyleSheet(QString(kButtonBase) + kGreenActive);
+            m_nrlBtn = mkToggle("NRL");
+            m_nrsBtn = mkToggle("NRS");
+            m_rnnBtn = mkToggle("RNN");
 
-        connect(m_nrlBtn, &QPushButton::toggled, this, [this](bool on) {
-            if (m_slice) m_slice->setNrl(on);
-        });
-        connect(m_nrsBtn, &QPushButton::toggled, this, [this](bool on) {
-            if (m_slice) m_slice->setNrs(on);
-        });
-        connect(m_rnnBtn, &QPushButton::toggled, this, [this](bool on) {
-            if (m_slice) m_slice->setRnn(on);
-        });
+            for (auto* b : {m_nrlBtn, m_nrsBtn, m_rnnBtn})
+                b->setStyleSheet(QString(kButtonBase) + kGreenActive);
 
-        row->addWidget(m_nrlBtn);
-        row->addWidget(m_nrsBtn);
-        row->addWidget(m_rnnBtn);
-        leftCol->addLayout(row);
-    }
+            connect(m_nrlBtn, &QPushButton::toggled, this, [this](bool on) {
+                if (m_slice) m_slice->setNrl(on);
+            });
+            connect(m_nrsBtn, &QPushButton::toggled, this, [this](bool on) {
+                if (m_slice) m_slice->setNrs(on);
+            });
+            connect(m_rnnBtn, &QPushButton::toggled, this, [this](bool on) {
+                if (m_slice) m_slice->setRnn(on);
+            });
 
-    // NRF / ANFL / ANFT
-    {
-        auto* row = new QHBoxLayout;
-        row->setSpacing(2);
+            row->addWidget(m_nrlBtn);
+            row->addWidget(m_nrsBtn);
+            row->addWidget(m_rnnBtn);
+            dspLayout->addLayout(row);
+        }
 
-        m_nrfBtn  = mkToggle("NRF");
-        m_anflBtn = mkToggle("ANFL");
-        m_anftBtn = mkToggle("ANFT");
+        // NRF / ANFL / ANFT
+        {
+            auto* row = new QHBoxLayout;
+            row->setSpacing(2);
 
-        for (auto* b : {m_nrfBtn, m_anflBtn, m_anftBtn})
-            b->setStyleSheet(QString(kButtonBase) + kGreenActive);
+            m_nrfBtn  = mkToggle("NRF");
+            m_anflBtn = mkToggle("ANFL");
+            m_anftBtn = mkToggle("ANFT");
 
-        connect(m_nrfBtn, &QPushButton::toggled, this, [this](bool on) {
-            if (m_slice) m_slice->setNrf(on);
-        });
-        connect(m_anflBtn, &QPushButton::toggled, this, [this](bool on) {
-            if (m_slice) m_slice->setAnfl(on);
-        });
-        connect(m_anftBtn, &QPushButton::toggled, this, [this](bool on) {
-            if (m_slice) m_slice->setAnft(on);
-        });
+            for (auto* b : {m_nrfBtn, m_anflBtn, m_anftBtn})
+                b->setStyleSheet(QString(kButtonBase) + kGreenActive);
 
-        row->addWidget(m_nrfBtn);
-        row->addWidget(m_anflBtn);
-        row->addWidget(m_anftBtn);
-        leftCol->addLayout(row);
+            connect(m_nrfBtn, &QPushButton::toggled, this, [this](bool on) {
+                if (m_slice) m_slice->setNrf(on);
+            });
+            connect(m_anflBtn, &QPushButton::toggled, this, [this](bool on) {
+                if (m_slice) m_slice->setAnfl(on);
+            });
+            connect(m_anftBtn, &QPushButton::toggled, this, [this](bool on) {
+                if (m_slice) m_slice->setAnft(on);
+            });
+
+            row->addWidget(m_nrfBtn);
+            row->addWidget(m_anflBtn);
+            row->addWidget(m_anftBtn);
+            dspLayout->addLayout(row);
+        }
+
+        leftCol->addWidget(m_dspContainer);
     }
 
     leftCol->addStretch(1);
@@ -601,10 +801,12 @@ void RxApplet::buildUI()
         rightCol->addLayout(row);
     }
 
-    // AGC mode + threshold
+    // AGC mode + threshold (wrapped in container for FM hide)
     {
-        auto* row = new QHBoxLayout;
-        row->setSpacing(4);
+        m_agcContainer = new QWidget;
+        auto* agcRow = new QHBoxLayout(m_agcContainer);
+        agcRow->setContentsMargins(0, 0, 0, 0);
+        agcRow->setSpacing(4);
 
         m_agcCombo = new QComboBox;
         m_agcCombo->addItem("Off",  QString("off"));
@@ -624,27 +826,29 @@ void RxApplet::buildUI()
         connect(m_agcCombo, &QComboBox::currentIndexChanged, this, [this](int idx) {
             if (m_slice) m_slice->setAgcMode(m_agcCombo->itemData(idx).toString());
         });
-        row->addWidget(m_agcCombo);
+        agcRow->addWidget(m_agcCombo);
 
         m_agcTSlider = new QSlider(Qt::Horizontal);
         m_agcTSlider->setRange(0, 100);
         m_agcTSlider->setValue(65);
         m_agcTSlider->setStyleSheet(kSliderStyle);
         m_agcTSlider->setToolTip("65");
-        row->addWidget(m_agcTSlider, 1);
+        agcRow->addWidget(m_agcTSlider, 1);
 
         connect(m_agcTSlider, &QSlider::valueChanged, this, [this](int v) {
             m_agcTSlider->setToolTip(QString::number(v));
             if (m_slice) m_slice->setAgcThreshold(v);
         });
-        rightCol->addLayout(row);
+        rightCol->addWidget(m_agcContainer);
     }
 
     rightCol->addStretch(1);
 
-    // RIT
+    // RIT (wrapped in container for FM hide)
     {
-        auto* row = new QHBoxLayout;
+        m_ritContainer = new QWidget;
+        auto* row = new QHBoxLayout(m_ritContainer);
+        row->setContentsMargins(0, 0, 0, 0);
         row->setSpacing(0);
 
         m_ritOnBtn = mkToggle("RIT");
@@ -674,7 +878,7 @@ void RxApplet::buildUI()
         m_ritPlus = mkRight();
         row->addWidget(m_ritPlus);
 
-        rightCol->addLayout(row);
+        rightCol->addWidget(m_ritContainer);
 
         connect(m_ritOnBtn, &QPushButton::toggled, this, [this](bool on) {
             if (m_slice) m_slice->setRit(on, m_slice->ritFreq());
@@ -689,9 +893,11 @@ void RxApplet::buildUI()
         });
     }
 
-    // XIT
+    // XIT (wrapped in container for FM hide)
     {
-        auto* row = new QHBoxLayout;
+        m_xitContainer = new QWidget;
+        auto* row = new QHBoxLayout(m_xitContainer);
+        row->setContentsMargins(0, 0, 0, 0);
         row->setSpacing(0);
 
         m_xitOnBtn = mkToggle("XIT");
@@ -721,7 +927,7 @@ void RxApplet::buildUI()
         m_xitPlus = mkRight();
         row->addWidget(m_xitPlus);
 
-        rightCol->addLayout(row);
+        rightCol->addWidget(m_xitContainer);
 
         connect(m_xitOnBtn, &QPushButton::toggled, this, [this](bool on) {
             if (m_slice) m_slice->setXit(on, m_slice->xitFreq());
@@ -761,6 +967,23 @@ void RxApplet::setAntennaList(const QStringList& ants)
         m_rxAntBtn->setText(m_slice->rxAntenna());
         m_txAntBtn->setText(m_slice->txAntenna());
     }
+}
+
+void RxApplet::setTransmitModel(TransmitModel* txModel)
+{
+    if (m_txModel) m_txModel->disconnect(this);
+    m_txModel = txModel;
+    if (!m_txModel) return;
+
+    // Sync QSK indicator from transmit model's break_in state
+    {
+        QSignalBlocker b(m_qskBtn);
+        m_qskBtn->setChecked(m_txModel->cwBreakIn());
+    }
+    connect(m_txModel, &TransmitModel::phoneStateChanged, this, [this] {
+        QSignalBlocker b(m_qskBtn);
+        m_qskBtn->setChecked(m_txModel->cwBreakIn());
+    });
 }
 
 void RxApplet::connectSlice(SliceModel* s)
@@ -832,7 +1055,11 @@ void RxApplet::connectSlice(SliceModel* s)
         QSignalBlocker b(m_modeCombo);
         int idx = m_modeCombo->findText(mode);
         if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
+        updateModeSettings(mode);
     });
+
+    // Initialize filter/step arrays for the current mode
+    updateModeSettings(s->mode());
 
     // Frequency display (XX.XXX.XXX format)
     auto fmtFreq = [](double mhz) -> QString {
@@ -981,6 +1208,64 @@ void RxApplet::connectSlice(SliceModel* s)
         m_xitOnBtn->setChecked(on);
         m_xitLabel->setText(formatHz(hz));
     });
+
+    // ── FM duplex/repeater ────────────────────────────────────────────────
+
+    // Tone mode
+    {
+        QSignalBlocker b(m_toneModeCmb);
+        int idx = m_toneModeCmb->findData(s->fmToneMode());
+        if (idx >= 0) m_toneModeCmb->setCurrentIndex(idx);
+        m_toneValueCmb->setEnabled(s->fmToneMode() == "ctcss_tx");
+    }
+    connect(s, &SliceModel::fmToneModeChanged, this, [this](const QString& mode) {
+        QSignalBlocker b(m_toneModeCmb);
+        int idx = m_toneModeCmb->findData(mode);
+        if (idx >= 0) m_toneModeCmb->setCurrentIndex(idx);
+        m_toneValueCmb->setEnabled(mode == "ctcss_tx");
+    });
+
+    // Tone value
+    {
+        QSignalBlocker b(m_toneValueCmb);
+        for (int i = 0; i < m_toneValueCmb->count(); ++i) {
+            if (m_toneValueCmb->itemData(i).toString() == s->fmToneValue()) {
+                m_toneValueCmb->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
+    connect(s, &SliceModel::fmToneValueChanged, this, [this](const QString& val) {
+        QSignalBlocker b(m_toneValueCmb);
+        for (int i = 0; i < m_toneValueCmb->count(); ++i) {
+            if (m_toneValueCmb->itemData(i).toString() == val) {
+                m_toneValueCmb->setCurrentIndex(i);
+                break;
+            }
+        }
+    });
+
+    // Repeater offset frequency
+    {
+        QSignalBlocker b(m_offsetSpin);
+        m_offsetSpin->setValue(s->fmRepeaterOffsetFreq());
+    }
+    connect(s, &SliceModel::fmRepeaterOffsetFreqChanged, this, [this](double mhz) {
+        QSignalBlocker b(m_offsetSpin);
+        m_offsetSpin->setValue(mhz);
+    });
+
+    // Offset direction
+    updateOffsetDirButtons();
+    connect(s, &SliceModel::repeaterOffsetDirChanged, this, [this](const QString&) {
+        updateOffsetDirButtons();
+    });
+
+    // REV — derive from txOffsetFreq sign vs direction
+    {
+        QSignalBlocker b(m_revBtn);
+        m_revBtn->setChecked(false);  // REV state not persisted by radio
+    }
 }
 
 void RxApplet::disconnectSlice(SliceModel* s)
@@ -1017,8 +1302,12 @@ void RxApplet::applyFilterPreset(int widthHz)
         // Centred 200 Hz above carrier (600 Hz sidetone pitch)
         lo = 200;
         hi = 200 + widthHz;
+    } else if (mode == "AM" || mode == "SAM" || mode == "DSB") {
+        // Double-sideband: split width equally around carrier
+        lo = -(widthHz / 2);
+        hi =  (widthHz / 2);
     } else {
-        // USB, DIGU, AM, FM, DIG, etc.
+        // USB, DIGU, RTTY, etc.
         lo = 0;
         hi = widthHz;
     }
@@ -1029,11 +1318,101 @@ void RxApplet::applyFilterPreset(int widthHz)
 void RxApplet::updateFilterButtons()
 {
     const int width = m_slice ? (m_slice->filterHigh() - m_slice->filterLow()) : -1;
-    for (int i = 0; i < 6; ++i) {
-        QSignalBlocker sb(m_filterBtns[i]);
-        m_filterBtns[i]->setChecked(width >= 0 &&
-                                    std::abs(width - FILTER_WIDTHS[i]) <= 150);
+
+    // Find the single closest matching filter preset
+    int bestIdx = -1;
+    int bestDist = INT_MAX;
+    if (width >= 0) {
+        for (int i = 0; i < m_filterWidths.size(); ++i) {
+            int dist = std::abs(width - m_filterWidths[i]);
+            if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+        }
+        // Only highlight if reasonably close (within 10% of the preset width)
+        if (bestIdx >= 0 && bestDist > m_filterWidths[bestIdx] / 10)
+            bestIdx = -1;
     }
+
+    for (int i = 0; i < m_filterBtns.size(); ++i) {
+        QSignalBlocker sb(m_filterBtns[i]);
+        m_filterBtns[i]->setChecked(i == bestIdx);
+    }
+}
+
+QString RxApplet::formatStepLabel(int hz)
+{
+    if (hz >= 1000000) return QString("%1M").arg(hz / 1000000.0, 0, 'f',
+                                                  (hz % 1000000) ? 1 : 0);
+    if (hz >= 1000)    return QString("%1K").arg(hz / 1000.0, 0, 'f',
+                                                  (hz % 1000) ? 1 : 0);
+    return QString::number(hz);
+}
+
+void RxApplet::updateModeSettings(const QString& mode)
+{
+    const auto& settings = modeSettingsFor(mode);
+
+    const bool isFM = (mode == "FM" || mode == "NFM" || mode == "DFM");
+
+    // Update filter widths and rebuild buttons
+    m_filterWidths = settings.filterWidths;
+    rebuildFilterButtons();
+    m_filterContainer->setVisible(!m_filterWidths.isEmpty() && !isFM);
+
+    // Show/hide FM vs SSB/CW controls
+    m_fmContainer->setVisible(isFM);
+    m_dspContainer->setVisible(!isFM);
+    m_agcContainer->setVisible(!isFM);
+    m_ritContainer->setVisible(!isFM);
+    m_xitContainer->setVisible(!isFM);
+
+    // QSK visibility — only meaningful in CW mode
+    m_qskBtn->setVisible(mode == "CW");
+
+    // Update step sizes, keeping closest step to previous value
+    const int prevStep = (m_stepIdx >= 0 && m_stepIdx < m_stepSizes.size())
+                             ? m_stepSizes[m_stepIdx] : 100;
+    m_stepSizes = settings.stepSizes;
+    rebuildStepSizes();
+
+    // Find closest step size to what was previously selected
+    m_stepIdx = 0;
+    int bestDist = std::abs(m_stepSizes[0] - prevStep);
+    for (int i = 1; i < m_stepSizes.size(); ++i) {
+        int dist = std::abs(m_stepSizes[i] - prevStep);
+        if (dist < bestDist) { bestDist = dist; m_stepIdx = i; }
+    }
+    m_stepLabel->setText(formatStepLabel(m_stepSizes[m_stepIdx]));
+    emit stepSizeChanged(m_stepSizes[m_stepIdx]);
+
+    // Refresh filter highlight for current slice filter
+    if (m_slice) updateFilterButtons();
+}
+
+void RxApplet::rebuildFilterButtons()
+{
+    // Remove old buttons
+    for (auto* btn : m_filterBtns) delete btn;
+    m_filterBtns.clear();
+
+    // Create new buttons matching current mode's filter widths
+    for (int i = 0; i < m_filterWidths.size(); ++i) {
+        const int w = m_filterWidths[i];
+        auto* btn = mkToggle(formatStepLabel(w));
+        btn->setStyleSheet(QString(kButtonBase) + kBlueActive);
+        connect(btn, &QPushButton::clicked, this, [this, w](bool) {
+            applyFilterPreset(w);
+        });
+        m_filterBtns.append(btn);
+        m_filterGrid->addWidget(btn, i / 3, i % 3);
+    }
+}
+
+void RxApplet::rebuildStepSizes()
+{
+    // Step buttons are already connected; just clamp index
+    if (m_stepIdx >= m_stepSizes.size())
+        m_stepIdx = m_stepSizes.size() - 1;
+    if (m_stepIdx < 0) m_stepIdx = 0;
 }
 
 void RxApplet::updateAgcCombo()
@@ -1046,6 +1425,36 @@ void RxApplet::updateAgcCombo()
             break;
         }
     }
+}
+
+void RxApplet::updateOffsetDirButtons()
+{
+    const QString dir = m_slice ? m_slice->repeaterOffsetDir() : "simplex";
+    QSignalBlocker b1(m_offsetDown), b2(m_simplexBtn), b3(m_offsetUp);
+    m_offsetDown->setChecked(dir == "down");
+    m_simplexBtn->setChecked(dir == "simplex");
+    m_offsetUp->setChecked(dir == "up");
+}
+
+void RxApplet::applyOffsetDir(const QString& dir)
+{
+    if (!m_slice) return;
+    m_slice->setRepeaterOffsetDir(dir);
+
+    // Compute and apply tx_offset_freq
+    const double offset = m_slice->fmRepeaterOffsetFreq();
+    if (dir == "up")
+        m_slice->setTxOffsetFreq(offset);
+    else if (dir == "down")
+        m_slice->setTxOffsetFreq(-offset);
+    else
+        m_slice->setTxOffsetFreq(0.0);
+
+    // Clear REV when direction changes
+    QSignalBlocker b(m_revBtn);
+    m_revBtn->setChecked(false);
+
+    updateOffsetDirButtons();
 }
 
 bool RxApplet::eventFilter(QObject* obj, QEvent* ev)
@@ -1088,7 +1497,7 @@ bool RxApplet::eventFilter(QObject* obj, QEvent* ev)
 
         // Fall back to step size if cursor is on a dot or outside digits
         if (place == 0.0)
-            place = STEP_SIZES[m_stepIdx] / 1.0e6;
+            place = m_stepSizes[m_stepIdx] / 1.0e6;
 
         m_slice->setFrequency(m_slice->frequency() + place * steps);
         we->accept();

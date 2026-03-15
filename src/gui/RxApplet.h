@@ -1,12 +1,15 @@
 #pragma once
 
 #include <QWidget>
+#include <QVector>
 
 class QHBoxLayout;
+class QGridLayout;
 class QPushButton;
 class QSlider;
 class QLabel;
 class QComboBox;
+class QDoubleSpinBox;
 
 namespace AetherSDR {
 
@@ -33,6 +36,9 @@ public:
     // Attach to a slice; pass nullptr to detach.
     void setSlice(SliceModel* slice);
 
+    // Connect to transmit model for QSK (break_in) indicator.
+    void setTransmitModel(class TransmitModel* txModel);
+
     // Set the available antenna list (from ant_list in panadapter status).
     void setAntennaList(const QStringList& ants);
 
@@ -52,16 +58,23 @@ private:
 
     void applyFilterPreset(int widthHz);
     void updateFilterButtons();
+    void updateModeSettings(const QString& mode);
+    void rebuildFilterButtons();
+    void rebuildStepSizes();
     void updateAgcCombo();
+    void updateOffsetDirButtons();
+    void applyOffsetDir(const QString& dir);
     static QString formatHz(int hz);
     static QString formatFilterWidth(int lo, int hi);
+    static QString formatStepLabel(int hz);
 
     SliceModel* m_slice{nullptr};
+    TransmitModel* m_txModel{nullptr};
     QStringList m_antList{"ANT1", "ANT2"};   // populated from ant_list key
 
-    // Step sizes available in the stepper (Hz)
-    static constexpr int STEP_SIZES[9] = {10, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
-    int          m_stepIdx{2};          // index into STEP_SIZES, default 100 Hz
+    // Step sizes (Hz) — per-mode, swapped on mode change
+    QVector<int> m_stepSizes{10, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
+    int          m_stepIdx{2};          // index into m_stepSizes, default 100 Hz
     QPushButton* m_stepDown{nullptr};   // "<" button
     QLabel*      m_stepLabel{nullptr};  // current step value display
     QPushButton* m_stepUp{nullptr};     // ">" button
@@ -78,9 +91,27 @@ private:
     QComboBox*   m_modeCombo{nullptr};     // mode selector (USB, LSB, CW, etc.)
     QLabel*      m_freqLabel{nullptr};     // frequency readout e.g. "14.289.510"
 
-    // Filter presets (Hz widths)
-    static constexpr int FILTER_WIDTHS[6] = {1800, 2100, 2400, 2700, 3300, 6000};
-    QPushButton* m_filterBtns[6]{};
+    // Filter presets (Hz widths) — per-mode, swapped on mode change
+    QVector<int>            m_filterWidths{1800, 2100, 2400, 2700, 3300, 6000};
+    QVector<QPushButton*>   m_filterBtns;
+    QGridLayout*            m_filterGrid{nullptr};
+    QWidget*                m_filterContainer{nullptr};
+
+    // FM duplex/repeater controls (shown only in FM/NFM/DFM modes)
+    QWidget*        m_fmContainer{nullptr};
+    QComboBox*      m_toneModeCmb{nullptr};
+    QComboBox*      m_toneValueCmb{nullptr};
+    QDoubleSpinBox* m_offsetSpin{nullptr};
+    QPushButton*    m_offsetDown{nullptr};
+    QPushButton*    m_simplexBtn{nullptr};
+    QPushButton*    m_offsetUp{nullptr};
+    QPushButton*    m_revBtn{nullptr};
+
+    // Containers for show/hide on mode change
+    QWidget*     m_dspContainer{nullptr};
+    QWidget*     m_agcContainer{nullptr};
+    QWidget*     m_ritContainer{nullptr};
+    QWidget*     m_xitContainer{nullptr};
 
     // AGC
     static constexpr const char* AGC_MODES[4] = {"off", "slow", "med", "fast"};
