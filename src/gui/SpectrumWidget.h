@@ -54,6 +54,9 @@ public:
     // Set the per-mode filter limits (Hz). Called when mode changes.
     void setFilterLimits(int minHz, int maxHz) { m_filterMinHz = minHz; m_filterMaxHz = maxHz; }
 
+    // Set the current demod mode (for zoom centering behavior).
+    void setMode(const QString& mode) { m_mode = mode; }
+
 signals:
     // Emitted when the user clicks or scrolls in the panadapter area.
     void frequencyClicked(double mhz);
@@ -102,6 +105,7 @@ private:
     int    m_filterHighHz{1500};   // Hz offset from VFO
     int    m_filterMinHz{-12000};  // per-mode lower bound
     int    m_filterMaxHz{12000};   // per-mode upper bound
+    QString m_mode{"USB"};         // current demod mode
 
     float m_refLevel{-50.0f};       // top of display (dBm)
     float m_dynamicRange{100.0f};   // dB range shown in spectrum (-50 to -150)

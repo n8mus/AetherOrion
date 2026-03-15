@@ -502,6 +502,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
             minHz = 0; maxHz = 12000;
         }
         spectrum()->setFilterLimits(minHz, maxHz);
+        spectrum()->setMode(mode);
     };
     updateFilterLimits(s->mode());
     connect(s, &SliceModel::modeChanged, this, updateFilterLimits);
