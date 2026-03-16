@@ -456,7 +456,157 @@ QWidget* RadioSetupDialog::buildGpsTab()
     vbox->addStretch(1);
     return page;
 }
-QWidget* RadioSetupDialog::buildTxTab()       { return placeholderTab("TX"); }
+QWidget* RadioSetupDialog::buildTxTab()
+{
+    auto* tx = m_model->transmitModel();
+    auto* page = new QWidget;
+    auto* vbox = new QVBoxLayout(page);
+    vbox->setSpacing(8);
+
+    // Model header
+    {
+        auto* hdr = new QHBoxLayout;
+        hdr->addStretch(1);
+        auto* modelLbl = new QLabel(m_model->model());
+        modelLbl->setStyleSheet("QLabel { color: #00c8ff; font-size: 20px; font-weight: bold; }");
+        hdr->addWidget(modelLbl);
+        vbox->addLayout(hdr);
+    }
+
+    // Timings group
+    {
+        auto* group = new QGroupBox("Timings (in ms)");
+        group->setStyleSheet(kGroupStyle);
+        auto* grid = new QGridLayout(group);
+        grid->setSpacing(6);
+
+        auto addTimingField = [&](int row, int col, const QString& label, int value) {
+            auto* lbl = new QLabel(label);
+            lbl->setStyleSheet(kLabelStyle);
+            grid->addWidget(lbl, row, col * 2);
+            auto* edit = new QLineEdit(QString::number(value));
+            edit->setStyleSheet(kEditStyle);
+            edit->setFixedWidth(60);
+            grid->addWidget(edit, row, col * 2 + 1);
+            return edit;
+        };
+
+        addTimingField(0, 0, "ACC TX:",  tx->accTxDelay());
+        addTimingField(0, 1, "TX Delay:", tx->txDelay());
+        addTimingField(1, 0, "RCA TX1:", tx->tx1Delay());
+        addTimingField(1, 1, "Timeout(min):", tx->interlockTimeout());
+        addTimingField(2, 0, "RCA TX2:", tx->tx2Delay());
+
+        // TX Profile dropdown (below Timeout, right column)
+        auto* profCmb = new QComboBox;
+        profCmb->addItems(tx->profileList());
+        profCmb->setCurrentText(tx->activeProfile());
+        profCmb->setStyleSheet(kEditStyle);
+        grid->addWidget(profCmb, 2, 2, 1, 2);
+        connect(profCmb, &QComboBox::currentTextChanged, this, [this](const QString& name) {
+            m_model->transmitModel()->loadProfile(name);
+        });
+
+        addTimingField(3, 0, "RCA TX3:", tx->tx3Delay());
+
+        for (auto* lbl : group->findChildren<QLabel*>())
+            if (lbl->styleSheet().isEmpty()) lbl->setStyleSheet(kLabelStyle);
+
+        vbox->addWidget(group);
+    }
+
+    // Interlocks group
+    {
+        auto* group = new QGroupBox("Interlocks - TX REQ");
+        group->setStyleSheet(kGroupStyle);
+        auto* grid = new QGridLayout(group);
+        grid->setSpacing(6);
+
+        auto* rcaLbl = new QLabel("RCA:");
+        rcaLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(rcaLbl, 0, 0);
+        auto* rcaCmb = new QComboBox;
+        rcaCmb->addItems({"Active Low", "Active High"});
+        rcaCmb->setCurrentIndex(tx->rcaTxReqPolarity());
+        rcaCmb->setStyleSheet(kEditStyle);
+        grid->addWidget(rcaCmb, 0, 1);
+
+        auto* accLbl = new QLabel("Accessory:");
+        accLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(accLbl, 0, 2);
+        auto* accCmb = new QComboBox;
+        accCmb->addItems({"Active Low", "Active High"});
+        accCmb->setCurrentIndex(tx->accTxReqPolarity());
+        accCmb->setStyleSheet(kEditStyle);
+        grid->addWidget(accCmb, 0, 3);
+
+        vbox->addWidget(group);
+    }
+
+    // Max Power / Tune Mode / Show TX in Waterfall
+    {
+        auto* grid = new QGridLayout;
+        grid->setSpacing(6);
+
+        auto* mpLbl = new QLabel("Max Power:");
+        mpLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(mpLbl, 0, 0);
+        auto* mpRow = new QHBoxLayout;
+        auto* mpEdit = new QLineEdit(QString::number(tx->maxPowerLevel()));
+        mpEdit->setStyleSheet(kEditStyle);
+        mpEdit->setFixedWidth(50);
+        mpRow->addWidget(mpEdit);
+        auto* mpUnit = new QLabel("%");
+        mpUnit->setStyleSheet(kLabelStyle);
+        mpRow->addWidget(mpUnit);
+        mpRow->addStretch(1);
+        grid->addLayout(mpRow, 0, 1);
+
+        connect(mpEdit, &QLineEdit::editingFinished, this, [this, mpEdit] {
+            int val = qBound(0, mpEdit->text().toInt(), 100);
+            mpEdit->setText(QString::number(val));
+            m_model->connection()->sendCommand(
+                QString("transmit set max_power_level=%1").arg(val));
+        });
+
+        auto* tmLbl = new QLabel("Tune Mode:");
+        tmLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(tmLbl, 1, 0);
+        auto* tmCmb = new QComboBox;
+        tmCmb->addItems({"Single Tone", "Two Tone"});
+        tmCmb->setCurrentText(tx->tuneMode() == "single_tone" ? "Single Tone" : "Two Tone");
+        tmCmb->setStyleSheet(kEditStyle);
+        connect(tmCmb, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+            QString mode = (text == "Single Tone") ? "single_tone" : "two_tone";
+            m_model->connection()->sendCommand("transmit set tune_mode=" + mode);
+        });
+        grid->addWidget(tmCmb, 1, 1);
+
+        auto* swLbl = new QLabel("Show TX in Waterfall:");
+        swLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(swLbl, 2, 0);
+        auto* swBtn = new QPushButton(tx->showTxInWaterfall() ? "Enabled" : "Disabled");
+        swBtn->setCheckable(true);
+        swBtn->setChecked(tx->showTxInWaterfall());
+        swBtn->setStyleSheet(
+            "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+            "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+            "padding: 3px 10px; }"
+            "QPushButton:checked { background: #1a5030; color: #00e060; "
+            "border: 1px solid #20a040; }");
+        connect(swBtn, &QPushButton::toggled, this, [this, swBtn](bool on) {
+            swBtn->setText(on ? "Enabled" : "Disabled");
+            m_model->connection()->sendCommand(
+                QString("transmit set show_tx_in_waterfall=%1").arg(on ? 1 : 0));
+        });
+        grid->addWidget(swBtn, 2, 1);
+
+        vbox->addLayout(grid);
+    }
+
+    vbox->addStretch(1);
+    return page;
+}
 QWidget* RadioSetupDialog::buildPhoneCwTab()  { return placeholderTab("Phone/CW"); }
 QWidget* RadioSetupDialog::buildRxTab()       { return placeholderTab("RX"); }
 QWidget* RadioSetupDialog::buildFiltersTab()  { return placeholderTab("Filters"); }

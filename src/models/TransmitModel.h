@@ -77,6 +77,19 @@ public:
     bool    cwlEnabled()    const { return m_cwlEnabled; }
     int     monGainCw()     const { return m_monGainCw; }
 
+    // ── Interlock / TX settings getters ──────────────────────────────────────
+    int     accTxDelay()     const { return m_accTxDelay; }
+    int     tx1Delay()       const { return m_tx1Delay; }
+    int     tx2Delay()       const { return m_tx2Delay; }
+    int     tx3Delay()       const { return m_tx3Delay; }
+    int     txDelay()        const { return m_txDelay; }
+    int     interlockTimeout() const { return m_interlockTimeout; }
+    int     accTxReqPolarity() const { return m_accTxReqPolarity; }
+    int     rcaTxReqPolarity() const { return m_rcaTxReqPolarity; }
+    int     maxPowerLevel()  const { return m_maxPowerLevel; }
+    QString tuneMode()       const { return m_tuneMode; }
+    bool    showTxInWaterfall() const { return m_showTxInWaterfall; }
+
     // ── APD getters ─────────────────────────────────────────────────────────
     bool    apdEnabled()        const { return m_apdEnabled; }
     bool    apdConfigurable()   const { return m_apdConfigurable; }
@@ -97,6 +110,7 @@ public:
 
     // ── Status parsing (called from RadioModel) ─────────────────────────────
     void applyTransmitStatus(const QMap<QString, QString>& kvs);
+    void applyInterlockStatus(const QMap<QString, QString>& kvs);
     void applyAtuStatus(const QMap<QString, QString>& kvs);
     void applyApdStatus(const QMap<QString, QString>& kvs);
     void setProfileList(const QStringList& profiles);
@@ -213,6 +227,19 @@ private:
     bool m_cwSwapPaddles{false};
     bool m_cwlEnabled{false};
     int  m_monGainCw{50};
+
+    // Interlock / TX settings
+    int     m_accTxDelay{0};
+    int     m_tx1Delay{0};
+    int     m_tx2Delay{0};
+    int     m_tx3Delay{0};
+    int     m_txDelay{0};
+    int     m_interlockTimeout{0};
+    int     m_accTxReqPolarity{0};
+    int     m_rcaTxReqPolarity{0};
+    int     m_maxPowerLevel{100};
+    QString m_tuneMode{"single_tone"};
+    bool    m_showTxInWaterfall{false};
 
     // ATU state
     bool      m_atuEnabled{false};

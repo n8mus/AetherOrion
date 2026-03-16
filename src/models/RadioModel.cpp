@@ -637,6 +637,7 @@ void RadioModel::onStatusReceived(const QString& object,
             bool tx = (kvs["state"] == "TRANSMITTING");
             m_transmitModel.setTransmitting(tx);
         }
+        m_transmitModel.applyInterlockStatus(kvs);
         return;
     }
 

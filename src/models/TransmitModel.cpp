@@ -153,10 +153,35 @@ void TransmitModel::applyTransmitStatus(const QMap<QString, QString>& kvs)
         if (m_monGainCw != v) { m_monGainCw = v; phoneChanged = true; }
     }
 
+    if (kvs.contains("max_power_level")) {
+        int v = kvs["max_power_level"].toInt();
+        if (m_maxPowerLevel != v) { m_maxPowerLevel = v; changed = true; }
+    }
+    if (kvs.contains("tune_mode")) {
+        QString v = kvs["tune_mode"];
+        if (m_tuneMode != v) { m_tuneMode = v; changed = true; }
+    }
+    if (kvs.contains("show_tx_in_waterfall")) {
+        bool v = kvs["show_tx_in_waterfall"] == "1";
+        if (m_showTxInWaterfall != v) { m_showTxInWaterfall = v; changed = true; }
+    }
+
     if (changed) emit stateChanged();
     if (tuneChanged_) emit tuneChanged(m_tune);
     if (micChanged) emit micStateChanged();
     if (phoneChanged) emit phoneStateChanged();
+}
+
+void TransmitModel::applyInterlockStatus(const QMap<QString, QString>& kvs)
+{
+    if (kvs.contains("acc_tx_delay"))      m_accTxDelay = kvs["acc_tx_delay"].toInt();
+    if (kvs.contains("tx1_delay"))         m_tx1Delay = kvs["tx1_delay"].toInt();
+    if (kvs.contains("tx2_delay"))         m_tx2Delay = kvs["tx2_delay"].toInt();
+    if (kvs.contains("tx3_delay"))         m_tx3Delay = kvs["tx3_delay"].toInt();
+    if (kvs.contains("tx_delay"))          m_txDelay = kvs["tx_delay"].toInt();
+    if (kvs.contains("timeout"))           m_interlockTimeout = kvs["timeout"].toInt();
+    if (kvs.contains("acc_txreq_polarity"))m_accTxReqPolarity = kvs["acc_txreq_polarity"].toInt();
+    if (kvs.contains("rca_txreq_polarity"))m_rcaTxReqPolarity = kvs["rca_txreq_polarity"].toInt();
 }
 
 void TransmitModel::applyAtuStatus(const QMap<QString, QString>& kvs)

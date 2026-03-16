@@ -143,27 +143,14 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Band selection from overlay menu ───────────────────────────────────
     connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::bandSelected,
             this, [this](const QString& bandName, double freqMhz, const QString& mode) {
-        // Save current band state before switching
-        const QString oldBand = m_bandSettings.currentBand();
-        if (!oldBand.isEmpty() && activeSlice()) {
-            m_bandSettings.saveBandState(oldBand, captureCurrentBandState());
-        }
-
-        // Load saved state for the new band (or defaults)
+        // Band memory save/restore is deprecated pending redesign.
+        // For now, always use band defaults (freq + mode from BandDefs).
+        qDebug() << "MainWindow: switching to band" << bandName
+                 << "freq:" << freqMhz << "mode:" << mode;
         m_bandSettings.setCurrentBand(bandName);
-        if (m_bandSettings.hasSavedState(bandName)) {
-            auto snap = m_bandSettings.loadBandState(bandName);
-            qDebug() << "MainWindow: restoring band" << bandName
-                     << "freq:" << snap.frequencyMhz << "mode:" << snap.mode;
-            restoreBandState(snap);
-        } else {
-            // First visit — use band defaults
-            qDebug() << "MainWindow: first visit to" << bandName
-                     << "freq:" << freqMhz << "mode:" << mode;
-            if (auto* s = activeSlice())
-                s->setMode(mode);
-            onFrequencyChanged(freqMhz);
-        }
+        if (auto* s = activeSlice())
+            s->setMode(mode);
+        onFrequencyChanged(freqMhz);
     });
 
     // ── WNB toggle from overlay menu → panadapter + indicator ──────────────
@@ -314,16 +301,9 @@ MainWindow::MainWindow(QWidget* parent)
     if (settings.contains("splitterState"))
         m_splitter->restoreState(settings.value("splitterState").toByteArray());
 
-    // One-time migration: clear stale band memory from versions < 0.2.2
-    // where band-crossing detection incorrectly saved state during connect.
-    if (settings.value("bandMigrationVersion").toString() != "0.2.3") {
-        settings.remove("bands");
-        settings.setValue("bandMigrationVersion", "0.2.3");
-        qDebug() << "MainWindow: cleared stale band memory (migration to 0.2.3)";
-    }
-
-    // Load per-band settings
-    m_bandSettings.loadFromFile();
+    // Band memory save/restore is deprecated pending redesign.
+    // Clear any stale data from previous versions.
+    settings.remove("bands");
 }
 
 MainWindow::~MainWindow() = default;
@@ -334,12 +314,6 @@ void MainWindow::closeEvent(QCloseEvent* event)
     settings.setValue("geometry",      saveGeometry());
     settings.setValue("windowState",   saveState());
     settings.setValue("splitterState", m_splitter->saveState());
-    // Save current band state before exit
-    const QString curBand = m_bandSettings.currentBand();
-    if (!curBand.isEmpty() && activeSlice())
-        m_bandSettings.saveBandState(curBand, captureCurrentBandState());
-    m_bandSettings.saveToFile();
-
     m_discovery.stopListening();
     m_radioModel.disconnectFromRadio();
     m_audio.stopRxStream();
@@ -625,18 +599,6 @@ void MainWindow::onSliceAdded(SliceModel* s)
         m_updatingFromModel = true;
         spectrum()->setVfoFrequency(mhz);
         m_updatingFromModel = false;
-
-        // Band-crossing detection: save old band state when tuning out.
-        // Skip during model-driven updates (initial connect, status pushes)
-        // to avoid saving incorrect state for bands we haven't visited.
-        if (!m_updatingFromModel) {
-            const QString newBand = BandSettings::bandForFrequency(mhz);
-            const QString oldBand = m_bandSettings.currentBand();
-            if (!oldBand.isEmpty() && newBand != oldBand) {
-                m_bandSettings.saveBandState(oldBand, captureCurrentBandState());
-                m_bandSettings.setCurrentBand(newBand);
-            }
-        }
     });
     connect(s, &SliceModel::filterChanged, spectrum(), &SpectrumWidget::setVfoFilter);
 
