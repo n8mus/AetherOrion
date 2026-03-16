@@ -80,6 +80,27 @@ public:
     void setWnbActive(bool on) { m_wnbActive = on; update(); }
     void setRfGain(int gain) { m_rfGainValue = gain; update(); }
 
+    // ── Display control setters ───────────────────────────────────────────
+    // FFT controls
+    void setFftAverage(int frames)     { m_fftAverage = frames; }
+    void setFftWeightedAvg(bool on)    { m_fftWeightedAvg = on; }
+    void setFftFps(int fps)            { m_fftFps = fps; }
+    void setFftFillAlpha(float a)      { m_fftFillAlpha = std::clamp(a, 0.0f, 1.0f); update(); }
+    float fftFillAlpha() const         { return m_fftFillAlpha; }
+    int   fftAverage() const           { return m_fftAverage; }
+    int   fftFps() const               { return m_fftFps; }
+    bool  fftWeightedAvg() const       { return m_fftWeightedAvg; }
+
+    // Waterfall controls
+    void setWfColorGain(int gain)      { m_wfColorGain = std::clamp(gain, 0, 100); update(); }
+    void setWfBlackLevel(int level)    { m_wfBlackLevel = std::clamp(level, 0, 125); update(); }
+    void setWfAutoBlack(bool on)       { m_wfAutoBlack = on; }
+    void setWfLineDuration(int ms)     { m_wfLineDuration = std::clamp(ms, 25, 500); }
+    int   wfColorGain() const          { return m_wfColorGain; }
+    int   wfBlackLevel() const         { return m_wfBlackLevel; }
+    bool  wfAutoBlack() const          { return m_wfAutoBlack; }
+    int   wfLineDuration() const       { return m_wfLineDuration; }
+
     // Set slice info for the off-screen VFO indicator.
     void setSliceInfo(int sliceId, bool isTxSlice) {
         m_sliceId = sliceId; m_isTxSlice = isTxSlice;
@@ -118,6 +139,7 @@ private:
     void pushWaterfallRow(const QVector<float>& bins, int destWidth,
                           double tileLowMhz = -1, double tileHighMhz = -1);
     QRgb dbmToRgb(float dbm) const;
+    QRgb intensityToRgb(float intensity) const;  // for native waterfall tiles
 
     // Pixel x coordinate for a given frequency in MHz (0 = left edge).
     int mhzToX(double mhz) const;
@@ -144,8 +166,19 @@ private:
     // Tuning step size for click-snap and wheel scroll (Hz)
     int m_stepHz{100};
 
-    // Waterfall colour range (dBm). Using FFT-derived data, so these are
-    // real dBm values. Noise floor ~-130 dBm, strong signals ~-50 dBm.
+    // ── FFT display controls (radio-side via "display pan set") ──────────
+    int   m_fftAverage{0};           // 0=off, 1-10 frames
+    bool  m_fftWeightedAvg{false};
+    int   m_fftFps{25};
+    float m_fftFillAlpha{0.70f};     // client-side fill opacity (0-1)
+
+    // ── Waterfall display controls (radio-side via "display panafall set") ─
+    int   m_wfColorGain{50};         // 0-100, maps intensity to color range
+    int   m_wfBlackLevel{15};        // 0-125, intensity floor (below = black)
+    bool  m_wfAutoBlack{false};
+    int   m_wfLineDuration{100};     // ms per waterfall row
+
+    // Waterfall colour range for FFT-derived fallback (dBm).
     float m_wfMinDbm{-130.0f};
     float m_wfMaxDbm{-50.0f};
 
@@ -156,6 +189,7 @@ private:
     // When set, updateSpectrum() skips pushing FFT rows to the waterfall
     // because the radio provides dedicated waterfall tiles.
     bool m_hasNativeWaterfall{false};
+    qint64 m_lastNativeTileMs{0};    // timestamp of last native tile (for fallback)
 
     static constexpr float SMOOTH_ALPHA    = 0.35f;
     // Fraction of the panadapter area (above freq scale) used for spectrum
