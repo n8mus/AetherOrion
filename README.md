@@ -104,7 +104,7 @@ The application will automatically discover FlexRadio transceivers on your local
 ## Roadmap
 
 - [ ] Multi-slice support
-- [ ] Audio TX (microphone to radio)
+- [ ] Audio TX (PC audio to radio — mic TX is working)
 - [ ] TNF (tracking notch filter) management
 - [ ] Band stacking registers
 - [ ] DAX / CAT interface
