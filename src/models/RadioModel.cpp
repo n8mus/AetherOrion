@@ -155,6 +155,7 @@ void RadioModel::onConnected()
             m_connection.sendCommand("sub audio all", [this](int, const QString&) {
             m_connection.sendCommand("sub gps all", [this](int, const QString&) {
             m_connection.sendCommand("sub apd all", [this](int, const QString&) {
+            m_connection.sendCommand("sub xvtr all", [this](int, const QString&) {
             // EQ status arrives automatically — no subscription needed on fw v1.4.0.0
             m_connection.sendCommand("client gui", [this](int code, const QString&) {
         if (code != 0)
@@ -273,6 +274,7 @@ void RadioModel::onConnected()
                     });
             });
     }); // client gui
+            }); // sub xvtr all
             }); // sub apd all
             }); // sub gps all
             }); // sub audio all
@@ -488,6 +490,56 @@ void RadioModel::onStatusReceived(const QString& object,
 {
     if (object == "radio") {
         handleRadioStatus(kvs);
+        return;
+    }
+
+    // XVTR status: "xvtr 0 name=2m rf_freq=144.000000 if_freq=28.000000 ..."
+    static const QRegularExpression xvtrRe(R"(^xvtr\s+(\d+)$)");
+    if (object.startsWith("xvtr")) {
+        const auto m = xvtrRe.match(object);
+        if (m.hasMatch()) {
+            int idx = m.captured(1).toInt();
+            // "in_use=0" means the xvtr was removed
+            if (kvs.contains("in_use") && kvs["in_use"] == "0") {
+                m_xvtrList.remove(idx);
+                emit infoChanged();
+                return;
+            }
+            auto& x = m_xvtrList[idx];
+            x.index = idx;
+            if (kvs.contains("name"))      x.name     = kvs["name"];
+            if (kvs.contains("rf_freq"))   x.rfFreq   = kvs["rf_freq"].toDouble();
+            if (kvs.contains("if_freq"))   x.ifFreq   = kvs["if_freq"].toDouble();
+            if (kvs.contains("lo_error"))  x.loError  = kvs["lo_error"].toDouble();
+            if (kvs.contains("rx_gain"))   x.rxGain   = kvs["rx_gain"].toDouble();
+            if (kvs.contains("max_power")) x.maxPower = kvs["max_power"].toDouble();
+            if (kvs.contains("rx_only"))   x.rxOnly   = kvs["rx_only"] == "1";
+            if (kvs.contains("is_valid"))  x.isValid  = kvs["is_valid"] == "1";
+            emit infoChanged();
+        }
+        return;
+    }
+
+    // Filter sharpness: "radio filter_sharpness VOICE level=3 auto_level=0"
+    if (object.startsWith("radio filter_sharpness")) {
+        int level = kvs.value("level", "-1").toInt();
+        bool autoLvl = kvs.value("auto_level", "0") == "1";
+        if (object.contains("VOICE"))       { m_filterVoice = level; m_filterVoiceAuto = autoLvl; }
+        else if (object.contains("CW"))     { m_filterCw = level; m_filterCwAuto = autoLvl; }
+        else if (object.contains("DIGITAL")){ m_filterDigital = level; m_filterDigitalAuto = autoLvl; }
+        emit infoChanged();
+        return;
+    }
+
+    if (object == "radio oscillator") {
+        if (kvs.contains("state"))        m_oscState    = kvs["state"];
+        if (kvs.contains("setting"))      m_oscSetting  = kvs["setting"];
+        if (kvs.contains("locked"))       m_oscLocked   = kvs["locked"] == "1";
+        if (kvs.contains("ext_present"))  m_extPresent  = kvs["ext_present"] == "1";
+        if (kvs.contains("gpsdo_present"))m_gpsdoPresent= kvs["gpsdo_present"] == "1";
+        if (kvs.contains("tcxo_present")) m_tcxoPresent = kvs["tcxo_present"] == "1";
+        if (kvs.contains("gnss_present")) m_gpsdoPresent= m_gpsdoPresent || kvs["gnss_present"] == "1";
+        emit infoChanged();
         return;
     }
 
@@ -727,6 +779,22 @@ void RadioModel::handleRadioStatus(const QMap<QString, QString>& kvs)
     }
     if (kvs.contains("enforce_private_ip_connections")) {
         m_enforcePrivateIp = kvs["enforce_private_ip_connections"] == "1";
+        changed = true;
+    }
+    if (kvs.contains("binaural_rx")) {
+        m_binauralRx = kvs["binaural_rx"] == "1";
+        changed = true;
+    }
+    if (kvs.contains("mute_local_audio_when_remote")) {
+        m_muteLocalWhenRemote = kvs["mute_local_audio_when_remote"] == "1";
+        changed = true;
+    }
+    if (kvs.contains("freq_error_ppb")) {
+        m_freqErrorPpb = kvs["freq_error_ppb"].toInt();
+        changed = true;
+    }
+    if (kvs.contains("low_latency_digital_modes")) {
+        m_lowLatencyDigital = kvs["low_latency_digital_modes"] == "1";
         changed = true;
     }
     if (changed) emit infoChanged();

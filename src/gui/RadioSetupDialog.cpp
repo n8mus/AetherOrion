@@ -13,6 +13,7 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QCheckBox>
+#include <QTimer>
 #include <QMediaDevices>
 #include <QAudioDevice>
 
@@ -200,18 +201,6 @@ QWidget* RadioSetupDialog::buildRadioTab()
     return page;
 }
 
-// ── Placeholder tabs ──────────────────────────────────────────────────────────
-
-static QWidget* placeholderTab(const QString& name)
-{
-    auto* page = new QWidget;
-    auto* vbox = new QVBoxLayout(page);
-    auto* lbl = new QLabel(name + " settings — coming soon");
-    lbl->setStyleSheet("QLabel { color: #6888a0; font-size: 14px; }");
-    lbl->setAlignment(Qt::AlignCenter);
-    vbox->addWidget(lbl);
-    return page;
-}
 
 QWidget* RadioSetupDialog::buildNetworkTab()
 {
@@ -923,8 +912,433 @@ QWidget* RadioSetupDialog::buildPhoneCwTab()
     vbox->addStretch(1);
     return page;
 }
-QWidget* RadioSetupDialog::buildRxTab()       { return placeholderTab("RX"); }
-QWidget* RadioSetupDialog::buildFiltersTab()  { return placeholderTab("Filters"); }
-QWidget* RadioSetupDialog::buildXvtrTab()     { return placeholderTab("XVTR"); }
+QWidget* RadioSetupDialog::buildRxTab()
+{
+    auto* page = new QWidget;
+    auto* vbox = new QVBoxLayout(page);
+    vbox->setSpacing(8);
+
+    // Model header
+    {
+        auto* hdr = new QHBoxLayout;
+        hdr->addStretch(1);
+        auto* modelLbl = new QLabel(m_model->model());
+        modelLbl->setStyleSheet("QLabel { color: #00c8ff; font-size: 20px; font-weight: bold; }");
+        hdr->addWidget(modelLbl);
+        vbox->addLayout(hdr);
+    }
+
+    static const QString kTogStyle =
+        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+        "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+        "padding: 3px 10px; }"
+        "QPushButton:checked { background: #1a5030; color: #00e060; "
+        "border: 1px solid #20a040; }";
+
+    // Frequency Offset group
+    {
+        auto* group = new QGroupBox("Frequency Offset");
+        group->setStyleSheet(kGroupStyle);
+        auto* gvb = new QVBoxLayout(group);
+        gvb->setSpacing(4);
+
+        if (m_model->gpsdoPresent()) {
+            auto* lbl = new QLabel("GPSDO is installed. Frequency error correction is not required.");
+            lbl->setStyleSheet("QLabel { color: #00c040; font-size: 12px; }");
+            lbl->setWordWrap(true);
+            gvb->addWidget(lbl);
+        } else {
+            auto* lbl = new QLabel("No GPSDO installed. Manual frequency offset calibration available.");
+            lbl->setStyleSheet("QLabel { color: #c0a000; font-size: 12px; }");
+            lbl->setWordWrap(true);
+            gvb->addWidget(lbl);
+
+            auto* row = new QHBoxLayout;
+            row->setSpacing(4);
+            auto* ppbLbl = new QLabel("Freq Error (ppb):");
+            ppbLbl->setStyleSheet(kLabelStyle);
+            row->addWidget(ppbLbl);
+            auto* ppbEdit = new QLineEdit(QString::number(m_model->freqErrorPpb()));
+            ppbEdit->setStyleSheet(kEditStyle);
+            ppbEdit->setFixedWidth(80);
+            connect(ppbEdit, &QLineEdit::editingFinished, this, [this, ppbEdit] {
+                m_model->connection()->sendCommand(
+                    "radio set freq_error_ppb=" + ppbEdit->text());
+            });
+            row->addWidget(ppbEdit);
+            row->addStretch(1);
+            gvb->addLayout(row);
+        }
+
+        vbox->addWidget(group);
+    }
+
+    // 10 MHz Reference group
+    {
+        auto* group = new QGroupBox("10 MHz Reference");
+        group->setStyleSheet(kGroupStyle);
+        auto* grid = new QGridLayout(group);
+        grid->setSpacing(6);
+
+        auto* srcLbl = new QLabel("Source:");
+        srcLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(srcLbl, 0, 0);
+
+        auto* srcCmb = new QComboBox;
+        srcCmb->setStyleSheet(kEditStyle);
+        srcCmb->addItem("Auto", "auto");
+        if (m_model->tcxoPresent())  srcCmb->addItem("TCXO", "tcxo");
+        if (m_model->gpsdoPresent()) srcCmb->addItem("GPSDO", "gpsdo");
+        if (m_model->extPresent())   srcCmb->addItem("External", "external");
+        // Select current setting
+        int idx = srcCmb->findData(m_model->oscSetting());
+        if (idx >= 0) srcCmb->setCurrentIndex(idx);
+        connect(srcCmb, &QComboBox::currentIndexChanged, this, [this, srcCmb](int i) {
+            m_model->connection()->sendCommand(
+                "radio oscillator " + srcCmb->itemData(i).toString());
+        });
+        grid->addWidget(srcCmb, 0, 1);
+
+        // Lock status
+        auto* lockLbl = new QLabel(
+            m_model->oscState().toUpper() + (m_model->oscLocked() ? " Locked" : " Unlocked"));
+        lockLbl->setStyleSheet(m_model->oscLocked()
+            ? "QLabel { color: #00c040; font-size: 12px; font-weight: bold; }"
+            : "QLabel { color: #c04040; font-size: 12px; font-weight: bold; }");
+        grid->addWidget(lockLbl, 0, 2);
+
+        vbox->addWidget(group);
+    }
+
+    // General RX settings
+    {
+        auto* grid = new QGridLayout;
+        grid->setSpacing(6);
+
+        auto addToggle = [&](int row, const QString& label, bool checked,
+                              const QString& cmd) {
+            auto* lbl = new QLabel(label);
+            lbl->setStyleSheet(kLabelStyle);
+            grid->addWidget(lbl, row, 0);
+            auto* btn = new QPushButton(checked ? "Enabled" : "Disabled");
+            btn->setCheckable(true);
+            btn->setChecked(checked);
+            btn->setStyleSheet(kTogStyle);
+            connect(btn, &QPushButton::toggled, this, [this, btn, cmd](bool on) {
+                btn->setText(on ? "Enabled" : "Disabled");
+                m_model->connection()->sendCommand(
+                    QString("%1=%2").arg(cmd).arg(on ? 1 : 0));
+            });
+            grid->addWidget(btn, row, 1);
+        };
+
+        addToggle(0, "Mute local audio when remote:", m_model->muteLocalWhenRemote(),
+                  "radio set mute_local_audio_when_remote");
+        addToggle(1, "Binaural audio:", m_model->binauralRx(),
+                  "radio set binaural_rx");
+
+        vbox->addLayout(grid);
+    }
+
+    vbox->addStretch(1);
+    return page;
+}
+QWidget* RadioSetupDialog::buildFiltersTab()
+{
+    auto* page = new QWidget;
+    auto* vbox = new QVBoxLayout(page);
+    vbox->setSpacing(8);
+
+    // Model header
+    {
+        auto* hdr = new QHBoxLayout;
+        hdr->addStretch(1);
+        auto* modelLbl = new QLabel(m_model->model());
+        modelLbl->setStyleSheet("QLabel { color: #00c8ff; font-size: 20px; font-weight: bold; }");
+        hdr->addWidget(modelLbl);
+        vbox->addLayout(hdr);
+    }
+
+    static const QString kAutoBtn =
+        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+        "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+        "padding: 3px 10px; }"
+        "QPushButton:checked { background: #0070c0; color: #ffffff; "
+        "border: 1px solid #0090e0; }";
+
+    static const QString kFilterSlider =
+        "QSlider::groove:horizontal { background: #1a2a3a; height: 6px; border-radius: 3px; }"
+        "QSlider::handle:horizontal { background: #c8d8e8; width: 14px; "
+        "margin: -5px 0; border-radius: 7px; }";
+
+    // Filter Options group
+    {
+        auto* group = new QGroupBox("Filter Options");
+        group->setStyleSheet(kGroupStyle);
+        auto* grid = new QGridLayout(group);
+        grid->setSpacing(8);
+
+        // Column headers
+        auto* lowLbl = new QLabel("Low Latency");
+        lowLbl->setStyleSheet(kLabelStyle);
+        lowLbl->setAlignment(Qt::AlignCenter);
+        grid->addWidget(lowLbl, 0, 1);
+        auto* sharpLbl = new QLabel("Sharp Filters");
+        sharpLbl->setStyleSheet(kLabelStyle);
+        sharpLbl->setAlignment(Qt::AlignCenter);
+        grid->addWidget(sharpLbl, 0, 2);
+
+        struct FilterRow {
+            const char* label;
+            const char* modeCmd;   // voice, cw, digital
+            int level;
+            bool autoOn;
+        };
+        FilterRow rows[] = {
+            {"Voice:",   "voice",   m_model->filterSharpnessVoice(),   m_model->filterSharpnessVoiceAuto()},
+            {"CW:",      "cw",      m_model->filterSharpnessCw(),      m_model->filterSharpnessCwAuto()},
+            {"Digital:", "digital", m_model->filterSharpnessDigital(), m_model->filterSharpnessDigitalAuto()},
+        };
+
+        for (int i = 0; i < 3; ++i) {
+            auto& r = rows[i];
+            int row = i + 1;
+
+            auto* lbl = new QLabel(r.label);
+            lbl->setStyleSheet(kLabelStyle);
+            grid->addWidget(lbl, row, 0);
+
+            auto* slider = new QSlider(Qt::Horizontal);
+            slider->setRange(0, 3);
+            slider->setValue(r.level);
+            slider->setStyleSheet(kFilterSlider);
+            slider->setEnabled(!r.autoOn);
+            grid->addWidget(slider, row, 1, 1, 2);
+
+            auto* autoBtn = new QPushButton("Auto");
+            autoBtn->setCheckable(true);
+            autoBtn->setChecked(r.autoOn);
+            autoBtn->setStyleSheet(kAutoBtn);
+            grid->addWidget(autoBtn, row, 3);
+
+            QString mode = QString::fromLatin1(r.modeCmd);
+            connect(slider, &QSlider::valueChanged, this, [this, mode](int v) {
+                m_model->connection()->sendCommand(
+                    QString("radio filter_sharpness %1 level=%2").arg(mode).arg(v));
+            });
+            connect(autoBtn, &QPushButton::toggled, this, [this, slider, mode](bool on) {
+                slider->setEnabled(!on);
+                m_model->connection()->sendCommand(
+                    QString("radio filter_sharpness %1 auto_level=%2").arg(mode).arg(on ? 1 : 0));
+            });
+        }
+
+        vbox->addWidget(group);
+    }
+
+    // Low Latency Digital checkbox
+    {
+        auto* group = new QGroupBox;
+        group->setStyleSheet(kGroupStyle);
+        auto* hb = new QHBoxLayout(group);
+
+        auto* chk = new QCheckBox("Use Low Latency Filters for Digital Modes");
+        chk->setChecked(m_model->lowLatencyDigital());
+        chk->setStyleSheet(
+            "QCheckBox { color: #c8d8e8; font-size: 12px; spacing: 8px; }"
+            "QCheckBox::indicator { width: 16px; height: 16px; "
+            "border: 2px solid #506070; border-radius: 3px; background: #0a0a18; }"
+            "QCheckBox::indicator:checked { background: #0070c0; border: 2px solid #00a0e0; }");
+        connect(chk, &QCheckBox::toggled, this, [this](bool on) {
+            m_model->connection()->sendCommand(
+                QString("radio set low_latency_digital_modes=%1").arg(on ? 1 : 0));
+        });
+        hb->addWidget(chk);
+
+        vbox->addWidget(group);
+    }
+
+    vbox->addStretch(1);
+    return page;
+}
+QWidget* RadioSetupDialog::buildXvtrTab()
+{
+    auto* page = new QWidget;
+    auto* vbox = new QVBoxLayout(page);
+    vbox->setSpacing(8);
+
+    // Model header
+    {
+        auto* hdr = new QHBoxLayout;
+        hdr->addStretch(1);
+        auto* modelLbl = new QLabel(m_model->model());
+        modelLbl->setStyleSheet("QLabel { color: #00c8ff; font-size: 20px; font-weight: bold; }");
+        hdr->addWidget(modelLbl);
+        vbox->addLayout(hdr);
+    }
+
+    // Sub-tabs: one per XVTR + a "+" tab to add new
+    auto* xvtrTabs = new QTabWidget;
+    xvtrTabs->setStyleSheet(
+        "QTabWidget::pane { border: 1px solid #304050; background: #0f0f1a; }"
+        "QTabBar::tab { background: #1a2a3a; color: #8aa8c0; "
+        "border: 1px solid #304050; padding: 3px 10px; margin-right: 2px; }"
+        "QTabBar::tab:selected { background: #0f0f1a; color: #c8d8e8; "
+        "border-bottom-color: #0f0f1a; }");
+
+    auto buildXvtrPage = [this, xvtrTabs](int idx, const RadioModel::XvtrInfo& x) {
+        auto* pg = new QWidget;
+        auto* grid = new QGridLayout(pg);
+        grid->setSpacing(6);
+
+        auto addField = [&](int row, int col, const QString& label, const QString& value,
+                             bool editable = true) -> QLineEdit* {
+            auto* lbl = new QLabel(label);
+            lbl->setStyleSheet(kLabelStyle);
+            grid->addWidget(lbl, row, col * 2);
+            auto* edit = new QLineEdit(value);
+            edit->setStyleSheet(kEditStyle);
+            edit->setFixedWidth(100);
+            edit->setReadOnly(!editable);
+            grid->addWidget(edit, row, col * 2 + 1);
+            return edit;
+        };
+
+        auto* nameEdit   = addField(0, 0, "Name:", x.name);
+        auto* validLbl   = new QLabel(x.isValid ? "Valid" : "Invalid");
+        validLbl->setStyleSheet(x.isValid
+            ? "QLabel { color: #00c040; font-size: 12px; font-weight: bold; }"
+            : "QLabel { color: #c04040; font-size: 12px; font-weight: bold; }");
+        grid->addWidget(validLbl, 0, 3);
+
+        auto* rfEdit     = addField(1, 0, "RF Freq (MHz):", QString::number(x.rfFreq, 'f', 3));
+        auto* ifEdit     = addField(1, 1, "IF Freq (MHz):", QString::number(x.ifFreq, 'f', 3));
+        auto* loEdit     = addField(2, 0, "LO Freq (MHz):", QString::number(x.rfFreq - x.ifFreq, 'f', 3), false);
+        auto* errEdit    = addField(2, 1, "LO Error (Hz):", QString::number(x.loError, 'f', 0));
+        auto* rxGainEdit = addField(3, 0, "RX Gain (dB):", QString::number(x.rxGain, 'f', 1));
+
+        // RX Only toggle
+        auto* rxOnlyLbl = new QLabel("RX Only:");
+        rxOnlyLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(rxOnlyLbl, 3, 2);
+        auto* rxOnlyBtn = new QPushButton(x.rxOnly ? "Enabled" : "Disabled");
+        rxOnlyBtn->setCheckable(true);
+        rxOnlyBtn->setChecked(x.rxOnly);
+        rxOnlyBtn->setStyleSheet(
+            "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+            "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+            "padding: 3px 10px; }"
+            "QPushButton:checked { background: #1a5030; color: #00e060; "
+            "border: 1px solid #20a040; }");
+        connect(rxOnlyBtn, &QPushButton::toggled, this, [this, rxOnlyBtn, idx](bool on) {
+            rxOnlyBtn->setText(on ? "Enabled" : "Disabled");
+            m_model->connection()->sendCommand(
+                QString("xvtr set %1 rx_only=%2").arg(idx).arg(on ? 1 : 0));
+        });
+        grid->addWidget(rxOnlyBtn, 3, 3);
+
+        auto* maxPwrEdit = addField(4, 0, "Max Power (dBm):", QString::number(x.maxPower, 'f', 1));
+
+        // Remove button
+        auto* removeBtn = new QPushButton("Remove");
+        removeBtn->setStyleSheet(
+            "QPushButton { background: #3a1a1a; border: 1px solid #504040; "
+            "border-radius: 3px; color: #ff6060; font-size: 11px; font-weight: bold; "
+            "padding: 4px 16px; }"
+            "QPushButton:hover { background: #502020; }");
+        connect(removeBtn, &QPushButton::clicked, pg, [this, idx, xvtrTabs, pg] {
+            m_model->connection()->sendCommand(QString("xvtr remove %1").arg(idx));
+            int tabIdx = xvtrTabs->indexOf(pg);
+            if (tabIdx >= 0) xvtrTabs->removeTab(tabIdx);
+        });
+        grid->addWidget(removeBtn, 4, 3);
+
+        // Wire editable fields
+        connect(nameEdit, &QLineEdit::editingFinished, this, [this, nameEdit, idx] {
+            m_model->connection()->sendCommand(
+                QString("xvtr set %1 name=%2").arg(idx).arg(nameEdit->text()));
+        });
+        auto updateLo = [rfEdit, ifEdit, loEdit] {
+            double rf = rfEdit->text().toDouble();
+            double ifF = ifEdit->text().toDouble();
+            loEdit->setText(QString::number(rf - ifF, 'f', 3));
+        };
+        connect(rfEdit, &QLineEdit::editingFinished, this, [this, rfEdit, idx, updateLo] {
+            m_model->connection()->sendCommand(
+                QString("xvtr set %1 rf_freq=%2").arg(idx).arg(rfEdit->text()));
+            updateLo();
+        });
+        connect(ifEdit, &QLineEdit::editingFinished, this, [this, ifEdit, idx, updateLo] {
+            m_model->connection()->sendCommand(
+                QString("xvtr set %1 if_freq=%2").arg(idx).arg(ifEdit->text()));
+            updateLo();
+        });
+        connect(errEdit, &QLineEdit::editingFinished, this, [this, errEdit, idx] {
+            m_model->connection()->sendCommand(
+                QString("xvtr set %1 lo_error=%2").arg(idx).arg(errEdit->text()));
+        });
+        connect(rxGainEdit, &QLineEdit::editingFinished, this, [this, rxGainEdit, idx] {
+            m_model->connection()->sendCommand(
+                QString("xvtr set %1 rx_gain=%2").arg(idx).arg(rxGainEdit->text()));
+        });
+        connect(maxPwrEdit, &QLineEdit::editingFinished, this, [this, maxPwrEdit, idx] {
+            m_model->connection()->sendCommand(
+                QString("xvtr set %1 max_power=%2").arg(idx).arg(maxPwrEdit->text()));
+        });
+
+        return pg;
+    };
+
+    // Add existing XVTR pages
+    const auto& xvtrs = m_model->xvtrList();
+    for (auto it = xvtrs.constBegin(); it != xvtrs.constEnd(); ++it) {
+        xvtrTabs->addTab(buildXvtrPage(it.key(), it.value()),
+                          it.value().name.isEmpty() ? QString::number(it.key()) : it.value().name);
+    }
+
+    // "+" tab to add new
+    auto* addPage = new QWidget;
+    auto* addVb = new QVBoxLayout(addPage);
+    auto* addBtn = new QPushButton("Create New Transverter");
+    addBtn->setStyleSheet(
+        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+        "border-radius: 3px; color: #c8d8e8; font-size: 12px; font-weight: bold; "
+        "padding: 8px 20px; }"
+        "QPushButton:hover { background: #203040; }");
+    connect(addBtn, &QPushButton::clicked, this, [this, xvtrTabs, buildXvtrPage] {
+        m_model->connection()->sendCommand("xvtr create",
+            [this, xvtrTabs, buildXvtrPage](int code, const QString& body) {
+                if (code != 0) return;
+                // Wait briefly for the radio's status update to arrive
+                QTimer::singleShot(300, this, [this, xvtrTabs, buildXvtrPage] {
+                    // Find the newest XVTR that doesn't have a tab yet
+                    const auto& xvtrs = m_model->xvtrList();
+                    for (auto it = xvtrs.constBegin(); it != xvtrs.constEnd(); ++it) {
+                        // Check if we already have a tab for this index
+                        bool found = false;
+                        for (int t = 0; t < xvtrTabs->count() - 1; ++t) {
+                            if (xvtrTabs->tabText(t) == it.value().name ||
+                                xvtrTabs->tabText(t) == QString::number(it.key()))
+                                found = true;
+                        }
+                        if (!found) {
+                            QString tabName = it.value().name.isEmpty()
+                                ? QString("New") : it.value().name;
+                            int insertIdx = xvtrTabs->count() - 1; // before "+"
+                            xvtrTabs->insertTab(insertIdx,
+                                buildXvtrPage(it.key(), it.value()), tabName);
+                            xvtrTabs->setCurrentIndex(insertIdx);
+                        }
+                    }
+                });
+            });
+    });
+    addVb->addWidget(addBtn, 0, Qt::AlignCenter);
+    addVb->addStretch(1);
+    xvtrTabs->addTab(addPage, "+");
+
+    vbox->addWidget(xvtrTabs);
+    return page;
+}
 
 } // namespace AetherSDR

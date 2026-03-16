@@ -74,6 +74,24 @@ public:
     QString gpsTime()      const { return m_gpsTime; }
     QString gpsSpeed()     const { return m_gpsSpeed; }
     QString gpsFreqError() const { return m_gpsFreqError; }
+
+    // Oscillator / RX settings
+    QString oscState()     const { return m_oscState; }
+    QString oscSetting()   const { return m_oscSetting; }
+    bool    oscLocked()    const { return m_oscLocked; }
+    bool    extPresent()   const { return m_extPresent; }
+    bool    gpsdoPresent() const { return m_gpsdoPresent; }
+    bool    tcxoPresent()  const { return m_tcxoPresent; }
+    bool    binauralRx()   const { return m_binauralRx; }
+    bool    muteLocalWhenRemote() const { return m_muteLocalWhenRemote; }
+    int     freqErrorPpb() const { return m_freqErrorPpb; }
+    int     filterSharpnessVoice()     const { return m_filterVoice; }
+    bool    filterSharpnessVoiceAuto() const { return m_filterVoiceAuto; }
+    int     filterSharpnessCw()        const { return m_filterCw; }
+    bool    filterSharpnessCwAuto()    const { return m_filterCwAuto; }
+    int     filterSharpnessDigital()   const { return m_filterDigital; }
+    bool    filterSharpnessDigitalAuto() const { return m_filterDigitalAuto; }
+    bool    lowLatencyDigital()        const { return m_lowLatencyDigital; }
     bool    hasStaticIp()     const { return m_hasStaticIp; }
     QString staticIp()        const { return m_staticIp; }
     QString staticNetmask()   const { return m_staticNetmask; }
@@ -178,6 +196,23 @@ private:
     QString     m_staticIp;
     QString     m_staticNetmask;
     QString     m_staticGateway;
+    // Oscillator state
+    QString     m_oscState;
+    QString     m_oscSetting{"auto"};
+    bool        m_oscLocked{false};
+    bool        m_extPresent{false};
+    bool        m_gpsdoPresent{false};
+    bool        m_tcxoPresent{false};
+    bool        m_binauralRx{false};
+    bool        m_muteLocalWhenRemote{false};
+    int         m_freqErrorPpb{0};
+    int         m_filterVoice{2};
+    bool        m_filterVoiceAuto{false};
+    int         m_filterCw{2};
+    bool        m_filterCwAuto{true};
+    int         m_filterDigital{2};
+    bool        m_filterDigitalAuto{true};
+    bool        m_lowLatencyDigital{true};
     bool        m_enforcePrivateIp{true};
     bool        m_remoteOnEnabled{false};
     bool        m_multiFlexEnabled{true};
@@ -223,6 +258,22 @@ private:
 
 public:
     const QMap<int, TxBandInfo>& txBandSettings() const { return m_txBandSettings; }
+
+    struct XvtrInfo {
+        int     index{0};
+        QString name;
+        double  rfFreq{0.0};
+        double  ifFreq{0.0};
+        double  loError{0.0};
+        double  rxGain{0.0};
+        double  maxPower{10.0};
+        bool    rxOnly{false};
+        bool    isValid{false};
+    };
+    const QMap<int, XvtrInfo>& xvtrList() const { return m_xvtrList; }
+
+private:
+    QMap<int, XvtrInfo> m_xvtrList;
 
 private:
     QList<SliceModel*> m_slices;
