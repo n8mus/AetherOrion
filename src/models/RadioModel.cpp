@@ -830,7 +830,9 @@ void RadioModel::handleGpsStatus(const QString& rawBody)
         else if (key == "altitude") m_gpsAltitude = value;
         else if (key == "lat")      m_gpsLat      = value;
         else if (key == "lon")      m_gpsLon      = value;
-        else if (key == "time")     m_gpsTime     = value;
+        else if (key == "time")       m_gpsTime     = value;
+        else if (key == "speed")      m_gpsSpeed    = value;
+        else if (key == "freq_error") m_gpsFreqError = value;
     }
 
     emit gpsStatusChanged(m_gpsStatus, m_gpsTracked, m_gpsVisible,

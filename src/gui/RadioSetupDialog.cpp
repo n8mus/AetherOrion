@@ -396,7 +396,66 @@ QWidget* RadioSetupDialog::buildNetworkTab()
     vbox->addStretch(1);
     return page;
 }
-QWidget* RadioSetupDialog::buildGpsTab()      { return placeholderTab("GPS"); }
+QWidget* RadioSetupDialog::buildGpsTab()
+{
+    auto* page = new QWidget;
+    auto* vbox = new QVBoxLayout(page);
+    vbox->setSpacing(8);
+
+    // Model header
+    {
+        auto* hdr = new QHBoxLayout;
+        hdr->addStretch(1);
+        auto* modelLbl = new QLabel(m_model->model());
+        modelLbl->setStyleSheet("QLabel { color: #00c8ff; font-size: 20px; font-weight: bold; }");
+        hdr->addWidget(modelLbl);
+        vbox->addLayout(hdr);
+    }
+
+    // GPS installed status
+    {
+        const bool installed = (m_model->gpsStatus() != "Not Present"
+                                && !m_model->gpsStatus().isEmpty());
+        auto* statusLbl = new QLabel(installed ? "GPS is installed" : "GPS is not installed");
+        statusLbl->setStyleSheet(installed
+            ? "QLabel { color: #00c040; font-size: 16px; font-weight: bold; }"
+            : "QLabel { color: #c04040; font-size: 16px; font-weight: bold; }");
+        statusLbl->setAlignment(Qt::AlignCenter);
+        vbox->addWidget(statusLbl);
+        vbox->addSpacing(16);
+    }
+
+    // GPS data grid
+    {
+        auto* grid = new QGridLayout;
+        grid->setSpacing(8);
+
+        auto addField = [&](int row, int col, const QString& label, const QString& value) {
+            auto* lbl = new QLabel(label);
+            lbl->setStyleSheet(kLabelStyle);
+            grid->addWidget(lbl, row, col * 2);
+            auto* val = new QLabel(value);
+            val->setStyleSheet(kValueStyle);
+            grid->addWidget(val, row, col * 2 + 1);
+        };
+
+        addField(0, 0, "Latitude:",     m_model->gpsLat());
+        addField(0, 1, "Longitude:",    m_model->gpsLon());
+        addField(1, 0, "Grid Square:",  m_model->gpsGrid());
+        addField(1, 1, "Altitude:",     m_model->gpsAltitude());
+        addField(2, 0, "Sat Tracked:",  QString::number(m_model->gpsTracked()));
+        addField(2, 1, "Sat Visible:",  QString::number(m_model->gpsVisible()));
+        addField(3, 0, "Speed:",        m_model->gpsSpeed());
+        addField(3, 1, "Freq Error:",   m_model->gpsFreqError());
+        addField(4, 0, "Status:",       m_model->gpsStatus());
+        addField(4, 1, "UTC Time:",     m_model->gpsTime());
+
+        vbox->addLayout(grid);
+    }
+
+    vbox->addStretch(1);
+    return page;
+}
 QWidget* RadioSetupDialog::buildTxTab()       { return placeholderTab("TX"); }
 QWidget* RadioSetupDialog::buildPhoneCwTab()  { return placeholderTab("Phone/CW"); }
 QWidget* RadioSetupDialog::buildRxTab()       { return placeholderTab("RX"); }

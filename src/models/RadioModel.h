@@ -62,6 +62,18 @@ public:
     QString gateway()     const { return m_gateway; }
     QString mac()         const { return m_mac; }
     bool    enforcePrivateIp() const { return m_enforcePrivateIp; }
+
+    // GPS data
+    QString gpsStatus()    const { return m_gpsStatus; }
+    int     gpsTracked()   const { return m_gpsTracked; }
+    int     gpsVisible()   const { return m_gpsVisible; }
+    QString gpsGrid()      const { return m_gpsGrid; }
+    QString gpsAltitude()  const { return m_gpsAltitude; }
+    QString gpsLat()       const { return m_gpsLat; }
+    QString gpsLon()       const { return m_gpsLon; }
+    QString gpsTime()      const { return m_gpsTime; }
+    QString gpsSpeed()     const { return m_gpsSpeed; }
+    QString gpsFreqError() const { return m_gpsFreqError; }
     bool    hasStaticIp()     const { return m_hasStaticIp; }
     QString staticIp()        const { return m_staticIp; }
     QString staticNetmask()   const { return m_staticNetmask; }
@@ -189,6 +201,8 @@ private:
     QString m_gpsLat;
     QString m_gpsLon;
     QString m_gpsTime;
+    QString m_gpsSpeed;
+    QString m_gpsFreqError;
 
     QList<SliceModel*> m_slices;
     QSet<int>          m_ownedSliceIds;   // slice IDs that belong to our client
