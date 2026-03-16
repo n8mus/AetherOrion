@@ -59,6 +59,9 @@ public:
     int     voxLevel()      const { return m_voxLevel; }
     int     voxDelay()      const { return m_voxDelay; }
     bool    micBoost()      const { return m_micBoost; }
+    bool    micBias()       const { return m_micBias; }
+    bool    metInRx()       const { return m_metInRx; }
+    bool    syncCwx()       const { return m_syncCwx; }
     int     amCarrierLevel() const { return m_amCarrierLevel; }
     bool    dexpOn()         const { return m_dexpOn; }
     int     dexpLevel()      const { return m_dexpLevel; }
@@ -210,6 +213,9 @@ private:
     int  m_voxLevel{50};
     int  m_voxDelay{50};      // raw 0–100, actual ms = value × 20
     bool m_micBoost{false};
+    bool m_micBias{false};
+    bool m_metInRx{false};
+    bool m_syncCwx{true};
     int  m_amCarrierLevel{48};  // 0–100
     bool m_dexpOn{false};       // downward expander (noise gate)
     int  m_dexpLevel{0};        // noise gate level (0–100)

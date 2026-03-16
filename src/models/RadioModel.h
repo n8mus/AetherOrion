@@ -204,6 +204,27 @@ private:
     QString m_gpsSpeed;
     QString m_gpsFreqError;
 
+    // Per-band TX settings (from "transmit band" and "interlock band" status)
+    struct TxBandInfo {
+        int     bandId{0};
+        QString bandName;
+        int     rfPower{100};
+        int     tunePower{10};
+        bool    inhibit{false};
+        bool    hwAlc{false};
+        bool    accTxReq{false};
+        bool    rcaTxReq{false};
+        bool    accTx{false};
+        bool    tx1{false};
+        bool    tx2{false};
+        bool    tx3{false};
+    };
+    QMap<int, TxBandInfo> m_txBandSettings;
+
+public:
+    const QMap<int, TxBandInfo>& txBandSettings() const { return m_txBandSettings; }
+
+private:
     QList<SliceModel*> m_slices;
     QSet<int>          m_ownedSliceIds;   // slice IDs that belong to our client
 

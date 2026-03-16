@@ -631,6 +631,42 @@ void RadioModel::onStatusReceived(const QString& object,
         return;
     }
 
+    // Per-band TX settings: "transmit band 9 band_name=20 rfpower=100 ..."
+    static const QRegularExpression txBandRe(R"(^transmit band\s+(\d+)$)");
+    if (object.startsWith("transmit band")) {
+        const auto m = txBandRe.match(object);
+        if (m.hasMatch()) {
+            int id = m.captured(1).toInt();
+            auto& b = m_txBandSettings[id];
+            b.bandId = id;
+            if (kvs.contains("band_name"))    b.bandName  = kvs["band_name"];
+            if (kvs.contains("rfpower"))      b.rfPower   = kvs["rfpower"].toInt();
+            if (kvs.contains("tunepower"))    b.tunePower = kvs["tunepower"].toInt();
+            if (kvs.contains("inhibit"))      b.inhibit   = kvs["inhibit"] == "1";
+            if (kvs.contains("hwalc_enabled"))b.hwAlc     = kvs["hwalc_enabled"] == "1";
+        }
+        return;
+    }
+
+    // Per-band interlock: "interlock band 9 band_name=20 acc_txreq_enable=0 ..."
+    static const QRegularExpression ilBandRe(R"(^interlock band\s+(\d+)$)");
+    if (object.startsWith("interlock band")) {
+        const auto m = ilBandRe.match(object);
+        if (m.hasMatch()) {
+            int id = m.captured(1).toInt();
+            auto& b = m_txBandSettings[id];
+            b.bandId = id;
+            if (kvs.contains("band_name"))       b.bandName = kvs["band_name"];
+            if (kvs.contains("acc_txreq_enable"))b.accTxReq = kvs["acc_txreq_enable"] == "1";
+            if (kvs.contains("rca_txreq_enable"))b.rcaTxReq = kvs["rca_txreq_enable"] == "1";
+            if (kvs.contains("acc_tx_enabled"))  b.accTx    = kvs["acc_tx_enabled"] == "1";
+            if (kvs.contains("tx1_enabled"))     b.tx1      = kvs["tx1_enabled"] == "1";
+            if (kvs.contains("tx2_enabled"))     b.tx2      = kvs["tx2_enabled"] == "1";
+            if (kvs.contains("tx3_enabled"))     b.tx3      = kvs["tx3_enabled"] == "1";
+        }
+        return;
+    }
+
     // Interlock status: "interlock state=TRANSMITTING ..."
     if (object == "interlock") {
         if (kvs.contains("state")) {

@@ -12,6 +12,9 @@
 #include <QSlider>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QCheckBox>
+#include <QMediaDevices>
+#include <QAudioDevice>
 
 namespace AetherSDR {
 
@@ -509,6 +512,133 @@ QWidget* RadioSetupDialog::buildTxTab()
 
         addTimingField(3, 0, "RCA TX3:", tx->tx3Delay());
 
+        // TX Band Settings button
+        auto* bandSetBtn = new QPushButton("TX Band Settings");
+        bandSetBtn->setStyleSheet(
+            "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+            "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+            "padding: 4px 12px; }"
+            "QPushButton:hover { background: #203040; }");
+        connect(bandSetBtn, &QPushButton::clicked, this, [this] {
+            // Build TX Band Settings popup
+            auto* dlg = new QDialog(this);
+            dlg->setWindowTitle(QString("TX Band Settings (Current TX Profile: %1)")
+                .arg(m_model->transmitModel()->activeProfile()));
+            dlg->setMinimumSize(700, 450);
+            dlg->setStyleSheet("QDialog { background: #0f0f1a; }");
+            dlg->setAttribute(Qt::WA_DeleteOnClose);
+
+            auto* vb = new QVBoxLayout(dlg);
+
+            // Table header
+            auto* headerGrid = new QGridLayout;
+            headerGrid->setSpacing(1);
+            const QStringList headers = {"Band", "RF PWR(%)", "Tune PWR(%)", "PTT Inhibit",
+                                          "ACC TX", "RCA TX Req", "ACC TX Req",
+                                          "RCA TX1", "RCA TX2", "RCA TX3", "HWALC"};
+            for (int c = 0; c < headers.size(); ++c) {
+                auto* lbl = new QLabel(headers[c]);
+                lbl->setStyleSheet("QLabel { color: #8aa8c0; font-size: 10px; "
+                                    "font-weight: bold; background: #1a2a3a; "
+                                    "border: 1px solid #304050; padding: 2px 4px; }");
+                lbl->setAlignment(Qt::AlignCenter);
+                headerGrid->addWidget(lbl, 0, c);
+            }
+
+            // Data rows — sorted by band order
+            const auto& bands = m_model->txBandSettings();
+            QList<int> sortedIds = bands.keys();
+            std::sort(sortedIds.begin(), sortedIds.end());
+
+            int row = 1;
+            for (int id : sortedIds) {
+                const auto& b = bands[id];
+                int col = 0;
+
+                // Band name
+                auto* nameLbl = new QLabel(b.bandName);
+                nameLbl->setStyleSheet("QLabel { color: #c8d8e8; font-size: 11px; "
+                                        "font-weight: bold; background: #0f0f1a; "
+                                        "border: 1px solid #203040; padding: 2px 4px; }");
+                headerGrid->addWidget(nameLbl, row, col++);
+
+                // RF Power
+                auto* rfEdit = new QLineEdit(QString::number(b.rfPower));
+                rfEdit->setStyleSheet(kEditStyle);
+                rfEdit->setFixedWidth(50);
+                rfEdit->setAlignment(Qt::AlignCenter);
+                int bandId = id;
+                connect(rfEdit, &QLineEdit::editingFinished, dlg, [this, rfEdit, bandId] {
+                    m_model->connection()->sendCommand(
+                        QString("transmit bandset %1 rfpower=%2").arg(bandId).arg(rfEdit->text()));
+                });
+                headerGrid->addWidget(rfEdit, row, col++);
+
+                // Tune Power
+                auto* tuneEdit = new QLineEdit(QString::number(b.tunePower));
+                tuneEdit->setStyleSheet(kEditStyle);
+                tuneEdit->setFixedWidth(50);
+                tuneEdit->setAlignment(Qt::AlignCenter);
+                connect(tuneEdit, &QLineEdit::editingFinished, dlg, [this, tuneEdit, bandId] {
+                    m_model->connection()->sendCommand(
+                        QString("transmit bandset %1 tunepower=%2").arg(bandId).arg(tuneEdit->text()));
+                });
+                headerGrid->addWidget(tuneEdit, row, col++);
+
+                // Checkboxes: PTT Inhibit, ACC TX, RCA TX Req, ACC TX Req, TX1, TX2, TX3, HWALC
+                struct CbDef { bool val; const char* txCmd; const char* ilCmd; };
+                CbDef cbs[] = {
+                    {b.inhibit, "inhibit", nullptr},
+                    {b.accTx,   nullptr, "acc_tx_enabled"},
+                    {b.rcaTxReq,nullptr, "rca_txreq_enable"},
+                    {b.accTxReq,nullptr, "acc_txreq_enable"},
+                    {b.tx1,     nullptr, "tx1_enabled"},
+                    {b.tx2,     nullptr, "tx2_enabled"},
+                    {b.tx3,     nullptr, "tx3_enabled"},
+                    {b.hwAlc,   "hwalc_enabled", nullptr},
+                };
+
+                for (const auto& cb : cbs) {
+                    auto* chk = new QCheckBox;
+                    chk->setChecked(cb.val);
+                    chk->setStyleSheet(
+                        "QCheckBox { background: transparent; spacing: 0; }"
+                        "QCheckBox::indicator { width: 16px; height: 16px; "
+                        "border: 2px solid #506070; border-radius: 3px; background: #0a0a18; }"
+                        "QCheckBox::indicator:checked { background: #0070c0; "
+                        "border: 2px solid #00a0e0; }");
+                    auto cmdKey = cb.txCmd ? QString(cb.txCmd) : QString(cb.ilCmd);
+                    auto prefix = cb.txCmd ? QString("transmit") : QString("interlock");
+                    connect(chk, &QCheckBox::toggled, dlg, [this, bandId, prefix, cmdKey](bool on) {
+                        m_model->connection()->sendCommand(
+                            QString("%1 bandset %2 %3=%4").arg(prefix).arg(bandId).arg(cmdKey).arg(on ? 1 : 0));
+                    });
+                    auto* container = new QWidget;
+                    auto* hb = new QHBoxLayout(container);
+                    hb->setContentsMargins(0, 0, 0, 0);
+                    hb->setAlignment(Qt::AlignCenter);
+                    hb->addWidget(chk);
+                    headerGrid->addWidget(container, row, col++);
+                }
+
+                ++row;
+            }
+
+            vb->addLayout(headerGrid);
+            vb->addStretch(1);
+
+            auto* closeBtn = new QPushButton("Close");
+            closeBtn->setStyleSheet(
+                "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+                "border-radius: 3px; color: #c8d8e8; padding: 4px 16px; }"
+                "QPushButton:hover { background: #203040; }");
+            connect(closeBtn, &QPushButton::clicked, dlg, &QDialog::close);
+            vb->addWidget(closeBtn, 0, Qt::AlignRight);
+
+            dlg->show();
+        });
+        grid->addWidget(bandSetBtn, 3, 2, 1, 2);
+
         for (auto* lbl : group->findChildren<QLabel*>())
             if (lbl->styleSheet().isEmpty()) lbl->setStyleSheet(kLabelStyle);
 
@@ -607,7 +737,192 @@ QWidget* RadioSetupDialog::buildTxTab()
     vbox->addStretch(1);
     return page;
 }
-QWidget* RadioSetupDialog::buildPhoneCwTab()  { return placeholderTab("Phone/CW"); }
+QWidget* RadioSetupDialog::buildPhoneCwTab()
+{
+    auto* tx = m_model->transmitModel();
+    auto* page = new QWidget;
+    auto* vbox = new QVBoxLayout(page);
+    vbox->setSpacing(8);
+
+    // Model header
+    {
+        auto* hdr = new QHBoxLayout;
+        hdr->addStretch(1);
+        auto* modelLbl = new QLabel(m_model->model());
+        modelLbl->setStyleSheet("QLabel { color: #00c8ff; font-size: 20px; font-weight: bold; }");
+        hdr->addWidget(modelLbl);
+        vbox->addLayout(hdr);
+    }
+
+    static const QString kTogBtnStyle =
+        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+        "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+        "padding: 3px 10px; }"
+        "QPushButton:checked { background: #0070c0; color: #ffffff; "
+        "border: 1px solid #0090e0; }";
+
+    auto mkTogBtn = [&](const QString& text, bool checked) {
+        auto* btn = new QPushButton(text);
+        btn->setCheckable(true);
+        btn->setChecked(checked);
+        btn->setStyleSheet(kTogBtnStyle);
+        return btn;
+    };
+
+    // Microphone group
+    {
+        auto* group = new QGroupBox("Microphone");
+        group->setStyleSheet(kGroupStyle);
+        auto* gvb = new QVBoxLayout(group);
+        gvb->setSpacing(4);
+
+        // BIAS / +20dB row
+        auto* row1 = new QHBoxLayout;
+        row1->setSpacing(4);
+        auto* biasBtn = mkTogBtn("BIAS", tx->micBias());
+        connect(biasBtn, &QPushButton::toggled, this, [this](bool on) {
+            m_model->connection()->sendCommand(QString("mic bias %1").arg(on ? 1 : 0));
+        });
+        row1->addWidget(biasBtn);
+        auto* boostBtn = mkTogBtn("+20dB", tx->micBoost());
+        connect(boostBtn, &QPushButton::toggled, this, [this](bool on) {
+            m_model->connection()->sendCommand(QString("mic boost %1").arg(on ? 1 : 0));
+        });
+        row1->addWidget(boostBtn);
+        row1->addStretch(1);
+        gvb->addLayout(row1);
+
+        // Meter in RX
+        auto* row2 = new QHBoxLayout;
+        row2->setSpacing(4);
+        auto* metBtn = mkTogBtn("Enabled", tx->metInRx());
+        connect(metBtn, &QPushButton::toggled, this, [this, metBtn](bool on) {
+            metBtn->setText(on ? "Enabled" : "Disabled");
+            m_model->connection()->sendCommand(QString("transmit set met_in_rx=%1").arg(on ? 1 : 0));
+        });
+        row2->addWidget(metBtn);
+        auto* metLbl = new QLabel("Enable/Disable the Level Meter During Receive");
+        metLbl->setStyleSheet(kLabelStyle);
+        row2->addWidget(metLbl);
+        row2->addStretch(1);
+        gvb->addLayout(row2);
+
+        // PC Audio Input device selector
+        auto* row3 = new QHBoxLayout;
+        row3->setSpacing(4);
+        auto* pcLbl = new QLabel("PC Audio Input:");
+        pcLbl->setStyleSheet(kLabelStyle);
+        row3->addWidget(pcLbl);
+        auto* pcCmb = new QComboBox;
+        pcCmb->setStyleSheet(kEditStyle);
+        const auto devices = QMediaDevices::audioInputs();
+        for (const auto& dev : devices)
+            pcCmb->addItem(dev.description(), dev.id());
+        // Select current default
+        const auto defaultDev = QMediaDevices::defaultAudioInput();
+        int defIdx = pcCmb->findData(defaultDev.id());
+        if (defIdx >= 0) pcCmb->setCurrentIndex(defIdx);
+        row3->addWidget(pcCmb, 1);
+        gvb->addLayout(row3);
+
+        vbox->addWidget(group);
+    }
+
+    // CW group
+    {
+        auto* group = new QGroupBox("CW");
+        group->setStyleSheet(kGroupStyle);
+        auto* grid = new QGridLayout(group);
+        grid->setSpacing(6);
+
+        // Iambic: Enabled | A | B
+        auto* iamLbl = new QLabel("Iambic:");
+        iamLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(iamLbl, 0, 0);
+        auto* iamBtn = mkTogBtn("Enabled", tx->cwIambic());
+        connect(iamBtn, &QPushButton::toggled, this, [this, iamBtn](bool on) {
+            iamBtn->setText(on ? "Enabled" : "Disabled");
+            m_model->connection()->sendCommand(QString("cw iambic %1").arg(on ? 1 : 0));
+        });
+        grid->addWidget(iamBtn, 0, 1);
+        auto* modeA = mkTogBtn("A", tx->cwIambicMode() == 0);
+        auto* modeB = mkTogBtn("B", tx->cwIambicMode() == 1);
+        connect(modeA, &QPushButton::clicked, this, [this, modeA, modeB] {
+            modeA->setChecked(true); modeB->setChecked(false);
+            m_model->connection()->sendCommand("cw mode 0");
+        });
+        connect(modeB, &QPushButton::clicked, this, [this, modeA, modeB] {
+            modeA->setChecked(false); modeB->setChecked(true);
+            m_model->connection()->sendCommand("cw mode 1");
+        });
+        grid->addWidget(modeA, 0, 2);
+        grid->addWidget(modeB, 0, 3);
+
+        // Swap: Dot/Dash button
+        auto* swapLbl = new QLabel("Swap:");
+        swapLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(swapLbl, 0, 4);
+        auto* swapBtn = mkTogBtn("Dot/Dash", tx->cwSwapPaddles());
+        connect(swapBtn, &QPushButton::toggled, this, [this](bool on) {
+            m_model->connection()->sendCommand(QString("cw swap %1").arg(on ? 1 : 0));
+        });
+        grid->addWidget(swapBtn, 0, 5);
+
+        // Sideband: CWU | CWL
+        auto* sbLbl = new QLabel("Sideband:");
+        sbLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(sbLbl, 1, 0);
+        auto* cwuBtn = mkTogBtn("CWU", !tx->cwlEnabled());
+        auto* cwlBtn = mkTogBtn("CWL", tx->cwlEnabled());
+        connect(cwuBtn, &QPushButton::clicked, this, [this, cwuBtn, cwlBtn] {
+            cwuBtn->setChecked(true); cwlBtn->setChecked(false);
+            m_model->connection()->sendCommand("cw cwl_enabled 0");
+        });
+        connect(cwlBtn, &QPushButton::clicked, this, [this, cwuBtn, cwlBtn] {
+            cwuBtn->setChecked(false); cwlBtn->setChecked(true);
+            m_model->connection()->sendCommand("cw cwl_enabled 1");
+        });
+        grid->addWidget(cwuBtn, 1, 1);
+        grid->addWidget(cwlBtn, 1, 2);
+
+        // CWX: Sync
+        auto* cwxLbl = new QLabel("CWX:");
+        cwxLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(cwxLbl, 1, 4);
+        auto* syncBtn = mkTogBtn("Sync", tx->syncCwx());
+        connect(syncBtn, &QPushButton::toggled, this, [this](bool on) {
+            m_model->connection()->sendCommand(QString("cw synccwx %1").arg(on ? 1 : 0));
+        });
+        grid->addWidget(syncBtn, 1, 5);
+
+        vbox->addWidget(group);
+    }
+
+    // Digital group
+    {
+        auto* group = new QGroupBox("Digital");
+        group->setStyleSheet(kGroupStyle);
+        auto* grid = new QGridLayout(group);
+        grid->setSpacing(6);
+
+        auto* markLbl = new QLabel("RTTY Mark Default:");
+        markLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(markLbl, 0, 0);
+        auto* markEdit = new QLineEdit("2125");
+        markEdit->setStyleSheet(kEditStyle);
+        markEdit->setFixedWidth(60);
+        connect(markEdit, &QLineEdit::editingFinished, this, [this, markEdit] {
+            m_model->connection()->sendCommand(
+                "radio set rtty_mark_default=" + markEdit->text());
+        });
+        grid->addWidget(markEdit, 0, 1);
+
+        vbox->addWidget(group);
+    }
+
+    vbox->addStretch(1);
+    return page;
+}
 QWidget* RadioSetupDialog::buildRxTab()       { return placeholderTab("RX"); }
 QWidget* RadioSetupDialog::buildFiltersTab()  { return placeholderTab("Filters"); }
 QWidget* RadioSetupDialog::buildXvtrTab()     { return placeholderTab("XVTR"); }

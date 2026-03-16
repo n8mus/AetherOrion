@@ -90,6 +90,18 @@ void TransmitModel::applyTransmitStatus(const QMap<QString, QString>& kvs)
         bool v = kvs["mic_boost"] == "1";
         if (m_micBoost != v) { m_micBoost = v; phoneChanged = true; }
     }
+    if (kvs.contains("mic_bias")) {
+        bool v = kvs["mic_bias"] == "1";
+        if (m_micBias != v) { m_micBias = v; phoneChanged = true; }
+    }
+    if (kvs.contains("met_in_rx")) {
+        bool v = kvs["met_in_rx"] == "1";
+        if (m_metInRx != v) { m_metInRx = v; changed = true; }
+    }
+    if (kvs.contains("synccwx")) {
+        bool v = kvs["synccwx"] == "1";
+        if (m_syncCwx != v) { m_syncCwx = v; phoneChanged = true; }
+    }
     if (kvs.contains("am_carrier_level")) {
         int v = qBound(0, kvs["am_carrier_level"].toInt(), 100);
         if (m_amCarrierLevel != v) { m_amCarrierLevel = v; phoneChanged = true; }
