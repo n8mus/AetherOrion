@@ -1,4 +1,5 @@
 #include "TxApplet.h"
+#include "ComboStyle.h"
 #include "HGauge.h"
 #include "models/TransmitModel.h"
 
@@ -142,12 +143,7 @@ void TxApplet::buildUI()
         row->setSpacing(4);
 
         m_profileCombo = new QComboBox;
-        m_profileCombo->setStyleSheet(
-            "QComboBox { background: #1a2a3a; border: 1px solid #203040; "
-            "border-radius: 3px; padding: 1px 1px; font-size: 10px; color: #c8d8e8; }"
-            "QComboBox::drop-down { border: none; width: 12px; }"
-            "QComboBox QAbstractItemView { background: #111120; color: #c8d8e8; "
-            "selection-background-color: #00b4d8; selection-color: #000; }");
+        AetherSDR::applyComboStyle(m_profileCombo);
         m_profileCombo->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         row->addWidget(m_profileCombo, 1);  // 1 out of 2 = 50%
 

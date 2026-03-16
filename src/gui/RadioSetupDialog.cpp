@@ -1,4 +1,5 @@
 #include "RadioSetupDialog.h"
+#include "ComboStyle.h"
 #include "models/RadioModel.h"
 
 #include <QTabWidget>
@@ -493,7 +494,7 @@ QWidget* RadioSetupDialog::buildTxTab()
         auto* profCmb = new QComboBox;
         profCmb->addItems(tx->profileList());
         profCmb->setCurrentText(tx->activeProfile());
-        profCmb->setStyleSheet(kEditStyle);
+        AetherSDR::applyComboStyle(profCmb);
         grid->addWidget(profCmb, 2, 2, 1, 2);
         connect(profCmb, &QComboBox::currentTextChanged, this, [this](const QString& name) {
             m_model->transmitModel()->loadProfile(name);
@@ -647,7 +648,7 @@ QWidget* RadioSetupDialog::buildTxTab()
         auto* rcaCmb = new QComboBox;
         rcaCmb->addItems({"Active Low", "Active High"});
         rcaCmb->setCurrentIndex(tx->rcaTxReqPolarity());
-        rcaCmb->setStyleSheet(kEditStyle);
+        AetherSDR::applyComboStyle(rcaCmb);
         grid->addWidget(rcaCmb, 0, 1);
 
         auto* accLbl = new QLabel("Accessory:");
@@ -656,7 +657,7 @@ QWidget* RadioSetupDialog::buildTxTab()
         auto* accCmb = new QComboBox;
         accCmb->addItems({"Active Low", "Active High"});
         accCmb->setCurrentIndex(tx->accTxReqPolarity());
-        accCmb->setStyleSheet(kEditStyle);
+        AetherSDR::applyComboStyle(accCmb);
         grid->addWidget(accCmb, 0, 3);
 
         vbox->addWidget(group);
@@ -694,7 +695,7 @@ QWidget* RadioSetupDialog::buildTxTab()
         auto* tmCmb = new QComboBox;
         tmCmb->addItems({"Single Tone", "Two Tone"});
         tmCmb->setCurrentText(tx->tuneMode() == "single_tone" ? "Single Tone" : "Two Tone");
-        tmCmb->setStyleSheet(kEditStyle);
+        AetherSDR::applyComboStyle(tmCmb);
         connect(tmCmb, &QComboBox::currentTextChanged, this, [this](const QString& text) {
             QString mode = (text == "Single Tone") ? "single_tone" : "two_tone";
             m_model->connection()->sendCommand("transmit set tune_mode=" + mode);
@@ -803,7 +804,7 @@ QWidget* RadioSetupDialog::buildPhoneCwTab()
         pcLbl->setStyleSheet(kLabelStyle);
         row3->addWidget(pcLbl);
         auto* pcCmb = new QComboBox;
-        pcCmb->setStyleSheet(kEditStyle);
+        AetherSDR::applyComboStyle(pcCmb);
         const auto devices = QMediaDevices::audioInputs();
         for (const auto& dev : devices)
             pcCmb->addItem(dev.description(), dev.id());
@@ -985,7 +986,7 @@ QWidget* RadioSetupDialog::buildRxTab()
         grid->addWidget(srcLbl, 0, 0);
 
         auto* srcCmb = new QComboBox;
-        srcCmb->setStyleSheet(kEditStyle);
+        AetherSDR::applyComboStyle(srcCmb);
         srcCmb->addItem("Auto", "auto");
         if (m_model->tcxoPresent())  srcCmb->addItem("TCXO", "tcxo");
         if (m_model->gpsdoPresent()) srcCmb->addItem("GPSDO", "gpsdo");

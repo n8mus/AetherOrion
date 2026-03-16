@@ -155,18 +155,33 @@ QLabel {
 
 ### Combo Boxes
 
+All combo boxes **must** use the shared style from `src/gui/ComboStyle.h`:
+
+```cpp
+#include "ComboStyle.h"
+
+auto* combo = new QComboBox;
+AetherSDR::applyComboStyle(combo);
+```
+
+This applies the standard dark theme with a painted down-arrow triangle:
+
 ```css
 QComboBox {
     background: #1a2a3a;
-    border: 1px solid #205070;
-    border-radius: 3px;
     color: #c8d8e8;
-    font-size: 10px;
-    padding: 1px 4px;
+    border: 1px solid #304050;
+    padding: 2px 2px 2px 4px;
+    border-radius: 2px;
 }
 QComboBox::drop-down {
-    border-left: 1px solid #205070;
-    width: 18px;
+    border: none;
+    width: 14px;
+}
+QComboBox::down-arrow {
+    image: url(<generated arrow>);
+    width: 8px;
+    height: 6px;
 }
 QComboBox QAbstractItemView {
     background: #1a2a3a;
@@ -175,7 +190,13 @@ QComboBox QAbstractItemView {
 }
 ```
 
-Down-arrow is a dynamically generated 8x6px PNG in `#8aa8c0`.
+The down-arrow is a dynamically generated 8x6px PNG triangle in `#8aa8c0`,
+cached in the system temp directory. **Do not** define local `comboArrowPath()`
+functions or inline combo stylesheets — always use `applyComboStyle()`.
+
+> **Note:** Padding is intentionally compact (`2px 2px 2px 4px`) to fit text
+> in narrow combo boxes (e.g., AGC mode at 52px width). If text is clipped,
+> widen the combo rather than increasing global padding.
 
 ### HGauge (Horizontal Bar Gauge)
 

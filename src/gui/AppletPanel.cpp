@@ -1,4 +1,5 @@
 #include "AppletPanel.h"
+#include "ComboStyle.h"
 #include "RxApplet.h"
 #include "SMeterWidget.h"
 #include "TunerApplet.h"
@@ -75,12 +76,6 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     selectLayout->setContentsMargins(4, 2, 4, 2);
     selectLayout->setSpacing(6);
 
-    const QString comboStyle = QStringLiteral(
-        "QComboBox { background: #182028; color: #c8d8e8; border: 1px solid #304050;"
-        "  padding: 1px 4px; font-size: 11px; }"
-        "QComboBox::drop-down { border: none; }"
-        "QComboBox QAbstractItemView { background: #182028; color: #c8d8e8;"
-        "  selection-background-color: #00b4d8; }");
     const QString labelStyle = QStringLiteral(
         "color: #8090a0; font-size: 10px; font-weight: bold;");
 
@@ -90,7 +85,7 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     txLabel->setAlignment(Qt::AlignCenter);
     m_txSelect = new QComboBox(selectRow);
     m_txSelect->addItems({"Power", "SWR", "Level", "Compression"});
-    m_txSelect->setStyleSheet(comboStyle);
+    AetherSDR::applyComboStyle(m_txSelect);
 
     auto* txCol = new QVBoxLayout;
     txCol->setSpacing(1);
@@ -104,7 +99,7 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     m_rxSelect = new QComboBox(selectRow);
     m_rxSelect->addItems({"S-Meter", "S-Meter Peak"});
     m_rxSelect->setCurrentIndex(0);  // default to S-Meter
-    m_rxSelect->setStyleSheet(comboStyle);
+    AetherSDR::applyComboStyle(m_rxSelect);
 
     auto* rxCol = new QVBoxLayout;
     rxCol->setSpacing(1);

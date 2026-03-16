@@ -1,4 +1,5 @@
 #include "PhoneCwApplet.h"
+#include "ComboStyle.h"
 #include "HGauge.h"
 #include "models/TransmitModel.h"
 
@@ -104,38 +105,6 @@ static constexpr const char* kInsetValueStyle =
     "QLabel { font-size: 10px; background: #0a0a18; border: 1px solid #1e2e3e; "
     "border-radius: 3px; padding: 1px 2px; color: #c8d8e8; }";
 
-// Generate a small down-arrow PNG for combo boxes (Qt stylesheets need a file).
-static QString comboArrowPath()
-{
-    static QString path;
-    if (!path.isEmpty()) return path;
-
-    path = QDir::temp().filePath("aethersdr_combo_arrow.png");
-    QPixmap pm(8, 6);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0x8a, 0xa8, 0xc0));
-    const QPointF tri[] = {{0, 0}, {8, 0}, {4, 6}};
-    p.drawPolygon(tri, 3);
-    p.end();
-    pm.save(path, "PNG");
-    return path;
-}
-
-static QString comboStyleStr()
-{
-    return QString(
-        "QComboBox { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
-        "color: #c8d8e8; font-size: 10px; padding: 1px 4px; }"
-        "QComboBox::drop-down { border-left: 1px solid #205070; width: 18px;"
-        "subcontrol-origin: padding; subcontrol-position: center right; }"
-        "QComboBox::down-arrow { image: url(%1); width: 8px; height: 6px; }"
-        "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8;"
-        "selection-background-color: #00b4d8; }")
-        .arg(comboArrowPath());
-}
 
 // ── PhoneCwApplet ────────────────────────────────────────────────────────────
 
@@ -188,7 +157,7 @@ void PhoneCwApplet::buildPhonePanel()
     // ── Mic profile dropdown ─────────────────────────────────────────────
     m_micProfileCombo = new QComboBox;
     m_micProfileCombo->setFixedHeight(22);
-    m_micProfileCombo->setStyleSheet(comboStyleStr());
+    AetherSDR::applyComboStyle(m_micProfileCombo);
     connect(m_micProfileCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int) {
         if (!m_updatingFromModel && m_model) {
@@ -207,7 +176,7 @@ void PhoneCwApplet::buildPhonePanel()
         m_micSourceCombo = new QComboBox;
         m_micSourceCombo->setFixedWidth(55);
         m_micSourceCombo->setFixedHeight(22);
-        m_micSourceCombo->setStyleSheet(comboStyleStr());
+        AetherSDR::applyComboStyle(m_micSourceCombo);
         m_micSourceCombo->addItems({"MIC", "BAL", "LINE", "ACC", "PC"});
         connect(m_micSourceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, [this](int) {

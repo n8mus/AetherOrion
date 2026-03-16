@@ -1,4 +1,5 @@
 #include "RxApplet.h"
+#include "ComboStyle.h"
 #include "models/SliceModel.h"
 #include "models/TransmitModel.h"
 
@@ -121,13 +122,6 @@ static constexpr const char* kInsetValueStyle =
     "QLabel { font-size: 10px; background: #0a0a18; border: 1px solid #1e2e3e; "
     "border-radius: 3px; padding: 1px 2px; color: #c8d8e8; }";
 
-static constexpr const char* kComboStyle =
-    "QComboBox { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
-    "color: #c8d8e8; font-size: 10px; padding: 1px 4px; }"
-    "QComboBox::drop-down { border-left: 1px solid #205070; width: 16px; }"
-    "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8;"
-    "selection-background-color: #00b4d8; }";
-
 static const QString kBlueActive =
     "QPushButton:checked { background-color: #0070c0; color: #ffffff; "
     "border: 1px solid #0090e0; }";
@@ -140,25 +134,6 @@ static const QString kAmberActive =
     "QPushButton:checked { background-color: #604000; color: #ffb800; "
     "border: 1px solid #906000; }";
 
-// Generate a small down-arrow PNG for combo boxes (shared temp file).
-static QString comboArrowPath()
-{
-    static QString path;
-    if (!path.isEmpty()) return path;
-    path = QDir::temp().filePath("aethersdr_combo_arrow.png");
-    if (QFile::exists(path)) return path;
-    QPixmap pm(8, 6);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0x8a, 0xa8, 0xc0));
-    const QPointF tri[] = {{0, 0}, {8, 0}, {4, 6}};
-    p.drawPolygon(tri, 3);
-    p.end();
-    pm.save(path, "PNG");
-    return path;
-}
 
 // ── Per-mode filter widths and step sizes (from SmartSDR) ─────────────────────
 
@@ -390,15 +365,7 @@ void RxApplet::buildUI()
         m_modeCombo->setFixedHeight(20);
         m_modeCombo->addItems({"USB", "LSB", "CW", "AM", "SAM", "FM",
                                "NFM", "DFM", "DIGU", "DIGL", "RTTY"});
-        m_modeCombo->setStyleSheet(QString(
-            "QComboBox { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
-            " color: #c8d8e8; font-size: 10px; font-weight: bold;"
-            " padding: 0px 2px; margin: 0px; }"
-            "QComboBox::drop-down { border-left: 1px solid #205070; width: 14px;"
-            " subcontrol-origin: padding; subcontrol-position: center right; }"
-            "QComboBox::down-arrow { image: url(%1); width: 8px; height: 6px; }"
-            "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8;"
-            " selection-background-color: #00b4d8; }").arg(comboArrowPath()));
+        AetherSDR::applyComboStyle(m_modeCombo);
         m_modeCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
         connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, [this](int) {
@@ -492,7 +459,7 @@ void RxApplet::buildUI()
             m_toneModeCmb = new QComboBox;
             m_toneModeCmb->addItem("Off",      QString("off"));
             m_toneModeCmb->addItem("CTCSS TX", QString("ctcss_tx"));
-            m_toneModeCmb->setStyleSheet(kComboStyle);
+            AetherSDR::applyComboStyle(m_toneModeCmb);
             row->addWidget(m_toneModeCmb, 1);
             fmLayout->addLayout(row);
 
@@ -515,7 +482,7 @@ void RxApplet::buildUI()
                         .arg(t.frequency, 0, 'f', 1),
                     QString::number(t.frequency, 'f', 1));
             }
-            m_toneValueCmb->setStyleSheet(kComboStyle);
+            AetherSDR::applyComboStyle(m_toneValueCmb);
             m_toneValueCmb->setEnabled(false);  // enabled only when CTCSS TX
             fmLayout->addWidget(m_toneValueCmb);
 
@@ -816,14 +783,7 @@ void RxApplet::buildUI()
         m_agcCombo->addItem("Fast", QString("fast"));
         m_agcCombo->setCurrentIndex(2);
         m_agcCombo->setFixedWidth(52);
-        m_agcCombo->setStyleSheet(QString(
-            "QComboBox { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
-            " color: #c8d8e8; font-size: 10px; font-weight: bold; padding: 1px 4px; }"
-            "QComboBox::drop-down { border-left: 1px solid #205070; width: 16px;"
-            " subcontrol-origin: padding; subcontrol-position: center right; }"
-            "QComboBox::down-arrow { image: url(%1); width: 8px; height: 6px; }"
-            "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8;"
-            " selection-background-color: #00b4d8; }").arg(comboArrowPath()));
+        AetherSDR::applyComboStyle(m_agcCombo);
         connect(m_agcCombo, &QComboBox::currentIndexChanged, this, [this](int idx) {
             if (m_slice) m_slice->setAgcMode(m_agcCombo->itemData(idx).toString());
         });

@@ -1,4 +1,5 @@
 #include "SpectrumOverlayMenu.h"
+#include "ComboStyle.h"
 #include "models/SliceModel.h"
 #include "models/BandDefs.h"
 
@@ -28,15 +29,6 @@ static const QString kPanelStyle =
 static const QString kLabelStyle =
     "QLabel { background: transparent; border: none; "
     "color: #8aa8c0; font-size: 10px; font-weight: bold; }";
-
-static const QString kComboStyle =
-    "QComboBox { background: #1a2a3a; border: 1px solid #304050; "
-    "border-radius: 2px; color: #c8d8e8; font-size: 11px; "
-    "font-weight: bold; padding: 1px 4px; }"
-    "QComboBox::drop-down { border: none; }"
-    "QComboBox QAbstractItemView { background: #1a2a3a; "
-    "border: 1px solid #304050; color: #c8d8e8; "
-    "selection-background-color: #0070c0; }";
 
 static const QString kSliderStyle =
     "QSlider::groove:horizontal { background: #1a2a3a; height: 4px; "
@@ -223,7 +215,7 @@ void SpectrumOverlayMenu::buildAntPanel()
     antLabel->setFixedWidth(kLabelW);
     antRow->addWidget(antLabel);
     m_rxAntCmb = new QComboBox;
-    m_rxAntCmb->setStyleSheet(kComboStyle);
+    AetherSDR::applyComboStyle(m_rxAntCmb);
     antRow->addWidget(m_rxAntCmb, 1);
     vbox->addLayout(antRow);
 
@@ -565,14 +557,7 @@ void SpectrumOverlayMenu::buildDaxPanel()
     row->addWidget(lbl);
     m_daxCmb = new QComboBox;
     m_daxCmb->addItems({"Off", "1", "2", "3", "4"});
-    m_daxCmb->setStyleSheet(
-        "QComboBox { background: #1a2a3a; border: 1px solid #304050; "
-        "border-radius: 2px; color: #c8d8e8; font-size: 11px; "
-        "font-weight: bold; padding: 1px 4px; }"
-        "QComboBox::drop-down { border: none; }"
-        "QComboBox QAbstractItemView { background: #1a2a3a; "
-        "border: 1px solid #304050; color: #c8d8e8; "
-        "selection-background-color: #0070c0; }");
+    AetherSDR::applyComboStyle(m_daxCmb);
     row->addWidget(m_daxCmb, 1);
     vb->addLayout(row);
 

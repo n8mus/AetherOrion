@@ -1,4 +1,5 @@
 #include "VfoWidget.h"
+#include "ComboStyle.h"
 #include "models/SliceModel.h"
 #include "models/TransmitModel.h"
 
@@ -85,25 +86,6 @@ private:
     Dir m_dir;
 };
 
-// Generate a small down-arrow PNG for combo boxes (shared temp file).
-static QString comboArrowPath()
-{
-    static QString path;
-    if (!path.isEmpty()) return path;
-    path = QDir::temp().filePath("aethersdr_combo_arrow.png");
-    if (QFile::exists(path)) return path;
-    QPixmap pm(8, 6);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0x8a, 0xa8, 0xc0));
-    const QPointF tri[] = {{0, 0}, {8, 0}, {4, 6}};
-    p.drawPolygon(tri, 3);
-    p.end();
-    pm.save(path, "PNG");
-    return path;
-}
 
 namespace AetherSDR {
 
@@ -394,14 +376,7 @@ void VfoWidget::buildTabContent()
         m_agcCmb->setFixedHeight(20);
         m_agcCmb->setFixedWidth(60);
         m_sqlBtn->setFixedWidth(60);  // match AGC combo width
-        m_agcCmb->setStyleSheet(QString(
-            "QComboBox { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
-            " color: #c8d8e8; font-size: 10px; font-weight: bold; padding: 1px 4px; }"
-            "QComboBox::drop-down { border-left: 1px solid #205070; width: 16px;"
-            " subcontrol-origin: padding; subcontrol-position: center right; }"
-            "QComboBox::down-arrow { image: url(%1); width: 8px; height: 6px; }"
-            "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8;"
-            " selection-background-color: #00b4d8; }").arg(comboArrowPath()));
+        AetherSDR::applyComboStyle(m_agcCmb);
         agcRow->addWidget(m_agcCmb);
         m_agcTSlider = new QSlider(Qt::Horizontal);
         m_agcTSlider->setRange(0, 100);
@@ -635,12 +610,6 @@ void VfoWidget::buildTabContent()
 
         // FM OPT controls (hidden unless FM/NFM mode)
         {
-            static const QString kCmbStyle =
-                "QComboBox { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
-                " color: #c8d8e8; font-size: 10px; font-weight: bold; padding: 1px 4px; }"
-                "QComboBox::drop-down { border: none; }"
-                "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8;"
-                " selection-background-color: #00b4d8; }";
             static const QString kDirBtn =
                 "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px;"
                 " color: #c8d8e8; font-size: 11px; font-weight: bold; padding: 2px 4px; }"
@@ -663,7 +632,7 @@ void VfoWidget::buildTabContent()
             m_fmToneModeCmb = new QComboBox;
             m_fmToneModeCmb->addItem("Off", QString("off"));
             m_fmToneModeCmb->addItem("CTCSS TX", QString("ctcss_tx"));
-            m_fmToneModeCmb->setStyleSheet(kCmbStyle);
+            AetherSDR::applyComboStyle(m_fmToneModeCmb);
             toneRow->addWidget(m_fmToneModeCmb, 1);
 
             // Tone value — simplified list of common CTCSS tones
@@ -675,7 +644,7 @@ void VfoWidget::buildTabContent()
             for (double f : tones)
                 m_fmToneValueCmb->addItem(QString::number(f, 'f', 1),
                                            QString::number(f, 'f', 1));
-            m_fmToneValueCmb->setStyleSheet(kCmbStyle);
+            AetherSDR::applyComboStyle(m_fmToneValueCmb);
             m_fmToneValueCmb->setEnabled(false);
             toneRow->addWidget(m_fmToneValueCmb, 1);
             fvb->addLayout(toneRow);
@@ -801,15 +770,7 @@ void VfoWidget::buildTabContent()
         m_modeCombo->setFixedHeight(26);
         m_modeCombo->addItems({"USB", "LSB", "CW", "AM", "SAM", "FM",
                                 "NFM", "DFM", "DIGU", "DIGL", "RTTY"});
-        m_modeCombo->setStyleSheet(QString(
-            "QComboBox { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
-            " color: #c8d8e8; font-size: 10px; font-weight: bold;"
-            " padding: 0px 2px; margin: 0px; }"
-            "QComboBox::drop-down { border-left: 1px solid #205070; width: 14px;"
-            " subcontrol-origin: padding; subcontrol-position: center right; }"
-            "QComboBox::down-arrow { image: url(%1); width: 8px; height: 6px; }"
-            "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8;"
-            " selection-background-color: #00b4d8; }").arg(comboArrowPath()));
+        AetherSDR::applyComboStyle(m_modeCombo);
         m_modeCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
         connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, [this](int) {
@@ -980,12 +941,7 @@ void VfoWidget::buildTabContent()
         row->addWidget(lbl);
         m_daxCmb = new QComboBox;
         m_daxCmb->addItems({"Off", "1", "2", "3", "4"});
-        m_daxCmb->setStyleSheet(
-            "QComboBox { background: #1a2a3a; border: 1px solid #304050; "
-            "border-radius: 2px; color: #c8d8e8; font-size: 9px; padding: 1px 4px; }"
-            "QComboBox::drop-down { border: none; }"
-            "QComboBox QAbstractItemView { background: #1a2a3a; border: 1px solid #304050; "
-            "color: #c8d8e8; selection-background-color: #0070c0; }");
+        AetherSDR::applyComboStyle(m_daxCmb);
         row->addWidget(m_daxCmb, 1);
         vb->addLayout(row);
 
