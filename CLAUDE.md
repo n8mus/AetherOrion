@@ -30,7 +30,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf`
 
-Current version: **0.2.1** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.2.2** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -302,6 +302,54 @@ them with `slice get <id>` rather than creating new ones.
 
 ---
 
+## Multi-Client (Multi-Flex) Support
+
+When another client (SmartSDR, Maestro) is already connected to the radio,
+AetherSDR must operate as an independent Multi-Flex client. Key implementation
+details:
+
+### Problem
+The radio broadcasts ALL status messages to ALL connected clients via `sub xxx all`
+subscriptions. Without filtering, AetherSDR would:
+1. Process FFT/waterfall VITA-49 packets from the other client's panadapter
+   (different dBm scaling → all-red waterfall)
+2. Apply `display pan` status updates from the other client's panadapter
+   (zoom/scale changes replicated across clients)
+3. Track and control the other client's slices (tuning in sync)
+
+### Solution — Three-layer filtering by `client_handle`
+
+Each slice, panadapter, and waterfall carries a `client_handle` field that
+identifies which client owns it. However, `client_handle` is NOT present in
+every status update — it only appears in certain "full status" messages.
+
+**Layer 1 — Slice ownership (`handleSliceStatus`)**:
+- When `client_handle` appears, record the slice ID in `m_ownedSliceIds`
+- Reject slices owned by other clients; remove any SliceModel we already created
+- For subsequent updates without `client_handle`, check against `m_ownedSliceIds`
+
+**Layer 2 — Panadapter/waterfall status (`onStatusReceived`)**:
+- Only claim `display pan` / `display waterfall` objects matching our `client_handle`
+- Ignore status updates for other clients' panadapters
+
+**Layer 3 — VITA-49 UDP packet filtering (`PanadapterStream`)**:
+- `setOwnedStreamIds(panId, wfId)` sets accepted stream IDs
+- FFT packets (PCC 0x8003) and waterfall packets (PCC 0x8004) with non-matching
+  stream IDs are silently dropped
+
+### Timing Issue
+Early slice status messages arrive WITHOUT `client_handle`. AetherSDR creates
+SliceModels for all slices initially, then removes the other client's when
+`client_handle` is received. `MainWindow::onSliceRemoved()` re-wires the GUI
+to the remaining owned slice.
+
+### Slice Creation
+When `slice list` returns IDs but none belong to us (`m_slices.isEmpty()` after
+filtering), we call `createDefaultSlice()` to create our own independent slice
+and panadapter. The radio assigns these to our `client_handle`.
+
+---
+
 ## Known Quirks / Lessons Learned
 
 - `QMap<K,V>` needs `#include <QMap>` in headers — forward-declaration in
@@ -316,7 +364,7 @@ them with `slice get <id>` rather than creating new ones.
 
 ---
 
-## What's Implemented (v0.2.1)
+## What's Implemented (v0.2.2)
 
 - UDP radio discovery and TCP command/control
 - SmartSDR V/H/R/S/M protocol parsing

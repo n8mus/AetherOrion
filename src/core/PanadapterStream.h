@@ -45,6 +45,11 @@ public:
     // Called whenever the radio reports min_dbm / max_dbm for the panadapter.
     void setDbmRange(float minDbm, float maxDbm);
 
+    // Set the stream IDs we own (filter out other clients' FFT/waterfall data).
+    // panStreamId is the panadapter hex ID (e.g. 0x40000000).
+    void setOwnedStreamIds(quint32 panStreamId, quint32 wfStreamId);
+
+
 signals:
     void spectrumReady(const QVector<float>& binsDbm);
     // One row of waterfall data (dBm values, Width bins).
@@ -100,6 +105,8 @@ private:
         int  totalCount{0};
     };
 
+    quint32         m_ownedPanStreamId{0};
+    quint32         m_ownedWfStreamId{0};
     QUdpSocket      m_socket;
     quint16         m_localPort{0};
     float           m_minDbm{-130.0f};

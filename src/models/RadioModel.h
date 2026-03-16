@@ -12,6 +12,7 @@
 #include <QString>
 #include <QList>
 #include <QMap>
+#include <QSet>
 #include <QTimer>
 #include <QElapsedTimer>
 
@@ -112,6 +113,7 @@ private:
 
     void configurePan();
     void configureWaterfall();
+    void updateStreamFilters();
     void handleGpsStatus(const QString& rawBody);
 
     // Standalone mode: create a panadapter then attach a slice to it.
@@ -154,6 +156,7 @@ private:
     QString m_gpsTime;
 
     QList<SliceModel*> m_slices;
+    QSet<int>          m_ownedSliceIds;   // slice IDs that belong to our client
 
     RadioInfo m_lastInfo;               // stored for auto-reconnect
     bool      m_intentionalDisconnect{false};

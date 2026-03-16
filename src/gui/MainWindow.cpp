@@ -595,7 +595,17 @@ void MainWindow::onSliceAdded(SliceModel* s)
     });
 }
 
-void MainWindow::onSliceRemoved(int /*id*/) {}
+void MainWindow::onSliceRemoved(int id)
+{
+    qDebug() << "MainWindow: slice removed" << id;
+
+    // If we still have a slice, re-wire the GUI to it
+    if (auto* s = activeSlice()) {
+        qDebug() << "MainWindow: re-wiring GUI to slice" << s->sliceId();
+        // Re-run the same wiring as onSliceAdded for the remaining slice
+        onSliceAdded(s);
+    }
+}
 
 SliceModel* MainWindow::activeSlice() const
 {

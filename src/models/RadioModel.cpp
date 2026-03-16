@@ -195,10 +195,13 @@ void RadioModel::onConnected()
                         const QStringList ids = body.trimmed().split(' ', Qt::SkipEmptyParts);
                         qDebug() << "RadioModel: slice list ->" << (ids.isEmpty() ? "(empty)" : body);
 
-                        if (ids.isEmpty()) {
+                        if (ids.isEmpty() || m_slices.isEmpty()) {
+                            // No slices at all, or no slices belonging to us
+                            qDebug() << "RadioModel: creating own slice (total on radio:"
+                                     << ids.size() << ", ours:" << m_slices.size() << ")";
                             createDefaultSlice();
                         } else {
-                            qDebug() << "RadioModel: SmartConnect — keeping existing pan"
+                            qDebug() << "RadioModel: SmartConnect — using our pan"
                                      << m_panId << "and" << m_slices.size() << "slice(s)";
                         }
 
@@ -260,6 +263,7 @@ void RadioModel::onDisconnected()
     m_panStream.stop();
     m_panId.clear();
     m_waterfallId.clear();
+    m_ownedSliceIds.clear();
     m_panResized = false;
     m_wfConfigured = false;
     emit connectionStateChanged(false);
@@ -470,21 +474,58 @@ void RadioModel::onStatusReceived(const QString& object,
     // Meter status uses '#'-separated tokens and is handled by onMessageReceived().
 
     // "display pan 0x40000000 center=14.1 bandwidth=0.2 ..."
+    // Only process status for OUR panadapter (matching client_handle or first unclaimed).
     static const QRegularExpression panRe(R"(^display pan\s+(0x[0-9A-Fa-f]+)$)");
     if (object.startsWith("display pan")) {
         const auto m = panRe.match(object);
-        if (m.hasMatch() && m_panId.isEmpty())
-            m_panId = m.captured(1);
+        if (m.hasMatch()) {
+            const QString panId = m.captured(1);
+            if (m_panId.isEmpty()) {
+                // Claim this pan only if it belongs to us
+                if (kvs.contains("client_handle")) {
+                    quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
+                    if (owner == m_connection.clientHandle()) {
+                        m_panId = panId;
+                        updateStreamFilters();
+                        qDebug() << "RadioModel: claimed panadapter" << m_panId;
+                    } else {
+                        return;  // not our panadapter, ignore
+                    }
+                } else {
+                    m_panId = panId;  // no client_handle field, assume ours
+                }
+            } else if (panId != m_panId) {
+                return;  // not our panadapter, ignore
+            }
+        }
         handlePanadapterStatus(kvs);
         return;
     }
 
     // "display waterfall 0x42000000 auto_black=1 ..."
+    // Only process status for OUR waterfall (matching client_handle).
     static const QRegularExpression wfRe(R"(^display waterfall\s+(0x[0-9A-Fa-f]+)$)");
     if (object.startsWith("display waterfall")) {
         const auto m = wfRe.match(object);
-        if (m.hasMatch() && m_waterfallId.isEmpty())
-            m_waterfallId = m.captured(1);
+        if (m.hasMatch()) {
+            const QString wfId = m.captured(1);
+            if (m_waterfallId.isEmpty()) {
+                if (kvs.contains("client_handle")) {
+                    quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
+                    if (owner == m_connection.clientHandle()) {
+                        m_waterfallId = wfId;
+                        updateStreamFilters();
+                        qDebug() << "RadioModel: claimed waterfall" << m_waterfallId;
+                    } else {
+                        return;  // not our waterfall
+                    }
+                } else {
+                    m_waterfallId = wfId;
+                }
+            } else if (wfId != m_waterfallId) {
+                return;  // not our waterfall
+            }
+        }
         if (!m_wfConfigured && !m_waterfallId.isEmpty() && m_connection.isConnected()) {
             m_wfConfigured = true;
             configureWaterfall();
@@ -586,6 +627,32 @@ void RadioModel::handleSliceStatus(int id,
                                     const QMap<QString, QString>& kvs,
                                     bool removed)
 {
+    // Track slice ownership via client_handle (only present in some messages)
+    if (kvs.contains("client_handle")) {
+        quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
+        if (owner == m_connection.clientHandle()) {
+            m_ownedSliceIds.insert(id);
+            qDebug() << "RadioModel: slice" << id << "is ours (client_handle match)";
+        } else if (owner != 0) {
+            qDebug() << "RadioModel: slice" << id << "belongs to another client"
+                     << Qt::hex << owner << ", removing";
+            m_ownedSliceIds.remove(id);
+            // If we already have a SliceModel for this ID, remove it
+            if (SliceModel* existing = slice(id)) {
+                m_slices.removeOne(existing);
+                emit sliceRemoved(id);
+                existing->deleteLater();
+            }
+            return;  // slice belongs to another client
+        }
+    }
+
+    // If we've seen client_handle info and this slice isn't ours, skip it
+    if (!m_ownedSliceIds.isEmpty() && !m_ownedSliceIds.contains(id)) {
+        qDebug() << "RadioModel: ignoring slice" << id << "status (not in owned set)";
+        return;
+    }
+
     SliceModel* s = slice(id);
 
     if (removed) {
@@ -739,6 +806,13 @@ void RadioModel::handlePanadapterStatus(const QMap<QString, QString>& kvs)
         m_panResized = true;
         configurePan();
     }
+}
+
+void RadioModel::updateStreamFilters()
+{
+    quint32 panId = m_panId.isEmpty() ? 0 : m_panId.toUInt(nullptr, 16);
+    quint32 wfId  = m_waterfallId.isEmpty() ? 0 : m_waterfallId.toUInt(nullptr, 16);
+    m_panStream.setOwnedStreamIds(panId, wfId);
 }
 
 void RadioModel::configurePan()

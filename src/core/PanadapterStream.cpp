@@ -94,6 +94,14 @@ void PanadapterStream::stop()
 
 // ─── Datagram reception ───────────────────────────────────────────────────────
 
+void PanadapterStream::setOwnedStreamIds(quint32 panStreamId, quint32 wfStreamId)
+{
+    m_ownedPanStreamId = panStreamId;
+    m_ownedWfStreamId  = wfStreamId;
+    qDebug() << "PanadapterStream: filtering for pan=0x" + QString::number(panStreamId, 16)
+             << "wf=0x" + QString::number(wfStreamId, 16);
+}
+
 void PanadapterStream::setDbmRange(float minDbm, float maxDbm)
 {
     m_minDbm = minDbm;
@@ -155,9 +163,15 @@ void PanadapterStream::processDatagram(const QByteArray& data)
         decodeReducedBwAudio(raw, data.size(), hasTrailer);
         return;
     case PCC_FFT:
+        // Filter: only process FFT from our panadapter
+        if (m_ownedPanStreamId != 0 && streamId != m_ownedPanStreamId)
+            return;
         decodeFFT(raw, data.size(), hasTrailer);
         return;
     case PCC_WATERFALL:
+        // Filter: only process waterfall from our display
+        if (m_ownedWfStreamId != 0 && streamId != m_ownedWfStreamId)
+            return;
         decodeWaterfallTile(raw, data.size(), hasTrailer);
         return;
     case PCC_METER:
