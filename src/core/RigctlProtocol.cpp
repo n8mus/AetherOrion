@@ -309,21 +309,23 @@ QString RigctlProtocol::cmdDumpState()
     //             CWR=0x80, AMS=0x200, PKTLSB=0x400, PKTUSB=0x800
     // Combined: 0x4|0x8|0x2|0x80|0x1|0x20|0x10|0x200|0x800|0x400 = 0xEBF
 
+    // Match exact output of `rigctld --model=2` (Hamlib 4.6.5).
+    // WSJT-X parses this line-by-line with strict field expectations.
     QString dump;
-    dump += "0\n";                       // protocol version
+    dump += "1\n";                       // protocol version (must be 1, not 0)
     dump += "2\n";                       // rig model = NET rigctl
-    dump += "2\n";                       // ITU region
+    dump += "0\n";                       // ITU region
     // RX range
-    dump += "30000.000000 54000000.000000 0xEBF -1 -1 0x40000003 0x3\n";
+    dump += "30000.000000 54000000.000000 0xebf -1 -1 0x40000003 0x3\n";
     dump += "0 0 0 0 0 0 0\n";          // end RX range
     // TX range
-    dump += "30000.000000 54000000.000000 0xEBF 1 100000 0x40000003 0x3\n";
+    dump += "30000.000000 54000000.000000 0xebf 1 100000 0x40000003 0x3\n";
     dump += "0 0 0 0 0 0 0\n";          // end TX range
     // Tuning steps
-    dump += "0xEBF 1\n";
-    dump += "0xEBF 10\n";
-    dump += "0xEBF 100\n";
-    dump += "0xEBF 1000\n";
+    dump += "0xebf 1\n";
+    dump += "0xebf 10\n";
+    dump += "0xebf 100\n";
+    dump += "0xebf 1000\n";
     dump += "0 0\n";                     // end tuning steps
     // Filters
     dump += "0x2 500\n";                 // CW 500Hz
@@ -338,20 +340,17 @@ QString RigctlProtocol::cmdDumpState()
     dump += "9999\n";                    // max XIT
     dump += "0\n";                       // max IF shift
     dump += "0\n";                       // announces
-    // Preamp/attenuator
-    dump += "0\n";                       // preamp
-    dump += "0\n";                       // attenuator
-    // has get/set func
-    dump += "0\n";                       // has_get_func
-    dump += "0\n";                       // has_set_func
-    // has get/set level
-    dump += "0\n";                       // has_get_level
-    dump += "0\n";                       // has_set_level
-    // has get/set parm
-    dump += "0\n";                       // has_get_parm
-    dump += "0\n";                       // has_set_parm
-    // done
-    dump += "done\n";
+    // Preamp/attenuator (empty lines = none)
+    dump += "\n";                        // preamp list (empty)
+    dump += "\n";                        // attenuator list (empty)
+    // has get/set func/level/parm (hex bitmasks)
+    dump += "0x0\n";                     // has_get_func
+    dump += "0x0\n";                     // has_set_func
+    dump += "0x0\n";                     // has_get_level
+    dump += "0x0\n";                     // has_set_level
+    dump += "0x0\n";                     // has_get_parm
+    dump += "0x0\n";                     // has_set_parm
+    // No "done" — protocol v1 ends after the parm fields
 
     return dump;
 }
