@@ -770,7 +770,8 @@ void SpectrumOverlayMenu::buildDisplayPanel()
             emit fftFillAlphaChanged(v / 100.0f);
         });
         connect(m_fillColorBtn, &QPushButton::clicked, this, [this] {
-            QColor c = QColorDialog::getColor(m_fillColor, this, "FFT Fill Color");
+            QColor c = QColorDialog::getColor(m_fillColor, this, "FFT Fill Color",
+                                               QColorDialog::DontUseNativeDialog);
             if (c.isValid()) {
                 m_fillColor = c;
                 m_fillColorBtn->setStyleSheet(
