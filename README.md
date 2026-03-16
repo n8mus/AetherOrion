@@ -102,6 +102,16 @@ cmake --build build -j$(nproc)
 
 The application will automatically discover FlexRadio transceivers on your local network.
 
+### Install (optional)
+
+Install the binary, desktop entry, and icon system-wide:
+
+```bash
+sudo cmake --install build
+```
+
+This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app launcher, and the icon in the system icon theme. You can then launch from your application menu or by typing `AetherSDR` in a terminal.
+
 ---
 
 ## Roadmap

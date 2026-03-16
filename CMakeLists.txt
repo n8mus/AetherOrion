@@ -49,6 +49,7 @@ set(GUI_SOURCES
     src/gui/SpectrumWidget.cpp
     src/gui/SpectrumOverlayMenu.cpp
     src/gui/VfoWidget.cpp
+    src/gui/RadioSetupDialog.cpp
     src/gui/PanadapterApplet.cpp
     src/gui/AppletPanel.cpp
     src/gui/RxApplet.cpp
@@ -102,6 +103,22 @@ target_compile_options(AetherSDR PRIVATE
 )
 target_link_options(AetherSDR PRIVATE
     $<$<CONFIG:Debug>:-fsanitize=address>
+)
+
+# ── Install rules ────────────────────────────────────────────────────────────
+include(GNUInstallDirs)
+
+install(TARGETS AetherSDR
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES AetherSDR.desktop
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+)
+
+install(FILES docs/logo-circle.png
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps
+    RENAME aethersdr.png
 )
 
 # Install

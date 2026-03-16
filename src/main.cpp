@@ -35,6 +35,7 @@ int main(int argc, char* argv[])
     app.setApplicationName("AetherSDR");
     app.setApplicationVersion(AETHERSDR_VERSION);
     app.setOrganizationName("AetherSDR");
+    app.setDesktopFileName("AetherSDR");  // matches .desktop file for taskbar icon
 
     // Set up file logging next to the executable
     const QString logPath = QCoreApplication::applicationDirPath() + "/aethersdr.log";

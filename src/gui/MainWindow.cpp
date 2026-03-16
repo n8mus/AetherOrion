@@ -12,6 +12,7 @@
 #include "PhoneCwApplet.h"
 #include "PhoneApplet.h"
 #include "EqApplet.h"
+#include "RadioSetupDialog.h"
 #include "models/SliceModel.h"
 #include "models/MeterModel.h"
 #include "models/TunerModel.h"
@@ -340,6 +341,43 @@ void MainWindow::buildMenuBar()
     auto* quitAct = fileMenu->addAction("&Quit");
     quitAct->setShortcut(QKeySequence::Quit);
     connect(quitAct, &QAction::triggered, qApp, &QApplication::quit);
+
+    // ── Settings menu ──────────────────────────────────────────────────────
+    auto* settingsMenu = menuBar()->addMenu("&Settings");
+
+    auto* radioSetup = settingsMenu->addAction("Radio Setup...");
+    connect(radioSetup, &QAction::triggered, this, [this] {
+        auto* dlg = new RadioSetupDialog(&m_radioModel, this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->show();
+    });
+
+    auto* chooseRadio = settingsMenu->addAction("Choose Radio / SmartLink Setup...");
+    connect(chooseRadio, &QAction::triggered, this, [this] {
+        m_connPanel->setCollapsed(false);
+    });
+
+    settingsMenu->addAction("FlexControl...");
+    settingsMenu->addAction("Network...");
+    settingsMenu->addAction("Memory...");
+    settingsMenu->addAction("USB Cables...");
+    settingsMenu->addAction("Spots...");
+    settingsMenu->addAction("multiFLEX...");
+    settingsMenu->addAction("TX Band Settings...");
+
+    settingsMenu->addSeparator();
+
+    settingsMenu->addAction("Autostart CAT with SmartSDR");
+    settingsMenu->addAction("Autostart DAX with SmartSDR");
+
+    // Connect placeholder items to show "not implemented" message
+    for (auto* action : settingsMenu->actions()) {
+        if (!action->isSeparator() && action != radioSetup && action != chooseRadio) {
+            connect(action, &QAction::triggered, this, [this, action] {
+                statusBar()->showMessage(action->text().remove("...") + " — not yet implemented", 3000);
+            });
+        }
+    }
 
     auto* viewMenu = menuBar()->addMenu("&View");
     auto* themeAct = viewMenu->addAction("Toggle Dark/Light Theme");
