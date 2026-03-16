@@ -74,7 +74,8 @@ private:
     // Guard: set true while updating controls from the model, so that
     // onFrequencyChanged doesn't echo the change back to the radio.
     bool m_updatingFromModel{false};
-    bool m_userExpandedPanel{false};  // true if user manually expanded the connection panel
+    bool m_userExpandedPanel{false};
+    bool m_useSystemClock{true};     // true when no GPS installed  // true if user manually expanded the connection panel
 };
 
 } // namespace AetherSDR

@@ -19,6 +19,8 @@
 #include "models/EqualizerModel.h"
 
 #include <QApplication>
+#include <QTimer>
+#include <QDateTime>
 #include <QIcon>
 #include <QPixmap>
 #include <QVBoxLayout>
@@ -271,17 +273,30 @@ MainWindow::MainWindow(QWidget* parent)
                          const QString& grid, const QString& /*alt*/,
                          const QString& /*lat*/, const QString& /*lon*/,
                          const QString& utcTime) {
-        m_gpsLabel->setText(QString("GPS %1/%2 [%3]")
-            .arg(tracked).arg(visible).arg(status));
+        const bool gpsPresent = (status != "Not Present" && status != "");
+        m_gpsLabel->setText(gpsPresent
+            ? QString("GPS %1/%2 [%3]").arg(tracked).arg(visible).arg(status)
+            : "GPS: N/A");
 
-        // Grid square
         if (!grid.isEmpty())
             m_gridLabel->setText(grid);
 
-        // GPS UTC time (center of status bar)
-        if (!utcTime.isEmpty())
+        // Use GPS UTC time if available, otherwise system UTC
+        if (gpsPresent && !utcTime.isEmpty()) {
             m_gpsTimeLabel->setText(utcTime);
+            m_useSystemClock = false;
+        } else {
+            m_useSystemClock = true;
+        }
     });
+
+    // System clock fallback when no GPS is installed
+    auto* clockTimer = new QTimer(this);
+    connect(clockTimer, &QTimer::timeout, this, [this] {
+        if (m_useSystemClock)
+            m_gpsTimeLabel->setText(QDateTime::currentDateTimeUtc().toString("HH:mm:ssZ"));
+    });
+    clockTimer->start(1000);
 
     // Start discovery
     m_discovery.startListening();
