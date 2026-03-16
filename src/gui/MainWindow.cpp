@@ -76,6 +76,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_connPanel, &ConnectionPanel::connectRequested,
             this, [this](const RadioInfo& info){
         m_connPanel->setStatusText("Connecting…");
+        m_userDisconnected = false;  // user chose to connect — re-enable auto-connect
         m_radioModel.connectToRadio(info);
         // Remember this radio for auto-connect on next launch
         QSettings s("AetherSDR", "AetherSDR");
@@ -85,6 +86,7 @@ MainWindow::MainWindow(QWidget* parent)
     // Auto-connect: when a radio is discovered, check if it matches the last one
     connect(&m_discovery, &RadioDiscovery::radioDiscovered,
             this, [this](const RadioInfo& info) {
+        if (m_userDisconnected) return;  // user explicitly disconnected — don't auto-connect
         QSettings s("AetherSDR", "AetherSDR");
         const QString lastSerial = s.value("lastRadioSerial").toString();
         if (!lastSerial.isEmpty() && info.serial == lastSerial
@@ -95,7 +97,10 @@ MainWindow::MainWindow(QWidget* parent)
         }
     });
     connect(m_connPanel, &ConnectionPanel::disconnectRequested,
-            this, [this]{ m_radioModel.disconnectFromRadio(); });
+            this, [this]{
+        m_userDisconnected = true;  // block auto-reconnect until user explicitly connects
+        m_radioModel.disconnectFromRadio();
+    });
 
     // ── Wire up radio model ────────────────────────────────────────────────
     connect(&m_radioModel, &RadioModel::connectionStateChanged,

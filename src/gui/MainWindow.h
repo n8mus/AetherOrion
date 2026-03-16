@@ -75,7 +75,8 @@ private:
     // onFrequencyChanged doesn't echo the change back to the radio.
     bool m_updatingFromModel{false};
     bool m_userExpandedPanel{false};
-    bool m_useSystemClock{true};     // true when no GPS installed  // true if user manually expanded the connection panel
+    bool m_useSystemClock{true};     // true when no GPS installed
+    bool m_userDisconnected{false};  // true after explicit disconnect, blocks auto-connect
 };
 
 } // namespace AetherSDR
