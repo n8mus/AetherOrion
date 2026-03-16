@@ -152,9 +152,14 @@ MainWindow::MainWindow(QWidget* parent)
         // Load saved state for the new band (or defaults)
         m_bandSettings.setCurrentBand(bandName);
         if (m_bandSettings.hasSavedState(bandName)) {
-            restoreBandState(m_bandSettings.loadBandState(bandName));
+            auto snap = m_bandSettings.loadBandState(bandName);
+            qDebug() << "MainWindow: restoring band" << bandName
+                     << "freq:" << snap.frequencyMhz << "mode:" << snap.mode;
+            restoreBandState(snap);
         } else {
             // First visit — use band defaults
+            qDebug() << "MainWindow: first visit to" << bandName
+                     << "freq:" << freqMhz << "mode:" << mode;
             if (auto* s = activeSlice())
                 s->setMode(mode);
             onFrequencyChanged(freqMhz);
@@ -308,6 +313,14 @@ MainWindow::MainWindow(QWidget* parent)
     restoreState(settings.value("windowState").toByteArray());
     if (settings.contains("splitterState"))
         m_splitter->restoreState(settings.value("splitterState").toByteArray());
+
+    // One-time migration: clear stale band memory from versions < 0.2.2
+    // where band-crossing detection incorrectly saved state during connect.
+    if (settings.value("bandMigrationVersion").toString() != "0.2.3") {
+        settings.remove("bands");
+        settings.setValue("bandMigrationVersion", "0.2.3");
+        qDebug() << "MainWindow: cleared stale band memory (migration to 0.2.3)";
+    }
 
     // Load per-band settings
     m_bandSettings.loadFromFile();
@@ -613,12 +626,16 @@ void MainWindow::onSliceAdded(SliceModel* s)
         spectrum()->setVfoFrequency(mhz);
         m_updatingFromModel = false;
 
-        // Band-crossing detection: save old band state when tuning out
-        const QString newBand = BandSettings::bandForFrequency(mhz);
-        const QString oldBand = m_bandSettings.currentBand();
-        if (!oldBand.isEmpty() && newBand != oldBand) {
-            m_bandSettings.saveBandState(oldBand, captureCurrentBandState());
-            m_bandSettings.setCurrentBand(newBand);
+        // Band-crossing detection: save old band state when tuning out.
+        // Skip during model-driven updates (initial connect, status pushes)
+        // to avoid saving incorrect state for bands we haven't visited.
+        if (!m_updatingFromModel) {
+            const QString newBand = BandSettings::bandForFrequency(mhz);
+            const QString oldBand = m_bandSettings.currentBand();
+            if (!oldBand.isEmpty() && newBand != oldBand) {
+                m_bandSettings.saveBandState(oldBand, captureCurrentBandState());
+                m_bandSettings.setCurrentBand(newBand);
+            }
         }
     });
     connect(s, &SliceModel::filterChanged, spectrum(), &SpectrumWidget::setVfoFilter);

@@ -149,8 +149,8 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
 void SpectrumOverlayMenu::buildBandPanel()
 {
     m_bandPanel = new QWidget(parentWidget());
-    m_bandPanel->setAttribute(Qt::WA_NoSystemBackground, true);
-    m_bandPanel->setAutoFillBackground(false);
+    m_bandPanel->setStyleSheet("QWidget { background: rgba(15, 15, 26, 220); "
+                                "border: 1px solid #304050; border-radius: 3px; }");
     m_bandPanel->hide();
 
     auto* grid = new QGridLayout(m_bandPanel);
