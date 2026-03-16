@@ -85,6 +85,9 @@ sudo apt install qt6-base-dev qt6-multimedia-dev cmake ninja-build pkg-config
 
 # Fedora
 sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel cmake ninja-build
+
+# macOS (Homebrew)
+brew install qt@6 ninja portaudio
 ```
 
 ### Build & Run

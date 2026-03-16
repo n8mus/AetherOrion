@@ -85,6 +85,7 @@ target_link_libraries(AetherSDR PRIVATE
 if(PORTAUDIO_FOUND)
     target_compile_definitions(AetherSDR PRIVATE HAVE_PORTAUDIO)
     target_include_directories(AetherSDR PRIVATE ${PORTAUDIO_INCLUDE_DIRS})
+    target_link_directories(AetherSDR PRIVATE ${PORTAUDIO_LIBRARY_DIRS})
     target_link_libraries(AetherSDR PRIVATE ${PORTAUDIO_LIBRARIES})
 endif()
 
