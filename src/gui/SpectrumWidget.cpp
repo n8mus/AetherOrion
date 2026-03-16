@@ -8,6 +8,7 @@
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include "core/AppSettings.h"
+#include <QDateTime>
 #include <cmath>
 #include <cstring>
 
@@ -83,22 +84,53 @@ void SpectrumWidget::updateSpectrum(const QVector<float>& binsDbm)
     m_bins = binsDbm;
 
     // Use FFT data for waterfall only when native tiles aren't available.
+    // If native tiles stop arriving (e.g., disconnect), fall back after 2 seconds.
+    if (m_hasNativeWaterfall) {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - m_lastNativeTileMs > 2000) {
+            m_hasNativeWaterfall = false;
+            qDebug() << "SpectrumWidget: native waterfall tiles timed out, falling back to FFT-derived";
+        }
+    }
     if (!m_hasNativeWaterfall && !m_waterfall.isNull())
         pushWaterfallRow(binsDbm, m_waterfall.width());
 
     update();
 }
 
-void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsDbm,
+void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
                                         double /*lowFreqMhz*/, double /*highFreqMhz*/)
 {
-    // Native waterfall tiles from the radio have unreliable frequency metadata
-    // (tile range often doesn't match the panadapter display range).
-    // Use FFT-derived waterfall rows instead for correct frequency alignment.
-    // We still mark native tiles as received to avoid double-drawing, but
-    // let the FFT path handle waterfall rendering.
-    Q_UNUSED(binsDbm);
-    m_hasNativeWaterfall = false;  // let FFT drive the waterfall
+    // Native waterfall tiles carry intensity values (int16/128.0f, ~96-120 on HF),
+    // NOT dBm. We ignore the tile's frequency metadata (unreliable on some firmware)
+    // and assume the tile covers the same bandwidth as the panadapter.
+    if (binsIntensity.isEmpty() || m_waterfall.isNull()) return;
+
+    m_hasNativeWaterfall = true;
+    m_lastNativeTileMs = QDateTime::currentMSecsSinceEpoch();
+
+    const int destWidth = m_waterfall.width();
+    if (destWidth <= 0) return;
+
+    const int h = m_waterfall.height();
+    if (h <= 1) return;
+
+    // Scroll waterfall down by one row
+    uchar* bits = m_waterfall.bits();
+    const qsizetype bpl = m_waterfall.bytesPerLine();
+    std::memmove(bits + bpl, bits, static_cast<size_t>(bpl) * (h - 1));
+
+    // Map native intensity bins to pixel row using intensityToRgb()
+    auto* row = reinterpret_cast<QRgb*>(bits);
+    const int srcSize = binsIntensity.size();
+    for (int x = 0; x < destWidth; ++x) {
+        const int binIdx = x * srcSize / destWidth;
+        const float intensity = (binIdx >= 0 && binIdx < srcSize)
+            ? binsIntensity[binIdx] : 0.0f;
+        row[x] = intensityToRgb(intensity);
+    }
+
+    update();
 }
 
 // ─── Layout helpers ────────────────────────────────────────────────────────────
