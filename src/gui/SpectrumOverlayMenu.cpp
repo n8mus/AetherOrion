@@ -820,7 +820,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
 
     auto* blackRow = new QHBoxLayout;
     m_blackSlider = new QSlider(Qt::Horizontal);
-    m_blackSlider->setRange(0, 125);
+    m_blackSlider->setRange(0, 100);
     m_blackSlider->setValue(15);
     m_blackSlider->setStyleSheet(sliderStyle);
     blackRow->addWidget(m_blackSlider);
@@ -832,7 +832,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
 
     m_autoBlackBtn = new QPushButton("Auto");
     m_autoBlackBtn->setCheckable(true);
-    m_autoBlackBtn->setChecked(false);
+    m_autoBlackBtn->setChecked(true);
     m_autoBlackBtn->setFixedWidth(40);
     m_autoBlackBtn->setStyleSheet(btnStyle);
     blackRow->addWidget(m_autoBlackBtn);
@@ -848,13 +848,43 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         emit wfAutoBlackChanged(on);
     });
 
-    makeRow("Rate:", 25, 500, 100, m_rateSlider, m_rateLabel);
+    makeRow("Rate:", 50, 500, 100, m_rateSlider, m_rateLabel);
     connect(m_rateSlider, &QSlider::valueChanged, this, [this](int v) {
         m_rateLabel->setText(QString::number(v));
         emit wfLineDurationChanged(v);
     });
 
     m_displayPanel->adjustSize();
+}
+
+void SpectrumOverlayMenu::syncDisplaySettings(int avg, int fps, int fillPct,
+                                               bool weightedAvg, const QColor& fillColor,
+                                               int gain, int black, bool autoBlack, int rate)
+{
+    if (!m_avgSlider) return;  // panel not built yet
+
+    QSignalBlocker b1(m_avgSlider), b2(m_fpsSlider), b3(m_fillSlider),
+                   b4(m_weightedAvgBtn), b5(m_gainSlider), b6(m_blackSlider),
+                   b7(m_autoBlackBtn), b8(m_rateSlider);
+
+    m_avgSlider->setValue(avg);
+    m_avgLabel->setText(QString::number(avg));
+    m_fpsSlider->setValue(fps);
+    m_fpsLabel->setText(QString::number(fps));
+    m_fillSlider->setValue(fillPct);
+    m_weightedAvgBtn->setChecked(weightedAvg);
+    m_weightedAvgBtn->setText(weightedAvg ? "On" : "Off");
+    m_fillColor = fillColor;
+    m_fillColorBtn->setStyleSheet(
+        QString("QPushButton { background: %1; border: 1px solid #506070;"
+                " border-radius: 2px; }").arg(fillColor.name()));
+    m_gainSlider->setValue(gain);
+    m_gainLabel->setText(QString::number(gain));
+    m_blackSlider->setValue(black);
+    m_blackLabel->setText(QString::number(black));
+    m_autoBlackBtn->setChecked(autoBlack);
+    m_rateSlider->setValue(rate);
+    m_rateLabel->setText(QString::number(rate));
 }
 
 void SpectrumOverlayMenu::toggleDisplayPanel()

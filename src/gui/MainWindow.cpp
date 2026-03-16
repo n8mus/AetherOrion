@@ -132,6 +132,15 @@ MainWindow::MainWindow(QWidget* parent)
             spectrum(), &SpectrumWidget::updateSpectrum);
     connect(m_radioModel.panStream(), &PanadapterStream::waterfallRowReady,
             spectrum(), &SpectrumWidget::updateWaterfallRow);
+    connect(m_radioModel.panStream(), &PanadapterStream::waterfallAutoBlackLevel,
+            this, [this](quint32 autoBlack) {
+        if (spectrum()->wfAutoBlack()) {
+            // Auto black level from radio tile header — apply as black level
+            // The value is in raw intensity units; map to our 0-125 slider range
+            const int level = std::clamp(static_cast<int>(autoBlack), 0, 125);
+            spectrum()->setWfBlackLevel(level);
+        }
+    });
     connect(&m_radioModel, &RadioModel::panadapterInfoChanged,
             spectrum(), &SpectrumWidget::setFrequencyRange);
     connect(&m_radioModel, &RadioModel::panadapterLevelChanged,

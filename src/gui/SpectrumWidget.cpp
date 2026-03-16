@@ -8,6 +8,7 @@
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include "core/AppSettings.h"
+#include <QDateTime>
 #include <cmath>
 #include <cstring>
 
@@ -23,18 +24,97 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
     setCursor(Qt::CrossCursor);
     setMouseTracking(true);
 
-    // Restore saved FFT/waterfall split ratio
-    m_spectrumFrac = std::clamp(
-        AppSettings::instance().value("SpectrumSplitRatio", "0.40").toFloat(), 0.10f, 0.90f);
+    // Restore saved display settings
+    auto& s = AppSettings::instance();
+    m_spectrumFrac   = std::clamp(s.value("SpectrumSplitRatio", "0.40").toFloat(), 0.10f, 0.90f);
+    m_fftAverage     = s.value("DisplayFftAverage", "0").toInt();
+    m_fftFps         = s.value("DisplayFftFps", "25").toInt();
+    m_fftFillAlpha   = s.value("DisplayFftFillAlpha", "0.70").toFloat();
+    m_fftWeightedAvg = s.value("DisplayFftWeightedAvg", "False").toString() == "True";
+    const QString fillColorStr = s.value("DisplayFftFillColor", "#00e5ff").toString();
+    if (QColor::isValidColorName(fillColorStr))
+        m_fftFillColor = QColor::fromString(fillColorStr);
+    m_wfColorGain    = s.value("DisplayWfColorGain", "50").toInt();
+    m_wfBlackLevel   = s.value("DisplayWfBlackLevel", "15").toInt();
+    m_wfAutoBlack    = s.value("DisplayWfAutoBlack", "True").toString() == "True";
+    m_wfLineDuration = s.value("DisplayWfLineDuration", "100").toInt();
 
     // Floating overlay menu (child widget, stays on top)
     m_overlayMenu = new SpectrumOverlayMenu(this);
     m_overlayMenu->raise();
 
+    // Sync overlay menu sliders with restored settings
+    m_overlayMenu->syncDisplaySettings(m_fftAverage, m_fftFps,
+        static_cast<int>(m_fftFillAlpha * 100), m_fftWeightedAvg, m_fftFillColor,
+        m_wfColorGain, m_wfBlackLevel, m_wfAutoBlack, m_wfLineDuration);
+
     // VFO info widget (attached to VFO marker)
     m_vfoWidget = new VfoWidget(this);
     m_vfoWidget->raise();
 }
+
+// ── Display control setters (save to AppSettings on each change) ──────────────
+
+void SpectrumWidget::setFftAverage(int frames) {
+    m_fftAverage = frames;
+    auto& s = AppSettings::instance();
+    s.setValue("DisplayFftAverage", QString::number(frames));
+    s.save();
+}
+void SpectrumWidget::setFftWeightedAvg(bool on) {
+    m_fftWeightedAvg = on;
+    auto& s = AppSettings::instance();
+    s.setValue("DisplayFftWeightedAvg", on ? "True" : "False");
+    s.save();
+}
+void SpectrumWidget::setFftFps(int fps) {
+    m_fftFps = fps;
+    auto& s = AppSettings::instance();
+    s.setValue("DisplayFftFps", QString::number(fps));
+    s.save();
+}
+void SpectrumWidget::setFftFillAlpha(float a) {
+    m_fftFillAlpha = std::clamp(a, 0.0f, 1.0f);
+    auto& s = AppSettings::instance();
+    s.setValue("DisplayFftFillAlpha", QString::number(m_fftFillAlpha, 'f', 2));
+    s.save();
+    update();
+}
+void SpectrumWidget::setFftFillColor(const QColor& c) {
+    m_fftFillColor = c;
+    auto& s = AppSettings::instance();
+    s.setValue("DisplayFftFillColor", c.name());
+    s.save();
+    update();
+}
+void SpectrumWidget::setWfColorGain(int gain) {
+    m_wfColorGain = std::clamp(gain, 0, 100);
+    auto& s = AppSettings::instance();
+    s.setValue("DisplayWfColorGain", QString::number(m_wfColorGain));
+    s.save();
+    update();
+}
+void SpectrumWidget::setWfBlackLevel(int level) {
+    m_wfBlackLevel = std::clamp(level, 0, 100);
+    auto& s = AppSettings::instance();
+    s.setValue("DisplayWfBlackLevel", QString::number(m_wfBlackLevel));
+    s.save();
+    update();
+}
+void SpectrumWidget::setWfAutoBlack(bool on) {
+    m_wfAutoBlack = on;
+    auto& s = AppSettings::instance();
+    s.setValue("DisplayWfAutoBlack", on ? "True" : "False");
+    s.save();
+}
+void SpectrumWidget::setWfLineDuration(int ms) {
+    m_wfLineDuration = std::clamp(ms, 50, 500);
+    auto& s = AppSettings::instance();
+    s.setValue("DisplayWfLineDuration", QString::number(m_wfLineDuration));
+    s.save();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 void SpectrumWidget::setFrequencyRange(double centerMhz, double bandwidthMhz)
 {
@@ -83,22 +163,103 @@ void SpectrumWidget::updateSpectrum(const QVector<float>& binsDbm)
     m_bins = binsDbm;
 
     // Use FFT data for waterfall only when native tiles aren't available.
+    // If native tiles stop arriving (e.g., disconnect), fall back after 2 seconds.
+    if (m_hasNativeWaterfall) {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - m_lastNativeTileMs > 2000) {
+            m_hasNativeWaterfall = false;
+            qDebug() << "SpectrumWidget: native waterfall tiles timed out, falling back to FFT-derived";
+        }
+    }
     if (!m_hasNativeWaterfall && !m_waterfall.isNull())
         pushWaterfallRow(binsDbm, m_waterfall.width());
 
     update();
 }
 
-void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsDbm,
-                                        double /*lowFreqMhz*/, double /*highFreqMhz*/)
+void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
+                                        double lowFreqMhz, double highFreqMhz)
 {
-    // Native waterfall tiles from the radio have unreliable frequency metadata
-    // (tile range often doesn't match the panadapter display range).
-    // Use FFT-derived waterfall rows instead for correct frequency alignment.
-    // We still mark native tiles as received to avoid double-drawing, but
-    // let the FFT path handle waterfall rendering.
-    Q_UNUSED(binsDbm);
-    m_hasNativeWaterfall = false;  // let FFT drive the waterfall
+    // Native waterfall tiles carry intensity values (int16/128.0f, ~96-120 on HF).
+    // The tile's VitaFrequency absolute values have a fixed offset (~131 kHz on fw v4.1.5),
+    // but the tile WIDTH (highFreq - lowFreq) is accurate. We use the tile width relative
+    // to the panadapter bandwidth to determine the correct pixel mapping.
+    if (binsIntensity.isEmpty() || m_waterfall.isNull()) return;
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+    // Calculate how many pixel rows to fill based on elapsed time since last tile.
+    // This makes the waterfall scroll smoothly regardless of tile arrival rate.
+    int rowsToPush = 1;
+    if (m_hasNativeWaterfall && m_lastNativeTileMs > 0) {
+        const qint64 elapsed = now - m_lastNativeTileMs;
+        // At 25 FPS equivalent, each ms ≈ 0.025 pixel rows
+        rowsToPush = std::max(1, static_cast<int>(elapsed * m_fftFps / 1000));
+    }
+
+    m_hasNativeWaterfall = true;
+    m_lastNativeTileMs = now;
+
+    const int destWidth = m_waterfall.width();
+    if (destWidth <= 0) return;
+
+    const int h = m_waterfall.height();
+    if (h <= 1) return;
+    rowsToPush = std::min(rowsToPush, h - 1);
+
+    // Scroll waterfall down
+    uchar* bits = m_waterfall.bits();
+    const qsizetype bpl = m_waterfall.bytesPerLine();
+    std::memmove(bits + rowsToPush * bpl, bits,
+                 static_cast<size_t>(bpl) * (h - rowsToPush));
+
+    // Render the tile row into a temporary scanline.
+    // Per FlexRadio community guidance: tiles extend BEYOND the panadapter edges.
+    // For each display pixel, calculate its frequency, then find the corresponding
+    // tile bin via: binIdx = (freq - tileLowFreq) / binBandwidth.
+    const int srcSize = binsIntensity.size();
+    const double tileBw = (srcSize > 0) ? (highFreqMhz - lowFreqMhz) / srcSize : 0.0;
+    const double panStartMhz = m_centerMhz - m_bandwidthMhz / 2.0;
+
+    QVector<QRgb> scanline(destWidth, qRgb(0, 0, 0));
+    if (tileBw > 0) {
+        for (int x = 0; x < destWidth; ++x) {
+            const double freq = panStartMhz + (static_cast<double>(x) / destWidth) * m_bandwidthMhz;
+            const double binF = (freq - lowFreqMhz) / tileBw;
+            const int binIdx = static_cast<int>(binF);
+            if (binIdx >= 0 && binIdx < srcSize) {
+                // Linear interpolation between adjacent bins
+                const float frac = static_cast<float>(binF - binIdx);
+                const float i0 = binsIntensity[binIdx];
+                const float i1 = (binIdx + 1 < srcSize) ? binsIntensity[binIdx + 1] : i0;
+                scanline[x] = intensityToRgb(i0 + frac * (i1 - i0));
+            }
+        }
+    }
+
+    // Interpolate between previous and current scanlines for smooth gradient.
+    // Row 0 (newest) = current scanline, row rowsToPush-1 (oldest) = previous.
+    const bool canInterp = (m_prevTileScanline.size() == destWidth && rowsToPush > 1);
+    for (int r = 0; r < rowsToPush; ++r) {
+        auto* row = reinterpret_cast<QRgb*>(bits + r * bpl);
+        if (canInterp) {
+            // t=0 at row 0 (current), t=1 at last row (previous)
+            const float t = static_cast<float>(r) / rowsToPush;
+            for (int x = 0; x < destWidth; ++x) {
+                const QRgb c = scanline[x];
+                const QRgb p = m_prevTileScanline[x];
+                const int cr = qRed(c)   + static_cast<int>(t * (qRed(p)   - qRed(c)));
+                const int cg = qGreen(c) + static_cast<int>(t * (qGreen(p) - qGreen(c)));
+                const int cb = qBlue(c)  + static_cast<int>(t * (qBlue(p)  - qBlue(c)));
+                row[x] = qRgb(cr, cg, cb);
+            }
+        } else {
+            std::memcpy(row, scanline.constData(), destWidth * sizeof(QRgb));
+        }
+    }
+    m_prevTileScanline = scanline;
+
+    update();
 }
 
 // ─── Layout helpers ────────────────────────────────────────────────────────────
@@ -514,13 +675,16 @@ QRgb SpectrumWidget::dbmToRgb(float dbm) const
 // m_wfBlackLevel and m_wfColorGain control the mapping independently from FFT.
 QRgb SpectrumWidget::intensityToRgb(float intensity) const
 {
-    // Map black_level (0-125) to an intensity threshold.
-    // At black_level=15, values below ~97 are black (default).
-    const float blackThresh = 90.0f + m_wfBlackLevel * 0.2f;
+    // Map black_level (0-100) to an intensity threshold.
+    // Slider 0-100 maps to internal range 0-150.
+    // Higher black_level = higher threshold = more noise hidden.
+    const float scaledLevel = m_wfBlackLevel * 1.5f;  // 0-100 → 0-150
+    const float blackThresh = 90.0f + (150.0f - scaledLevel) * 0.2f;
 
     // Map color_gain (0-100) to the visible range width.
     // Higher gain = narrower range = more color contrast.
-    const float rangeWidth = std::max(1.0f, 30.0f - m_wfColorGain * 0.25f);
+    // gain=0 → 120 dB range (very dim), gain=100 → 29 dB range (max contrast)
+    const float rangeWidth = std::max(1.0f, 120.0f - m_wfColorGain * 0.91f);
 
     const float t = qBound(0.0f, (intensity - blackThresh) / rangeWidth, 1.0f);
 

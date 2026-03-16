@@ -82,23 +82,23 @@ public:
     void setRfGain(int gain) { m_rfGainValue = gain; update(); }
 
     // ── Display control setters ───────────────────────────────────────────
-    // FFT controls
-    void setFftAverage(int frames)     { m_fftAverage = frames; }
-    void setFftWeightedAvg(bool on)    { m_fftWeightedAvg = on; }
-    void setFftFps(int fps)            { m_fftFps = fps; }
-    void setFftFillAlpha(float a)      { m_fftFillAlpha = std::clamp(a, 0.0f, 1.0f); update(); }
-    void setFftFillColor(const QColor& c) { m_fftFillColor = c; update(); }
+    // FFT controls (save to AppSettings on each change)
+    void setFftAverage(int frames);
+    void setFftWeightedAvg(bool on);
+    void setFftFps(int fps);
+    void setFftFillAlpha(float a);
+    void setFftFillColor(const QColor& c);
     float fftFillAlpha() const         { return m_fftFillAlpha; }
     QColor fftFillColor() const        { return m_fftFillColor; }
     int   fftAverage() const           { return m_fftAverage; }
     int   fftFps() const               { return m_fftFps; }
     bool  fftWeightedAvg() const       { return m_fftWeightedAvg; }
 
-    // Waterfall controls
-    void setWfColorGain(int gain)      { m_wfColorGain = std::clamp(gain, 0, 100); update(); }
-    void setWfBlackLevel(int level)    { m_wfBlackLevel = std::clamp(level, 0, 125); update(); }
-    void setWfAutoBlack(bool on)       { m_wfAutoBlack = on; }
-    void setWfLineDuration(int ms)     { m_wfLineDuration = std::clamp(ms, 25, 500); }
+    // Waterfall controls (save to AppSettings on each change)
+    void setWfColorGain(int gain);
+    void setWfBlackLevel(int level);
+    void setWfAutoBlack(bool on);
+    void setWfLineDuration(int ms);
     int   wfColorGain() const          { return m_wfColorGain; }
     int   wfBlackLevel() const         { return m_wfBlackLevel; }
     bool  wfAutoBlack() const          { return m_wfAutoBlack; }
@@ -179,7 +179,7 @@ private:
     // ── Waterfall display controls (radio-side via "display panafall set") ─
     int   m_wfColorGain{50};         // 0-100, maps intensity to color range
     int   m_wfBlackLevel{15};        // 0-125, intensity floor (below = black)
-    bool  m_wfAutoBlack{false};
+    bool  m_wfAutoBlack{true};
     int   m_wfLineDuration{100};     // ms per waterfall row
 
     // Waterfall colour range for FFT-derived fallback (dBm).
@@ -194,6 +194,7 @@ private:
     // because the radio provides dedicated waterfall tiles.
     bool m_hasNativeWaterfall{false};
     qint64 m_lastNativeTileMs{0};    // timestamp of last native tile (for fallback)
+    QVector<QRgb> m_prevTileScanline;  // previous tile row for interpolation
 
     static constexpr float SMOOTH_ALPHA    = 0.35f;
     // Fraction of the panadapter area (above freq scale) used for spectrum
