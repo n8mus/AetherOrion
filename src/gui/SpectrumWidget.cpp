@@ -82,8 +82,8 @@ void SpectrumWidget::updateSpectrum(const QVector<float>& binsDbm)
     }
     m_bins = binsDbm;
 
-    // Use FFT data for waterfall — always matches the panadapter frequency range.
-    if (!m_waterfall.isNull())
+    // Use FFT data for waterfall only when native tiles aren't available.
+    if (!m_hasNativeWaterfall && !m_waterfall.isNull())
         pushWaterfallRow(binsDbm, m_waterfall.width());
 
     update();
@@ -475,8 +475,16 @@ void SpectrumWidget::resizeEvent(QResizeEvent* ev)
 
 QRgb SpectrumWidget::dbmToRgb(float dbm) const
 {
-    // Normalise into [0, 1] over the waterfall display range.
-    const float t = qBound(0.0f, (dbm - m_wfMinDbm) / (m_wfMaxDbm - m_wfMinDbm), 1.0f);
+    // Black level shifts the floor: higher black_level = more of the noise is black.
+    // Color gain controls the visible range: higher gain = narrower range = more contrast.
+    // black_level 0-125: higher = floor moves closer to signals (more black)
+    // color_gain 0-100: higher = narrower visible range = more contrast
+    const float floorShift = (125 - m_wfBlackLevel) * 0.4f;  // inverted: 0=max shift, 125=no shift
+    const float visRange = 80.0f - m_wfColorGain * 0.7f;  // 80 dB down to 10 dB
+    const float effectiveMin = m_wfMinDbm + floorShift;
+    const float effectiveMax = effectiveMin + visRange;
+
+    const float t = qBound(0.0f, (dbm - effectiveMin) / (effectiveMax - effectiveMin), 1.0f);
 
     // Multi-stop gradient: black → blue → cyan → green → yellow → red
     struct Stop { float pos; int r, g, b; };
@@ -492,6 +500,43 @@ QRgb SpectrumWidget::dbmToRgb(float dbm) const
     static constexpr int N = sizeof(stops) / sizeof(stops[0]);
 
     // Find the two stops bracketing t and interpolate.
+    int i = 0;
+    while (i < N - 2 && stops[i + 1].pos < t) ++i;
+    const float seg = (t - stops[i].pos) / (stops[i + 1].pos - stops[i].pos);
+    const int r = static_cast<int>(stops[i].r + seg * (stops[i + 1].r - stops[i].r));
+    const int g = static_cast<int>(stops[i].g + seg * (stops[i + 1].g - stops[i].g));
+    const int b = static_cast<int>(stops[i].b + seg * (stops[i + 1].b - stops[i].b));
+    return qRgb(qBound(0, r, 255), qBound(0, g, 255), qBound(0, b, 255));
+}
+
+// Map native waterfall tile intensity to RGB.
+// Intensity is int16(raw)/128.0f — observed range ~96-120 on HF.
+// m_wfBlackLevel and m_wfColorGain control the mapping independently from FFT.
+QRgb SpectrumWidget::intensityToRgb(float intensity) const
+{
+    // Map black_level (0-125) to an intensity threshold.
+    // At black_level=15, values below ~97 are black (default).
+    const float blackThresh = 90.0f + m_wfBlackLevel * 0.2f;
+
+    // Map color_gain (0-100) to the visible range width.
+    // Higher gain = narrower range = more color contrast.
+    const float rangeWidth = std::max(1.0f, 30.0f - m_wfColorGain * 0.25f);
+
+    const float t = qBound(0.0f, (intensity - blackThresh) / rangeWidth, 1.0f);
+
+    // Same gradient as dbmToRgb
+    struct Stop { float pos; int r, g, b; };
+    static constexpr Stop stops[] = {
+        {0.00f,   0,   0,   0},
+        {0.15f,   0,   0, 128},
+        {0.30f,   0,  64, 255},
+        {0.45f,   0, 200, 255},
+        {0.60f,   0, 220,   0},
+        {0.80f, 255, 255,   0},
+        {1.00f, 255,   0,   0},
+    };
+    static constexpr int N = sizeof(stops) / sizeof(stops[0]);
+
     int i = 0;
     while (i < N - 2 && stops[i + 1].pos < t) ++i;
     const float seg = (t - stops[i].pos) / (stops[i + 1].pos - stops[i].pos);
@@ -679,14 +724,21 @@ void SpectrumWidget::drawSpectrum(QPainter& p, const QRect& r)
     fillPath.lineTo(r.left(),  r.bottom());
     fillPath.closeSubpath();
 
+    const int alphaTop = static_cast<int>(200 * m_fftFillAlpha);
+    const int alphaBot = static_cast<int>(60 * m_fftFillAlpha);
+    // Derive darker bottom color from fill color
+    QColor topColor(m_fftFillColor);
+    topColor.setAlpha(alphaTop);
+    QColor botColor = m_fftFillColor.darker(300);
+    botColor.setAlpha(alphaBot);
     QLinearGradient grad(0, r.top(), 0, r.bottom());
-    grad.setColorAt(0.0, QColor(0x00, 0xe5, 0xff, 200));
-    grad.setColorAt(1.0, QColor(0x00, 0x40, 0x60,  60));
+    grad.setColorAt(0.0, topColor);
+    grad.setColorAt(1.0, botColor);
 
     p.setRenderHint(QPainter::Antialiasing, true);
     p.fillPath(fillPath, grad);
     // Stroke only the spectrum line, not the fill closure
-    p.setPen(QPen(QColor(0x00, 0xe5, 0xff), 1.5));
+    p.setPen(QPen(m_fftFillColor, 1.5));
     p.drawPath(linePath);
     p.setRenderHint(QPainter::Antialiasing, false);
 }

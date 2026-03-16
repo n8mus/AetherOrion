@@ -178,6 +178,50 @@ MainWindow::MainWindow(QWidget* parent)
         spectrum()->setRfGain(gain);
     });
 
+    // ── Display sub-panel → SpectrumWidget (client-side for now) ─────────
+    auto* overlay = spectrum()->overlayMenu();
+    connect(overlay, &SpectrumOverlayMenu::fftFillAlphaChanged,
+            spectrum(), &SpectrumWidget::setFftFillAlpha);
+    connect(overlay, &SpectrumOverlayMenu::fftFillColorChanged,
+            spectrum(), &SpectrumWidget::setFftFillColor);
+    // FFT controls → SpectrumWidget (local) + RadioModel (radio command)
+    connect(overlay, &SpectrumOverlayMenu::fftAverageChanged,
+            this, [this](int v) {
+        spectrum()->setFftAverage(v);
+        m_radioModel.setPanAverage(v);
+    });
+    connect(overlay, &SpectrumOverlayMenu::fftFpsChanged,
+            this, [this](int v) {
+        spectrum()->setFftFps(v);
+        m_radioModel.setPanFps(v);
+    });
+    connect(overlay, &SpectrumOverlayMenu::fftWeightedAverageChanged,
+            this, [this](bool on) {
+        spectrum()->setFftWeightedAvg(on);
+        m_radioModel.setPanWeightedAverage(on);
+    });
+    // Waterfall controls → SpectrumWidget (local) + RadioModel (radio command)
+    connect(overlay, &SpectrumOverlayMenu::wfColorGainChanged,
+            this, [this](int v) {
+        spectrum()->setWfColorGain(v);
+        m_radioModel.setWaterfallColorGain(v);
+    });
+    connect(overlay, &SpectrumOverlayMenu::wfBlackLevelChanged,
+            this, [this](int v) {
+        spectrum()->setWfBlackLevel(v);
+        m_radioModel.setWaterfallBlackLevel(v);
+    });
+    connect(overlay, &SpectrumOverlayMenu::wfAutoBlackChanged,
+            this, [this](bool on) {
+        spectrum()->setWfAutoBlack(on);
+        m_radioModel.setWaterfallAutoBlack(on);
+    });
+    connect(overlay, &SpectrumOverlayMenu::wfLineDurationChanged,
+            this, [this](int ms) {
+        spectrum()->setWfLineDuration(ms);
+        m_radioModel.setWaterfallLineDuration(ms);
+    });
+
     // ── Panadapter stream → audio engine ──────────────────────────────────
     // All VITA-49 traffic arrives on the single client udpport socket owned
     // by PanadapterStream. It strips the header from IF-Data packets and emits
