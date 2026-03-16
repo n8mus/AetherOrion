@@ -21,7 +21,7 @@ AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. 
 
 ## Supported Radios
 
-Tested with the **FLEX-8600** running SmartSDR v4.1.5. Should work with other FlexRadio models that use the SmartSDR protocol (FLEX-6000 series, FLEX-8000 series).
+Tested with the **FLEX-8600** running v4.1.5 software. Should work with other FlexRadio models that use the SmartSDR protocol (FLEX-6000 series, FLEX-8000 series).
 
 ---
 
