@@ -4,3 +4,4 @@ build-*/
 *.user
 .qtc_clangd/
 reference/
+docs/release_notes/
