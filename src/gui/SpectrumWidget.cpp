@@ -475,8 +475,16 @@ void SpectrumWidget::resizeEvent(QResizeEvent* ev)
 
 QRgb SpectrumWidget::dbmToRgb(float dbm) const
 {
-    // Normalise into [0, 1] over the waterfall display range.
-    const float t = qBound(0.0f, (dbm - m_wfMinDbm) / (m_wfMaxDbm - m_wfMinDbm), 1.0f);
+    // Black level shifts the floor: higher black_level = more of the noise is black.
+    // Color gain controls the visible range: higher gain = narrower range = more contrast.
+    // black_level 0-125: higher = floor moves closer to signals (more black)
+    // color_gain 0-100: higher = narrower visible range = more contrast
+    const float floorShift = (125 - m_wfBlackLevel) * 0.4f;  // inverted: 0=max shift, 125=no shift
+    const float visRange = 80.0f - m_wfColorGain * 0.7f;  // 80 dB down to 10 dB
+    const float effectiveMin = m_wfMinDbm + floorShift;
+    const float effectiveMax = effectiveMin + visRange;
+
+    const float t = qBound(0.0f, (dbm - effectiveMin) / (effectiveMax - effectiveMin), 1.0f);
 
     // Multi-stop gradient: black → blue → cyan → green → yellow → red
     struct Stop { float pos; int r, g, b; };

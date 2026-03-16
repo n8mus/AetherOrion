@@ -729,7 +729,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
     };
 
     // ── FFT section ───────────────────────────────────────────────────────
-    makeRow("AVG:", 0, 10, 0, m_avgSlider, m_avgLabel);
+    makeRow("AVG:", 0, 100, 0, m_avgSlider, m_avgLabel);
     connect(m_avgSlider, &QSlider::valueChanged, this, [this](int v) {
         m_avgLabel->setText(QString::number(v));
         emit fftAverageChanged(v);
