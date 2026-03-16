@@ -25,6 +25,11 @@ public:
     // Set the antenna list (from RadioModel::antListChanged).
     void setAntennaList(const QStringList& ants);
 
+    // Sync Display sub-panel controls with saved settings.
+    void syncDisplaySettings(int avg, int fps, int fillPct, bool weightedAvg,
+                             const QColor& fillColor, int gain, int black,
+                             bool autoBlack, int rate);
+
     // Connect/disconnect the ANT panel to a slice model.
     void setSlice(SliceModel* slice);
 

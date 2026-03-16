@@ -57,6 +57,8 @@ signals:
     // May be emitted multiple times per tile (once per Height row).
     void waterfallRowReady(const QVector<float>& binsDbm,
                            double lowFreqMhz, double highFreqMhz);
+    // Emitted once per waterfall tile with the radio's computed auto black level.
+    void waterfallAutoBlackLevel(quint32 autoBlack);
     // Raw PCM payload (header stripped) from IF-Data (audio) VITA-49 packets.
     // Format: 16-bit signed, stereo, 24 kHz, little-endian.
     void audioDataReady(const QByteArray& pcm);
@@ -97,6 +99,32 @@ private:
         }
         bool isComplete() const { return totalBins > 0 && binsReceived >= totalBins; }
     };
+
+    // Waterfall frame assembly: tiles arrive in fragments across multiple packets.
+    // Each packet carries firstBinIndex + width; totalBinsInFrame is constant.
+    struct WaterfallFrame {
+        quint32          timecode{0xFFFFFFFF};
+        quint16          totalBins{0};
+        quint16          binsReceived{0};
+        double           lowFreqMhz{0};
+        double           binBwMhz{0};
+        quint32          autoBlack{0};
+        QVector<float>   buf;   // intensity values (int16/128.0f)
+
+        void reset(quint32 tc, quint16 total, double low, double bw, quint32 ab) {
+            timecode     = tc;
+            totalBins    = total;
+            binsReceived = 0;
+            lowFreqMhz   = low;
+            binBwMhz     = bw;
+            autoBlack    = ab;
+            buf.resize(total);
+            buf.fill(0.0f);
+        }
+        bool isComplete() const { return totalBins > 0 && binsReceived >= totalBins; }
+    };
+
+    WaterfallFrame m_wfFrame;
 
     // Per-stream packet sequence tracking (4-bit count in VITA-49 word0 bits 19:16)
     struct StreamStats {

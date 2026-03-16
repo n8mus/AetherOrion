@@ -272,8 +272,12 @@ void PanadapterStream::decodeWaterfallTile(const uchar* raw, int totalBytes, boo
     // FrameLowFreq and BinBandwidth are int64 "VitaFrequency" (Hz × 2^20).
     const qint64 frameLowRaw  = qFromBigEndian<qint64>(sub + 0);
     const qint64 binBwRaw     = qFromBigEndian<qint64>(sub + 8);
-    const quint16 tileWidth   = qFromBigEndian<quint16>(sub + 20);
-    const quint16 tileHeight  = qFromBigEndian<quint16>(sub + 22);
+    const quint16 tileWidth       = qFromBigEndian<quint16>(sub + 20);
+    const quint16 tileHeight      = qFromBigEndian<quint16>(sub + 22);
+    const quint32 timecode        = qFromBigEndian<quint32>(sub + 24);
+    const quint32 autoBlack       = qFromBigEndian<quint32>(sub + 28);
+    const quint16 totalBinsInFrame = qFromBigEndian<quint16>(sub + 32);
+    const quint16 firstBinIndex   = qFromBigEndian<quint16>(sub + 34);
 
     if (tileWidth == 0 || tileHeight == 0) return;
 
@@ -290,26 +294,46 @@ void PanadapterStream::decodeWaterfallTile(const uchar* raw, int totalBytes, boo
 
     const int payloadOffset = VITA49_HEADER_BYTES + TILE_SUBHEADER_BYTES;
     const int payloadBytes  = totalBytes - payloadOffset - (hasTrailer ? 4 : 0);
-    const int expectedBytes = tileWidth * tileHeight * 2;
-    const int usableBytes   = qMin(payloadBytes, expectedBytes);
-    const int usableSamples = usableBytes / 2;
-    if (usableSamples < tileWidth) return;  // need at least one full row
+    if (payloadBytes < tileWidth * 2) return;  // need at least one row of bins
 
-    const uchar* payload = raw + payloadOffset;
-
-    // Emit one row at a time — row 0 is the oldest line in the tile.
-    const int fullRows = usableSamples / tileWidth;
-    QVector<float> row(tileWidth);
-
-    // Waterfall tile values: treat uint16 as signed int16, divide by 128.
-    for (int r = 0; r < fullRows; ++r) {
-        const uchar* rowData = payload + r * tileWidth * 2;
-        for (int i = 0; i < tileWidth; ++i) {
-            const auto raw16 = static_cast<qint16>(qFromBigEndian<quint16>(rowData + i * 2));
-            row[i] = static_cast<float>(raw16) / 128.0f;
-        }
-        emit waterfallRowReady(row, lowFreqMhz, highFreqMhz);
+    static bool loggedOnce = false;
+    if (!loggedOnce) {
+        qDebug() << "WaterfallTile: width=" << tileWidth << "height=" << tileHeight
+                 << "totalBinsInFrame=" << totalBinsInFrame
+                 << "firstBinIndex=" << firstBinIndex
+                 << "timecode=" << timecode
+                 << "lowFreqMhz=" << lowFreqMhz
+                 << "binBwMhz=" << binBwMhz
+                 << "highFreqMhz=" << highFreqMhz
+                 << "fullFrameMhz=" << (lowFreqMhz + binBwMhz * totalBinsInFrame)
+                 << "autoBlack=" << autoBlack;
+        loggedOnce = true;
     }
+
+    // ── Waterfall frame assembly ─────────────────────────────────────────
+    // Start a new frame if timecode changed
+    if (timecode != m_wfFrame.timecode)
+        m_wfFrame.reset(timecode, totalBinsInFrame, lowFreqMhz, binBwMhz, autoBlack);
+
+    // Copy this fragment's bins into the assembly buffer.
+    // Only process the first row (height is typically 1).
+    const uchar* tilePayload = raw + payloadOffset;
+    const int binsToRead = qMin(static_cast<int>(tileWidth),
+                                static_cast<int>(totalBinsInFrame) - static_cast<int>(firstBinIndex));
+    if (binsToRead <= 0) return;
+
+    for (int i = 0; i < binsToRead; ++i) {
+        const auto raw16 = static_cast<qint16>(qFromBigEndian<quint16>(tilePayload + i * 2));
+        m_wfFrame.buf[firstBinIndex + i] = static_cast<float>(raw16) / 128.0f;
+    }
+    m_wfFrame.binsReceived += binsToRead;
+
+    // Only emit when the full frame is assembled
+    if (!m_wfFrame.isComplete()) return;
+
+    const double frameHighMhz = m_wfFrame.lowFreqMhz + m_wfFrame.binBwMhz * m_wfFrame.totalBins;
+    emit waterfallAutoBlackLevel(m_wfFrame.autoBlack);
+    emit waterfallRowReady(m_wfFrame.buf, m_wfFrame.lowFreqMhz, frameHighMhz);
 }
 
 // ─── Audio decode ─────────────────────────────────────────────────────────────
