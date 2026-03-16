@@ -57,6 +57,15 @@ public:
     QString nickname()     const { return m_nickname; }
     QString region()       const { return m_region; }
     QString radioOptions() const { return m_radioOptions; }
+    QString ip()          const { return m_ip; }
+    QString netmask()     const { return m_netmask; }
+    QString gateway()     const { return m_gateway; }
+    QString mac()         const { return m_mac; }
+    bool    enforcePrivateIp() const { return m_enforcePrivateIp; }
+    bool    hasStaticIp()     const { return m_hasStaticIp; }
+    QString staticIp()        const { return m_staticIp; }
+    QString staticNetmask()   const { return m_staticNetmask; }
+    QString staticGateway()   const { return m_staticGateway; }
     bool    remoteOnEnabled() const { return m_remoteOnEnabled; }
     bool    multiFlexEnabled() const { return m_multiFlexEnabled; }
     void    setRemoteOnEnabled(bool on);
@@ -149,6 +158,15 @@ private:
     QString     m_nickname;
     QString     m_region;
     QString     m_radioOptions;
+    QString     m_ip;
+    QString     m_netmask;
+    QString     m_gateway;
+    QString     m_mac;
+    bool        m_hasStaticIp{false};
+    QString     m_staticIp;
+    QString     m_staticNetmask;
+    QString     m_staticGateway;
+    bool        m_enforcePrivateIp{true};
     bool        m_remoteOnEnabled{false};
     bool        m_multiFlexEnabled{true};
     QStringList m_antList;

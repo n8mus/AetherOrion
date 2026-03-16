@@ -204,6 +204,10 @@ void RadioModel::onConnected()
                             else if (key == "model")       m_model = val;
                             else if (key == "chassis_serial") m_chassisSerial = val;
                             else if (key == "software_ver")   m_version = val;
+                            else if (key == "ip")             m_ip = val;
+                            else if (key == "netmask")        m_netmask = val;
+                            else if (key == "gateway")        m_gateway = val;
+                            else if (key == "mac")            m_mac = val;
                         }
                         qDebug() << "RadioModel: info — callsign:" << m_callsign
                                  << "region:" << m_region << "options:" << m_radioOptions;
@@ -487,6 +491,15 @@ void RadioModel::onStatusReceived(const QString& object,
         return;
     }
 
+    if (object == "radio static_net_params") {
+        m_staticIp      = kvs.value("ip");
+        m_staticNetmask = kvs.value("netmask");
+        m_staticGateway = kvs.value("gateway");
+        m_hasStaticIp   = !m_staticIp.isEmpty();
+        emit infoChanged();
+        return;
+    }
+
     static const QRegularExpression sliceRe(R"(^slice\s+(\d+)$)");
     const auto sliceMatch = sliceRe.match(object);
     if (sliceMatch.hasMatch()) {
@@ -673,6 +686,10 @@ void RadioModel::handleRadioStatus(const QMap<QString, QString>& kvs)
     }
     if (kvs.contains("mf_enable")) {
         m_multiFlexEnabled = kvs["mf_enable"] == "1";
+        changed = true;
+    }
+    if (kvs.contains("enforce_private_ip_connections")) {
+        m_enforcePrivateIp = kvs["enforce_private_ip_connections"] == "1";
         changed = true;
     }
     if (changed) emit infoChanged();
