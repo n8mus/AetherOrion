@@ -102,7 +102,7 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
     m_manualIpEdit->setPlaceholderText("IP address");
     m_manualIpEdit->setFixedWidth(150);
     m_manualProbeBtn = new QPushButton("Go", m_manualGroup);
-    m_manualProbeBtn->setFixedWidth(100);
+    m_manualProbeBtn->setFixedWidth(70);
     manRow->addWidget(m_manualIpEdit);
     manRow->addWidget(m_manualProbeBtn);
     manBox->addLayout(manRow);
