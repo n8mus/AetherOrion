@@ -307,6 +307,10 @@ you structure it. This saves us time and gets your feature implemented faster.
 Copy and paste this into Claude.ai:
 
 ```
+Before responding, please read the AetherSDR project repository at
+https://github.com/ten9876/AetherSDR to understand the project's
+architecture, existing features, and current roadmap.
+
 I want to request a feature for AetherSDR, a Linux-native Qt6/C++20 client
 for FlexRadio transceivers. It uses the FlexLib API over TCP/UDP.
 
