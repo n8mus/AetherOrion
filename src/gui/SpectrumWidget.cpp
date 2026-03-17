@@ -400,8 +400,8 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         }
     }
 
-    // Right-click context menu (cancel any active TNF drag first)
-    if (ev->button() == Qt::RightButton && y < specH) {
+    // Right-click context menu on spectrum or waterfall (cancel any active TNF drag first)
+    if (ev->button() == Qt::RightButton) {
         m_draggingTnfId = -1;
         const int mx = static_cast<int>(ev->position().x());
         const double freqMhz = xToMhz(mx);
