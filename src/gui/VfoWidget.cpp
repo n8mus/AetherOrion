@@ -1149,27 +1149,30 @@ void VfoWidget::setSlice(SliceModel* slice)
         m_tabBtns[2]->setText(mode);  // update mode tab label
         updateModeTab();
         // Show/hide mode-specific DSP controls
+        // Categorize by mode family (supports future/unknown modes)
         bool isRtty = (mode == "RTTY");
-        bool isCw = (mode == "CW" || mode == "CWL");
-        bool isDig = (mode == "DIGL" || mode == "DIGU");
-        bool isFm = (mode == "FM" || mode == "NFM");
+        bool isCw   = (mode == "CW" || mode == "CWL");
+        bool isDig  = (mode == "DIGL" || mode == "DIGU");
+        bool isFm   = (mode == "FM" || mode == "NFM" || mode == "DFM");
+        bool isFdv  = mode.startsWith("FDV");  // FDVU, FDVM, etc.
         // Swap DSP tab label to OPT for FM modes
         m_tabBtns[1]->setText(isFm ? "OPT" : "DSP");
         m_rttyContainer->setVisible(isRtty);
         m_apfContainer->setVisible(isCw);
-        m_digContainer->setVisible(isDig);
+        m_digContainer->setVisible(isDig && !isFdv);
         m_fmContainer->setVisible(isFm);
         if (isDig) {
             int off = (mode == "DIGL") ? m_slice->diglOffset() : m_slice->diguOffset();
             m_digOffsetLabel->setText(QString::number(off));
         }
         // CW: show APF, hide ANF/RNN/ANFL/ANFT
-        // RTTY/DIG: hide ANF/ANFL/ANFT
+        // RTTY/DIG/FDV: hide ANF/ANFL/ANFT
+        bool isVoice = !isRtty && !isCw && !isDig && !isFm && !isFdv;
         m_apfBtn->setVisible(isCw);
-        m_anfBtn->setVisible(!isRtty && !isCw && !isDig && !isFm);
+        m_anfBtn->setVisible(isVoice);
         m_rnnBtn->setVisible(!isCw && !isFm);
-        m_anflBtn->setVisible(!isRtty && !isCw && !isDig && !isFm);
-        m_anftBtn->setVisible(!isRtty && !isCw && !isDig && !isFm);
+        m_anflBtn->setVisible(isVoice);
+        m_anftBtn->setVisible(isVoice);
         // Hide all DSP buttons in FM mode
         m_nrBtn->setVisible(!isFm);
         m_nbBtn->setVisible(!isFm);

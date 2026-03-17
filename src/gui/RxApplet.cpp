@@ -181,7 +181,8 @@ static const ModeSettings& modeSettingsFor(const QString& mode)
     if (mode == "DIGU" || mode == "DIGL") return digSettings;
     if (mode == "RTTY")                  return rttySettings;
     if (mode == "FM" || mode == "NFM" || mode == "DFM") return fmSettings;
-    return ssbSettings;  // fallback
+    if (mode.startsWith("FDV"))          return digSettings;  // FreeDV digital voice
+    return ssbSettings;  // fallback for unknown modes
 }
 
 // ── Standard CTCSS tone table (EIA/TIA-603) ──────────────────────────────────
