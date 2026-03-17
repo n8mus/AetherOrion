@@ -32,8 +32,9 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
     m_fftFillAlpha   = s.value("DisplayFftFillAlpha", "0.70").toFloat();
     m_fftWeightedAvg = s.value("DisplayFftWeightedAvg", "False").toString() == "True";
     const QString fillColorStr = s.value("DisplayFftFillColor", "#00e5ff").toString();
-    if (QColor::isValidColorName(fillColorStr))
-        m_fftFillColor = QColor::fromString(fillColorStr);
+    QColor parsed(fillColorStr);
+    if (parsed.isValid())
+        m_fftFillColor = parsed;
     m_wfColorGain    = s.value("DisplayWfColorGain", "50").toInt();
     m_wfBlackLevel   = s.value("DisplayWfBlackLevel", "15").toInt();
     m_wfAutoBlack    = s.value("DisplayWfAutoBlack", "True").toString() == "True";
