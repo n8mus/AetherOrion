@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/RadioConnection.h"
+#include "core/WanConnection.h"
 #include "core/PanadapterStream.h"
 #include "SliceModel.h"
 #include "MeterModel.h"
@@ -148,7 +149,9 @@ public:
 
     // High-level actions
     void connectToRadio(const RadioInfo& info);
+    void connectViaWan(WanConnection* wan, const QString& publicIp, quint16 udpPort);
     void disconnectFromRadio();
+    bool isWan() const { return m_wanConn != nullptr; }
     void setTransmit(bool tx);
     void setPanBandwidth(double bandwidthMhz);
     void setPanCenter(double centerMhz);
@@ -225,6 +228,12 @@ private:
 
     void configurePan();
     void configureWaterfall();
+    void registerAsGuiClient(const QString& clientId);
+
+    // Route command to active connection (LAN or WAN)
+    using ResponseCallback = RadioConnection::ResponseCallback;
+    quint32 sendCmd(const QString& command, ResponseCallback cb = nullptr);
+    quint32 clientHandle() const;
     void updateStreamFilters();
     void handleGpsStatus(const QString& rawBody);
 
@@ -345,6 +354,9 @@ private:
     QStringList m_globalProfiles;
     QString     m_activeGlobalProfile;
     QString     m_rxAudioStreamId;
+    WanConnection* m_wanConn{nullptr};  // non-null when connected via SmartLink
+    QString  m_wanPublicIp;
+    quint16  m_wanUdpPort{4991};
     QSet<int>          m_ownedSliceIds;   // slice IDs that belong to our client
 
     RadioInfo m_lastInfo;               // stored for auto-reconnect

@@ -86,6 +86,35 @@ bool PanadapterStream::start(RadioConnection* conn)
     return true;
 }
 
+bool PanadapterStream::startWan(const QHostAddress& radioAddr, quint16 radioUdpPort)
+{
+    if (isRunning()) return true;
+
+    // For WAN: bind to any port, send registration to radio's public UDP port
+    bool bound = m_socket.bind(QHostAddress::AnyIPv4, 0);
+    if (!bound) {
+        qWarning() << "PanadapterStream: WAN — failed to bind UDP socket:"
+                   << m_socket.errorString();
+        return false;
+    }
+
+    m_localPort = m_socket.localPort();
+    qDebug() << "PanadapterStream: WAN — bound to UDP port" << m_localPort;
+
+    // Send registration to radio's public UDP port
+    const QByteArray reg(1, '\x00');
+    const qint64 sent = m_socket.writeDatagram(reg, radioAddr, radioUdpPort);
+    if (sent == 1)
+        qDebug() << "PanadapterStream: WAN — sent UDP registration to"
+                 << radioAddr.toString() << ":" << radioUdpPort;
+    else
+        qWarning() << "PanadapterStream: WAN — UDP registration send failed:"
+                   << m_socket.errorString();
+
+    m_conn = nullptr;  // no RadioConnection in WAN mode
+    return true;
+}
+
 void PanadapterStream::stop()
 {
     m_socket.close();

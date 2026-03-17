@@ -60,6 +60,8 @@ RadioInfo RadioDiscovery::parseDiscoveryPacket(const QByteArray& data) const
         else if (key == "ip")      info.address = QHostAddress(value);
         else if (key == "port")    info.port    = value.toUShort();
         else if (key == "status")  info.status  = value;
+        else if (key == "nickname") info.nickname = value;
+        else if (key == "callsign") info.callsign = value;
         else if (key == "inuse")   info.inUse   = (value == "1");
         else if (key == "max_licensed_version") info.maxLicensedVersion = value.toInt();
     }

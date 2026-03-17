@@ -36,6 +36,8 @@ public:
     // Bind a local UDP port (OS-chosen) and register it with the radio.
     // conn must remain valid for the lifetime of this stream.
     bool start(RadioConnection* conn);
+    // Start for WAN: use explicit radio address and UDP port
+    bool startWan(const QHostAddress& radioAddr, quint16 radioUdpPort);
     void stop();
 
     quint16 localPort() const { return m_localPort; }

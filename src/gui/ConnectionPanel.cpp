@@ -51,6 +51,55 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
     m_connectBtn->setEnabled(false);
     vbox->addWidget(m_connectBtn);
 
+    // ── SmartLink login section ──────────────────────────────────────────
+    m_smartLinkGroup = new QGroupBox("SmartLink", this);
+    auto* slBox = new QVBoxLayout(m_smartLinkGroup);
+    slBox->setSpacing(4);
+
+    // Login form container (hidden after successful login)
+    m_loginForm = new QWidget(m_smartLinkGroup);
+    auto* loginLayout = new QVBoxLayout(m_loginForm);
+    loginLayout->setContentsMargins(0, 0, 0, 0);
+    loginLayout->setSpacing(4);
+
+    auto* emailRow = new QHBoxLayout;
+    emailRow->addWidget(new QLabel("Email:", m_loginForm));
+    m_emailEdit = new QLineEdit(m_loginForm);
+    m_emailEdit->setPlaceholderText("flexradio account email");
+    emailRow->addWidget(m_emailEdit, 1);
+    loginLayout->addLayout(emailRow);
+
+    auto* passRow = new QHBoxLayout;
+    passRow->addWidget(new QLabel("Pass:", m_loginForm));
+    m_passwordEdit = new QLineEdit(m_loginForm);
+    m_passwordEdit->setEchoMode(QLineEdit::Password);
+    m_passwordEdit->setPlaceholderText("password");
+    passRow->addWidget(m_passwordEdit, 1);
+    loginLayout->addLayout(passRow);
+
+    m_loginBtn = new QPushButton("Log In", m_loginForm);
+    loginLayout->addWidget(m_loginBtn);
+
+    slBox->addWidget(m_loginForm);
+
+    // User info (shown after login)
+    m_slUserLabel = new QLabel("", m_smartLinkGroup);
+    m_slUserLabel->setStyleSheet("QLabel { color: #00b4d8; font-size: 10px; }");
+    m_slUserLabel->setVisible(false);
+    slBox->addWidget(m_slUserLabel);
+
+    vbox->addWidget(m_smartLinkGroup);
+
+    // Login button click
+    connect(m_loginBtn, &QPushButton::clicked, this, [this] {
+        const QString email = m_emailEdit->text().trimmed();
+        const QString pass  = m_passwordEdit->text();
+        if (email.isEmpty() || pass.isEmpty()) return;
+        m_loginBtn->setEnabled(false);
+        m_loginBtn->setText("Logging in...");
+        emit smartLinkLoginRequested(email, pass);
+    });
+
     // Stretch at the bottom keeps the indicator at the top when collapsed
     vbox->addStretch();
 
@@ -123,8 +172,101 @@ void ConnectionPanel::onConnectClicked()
     }
 
     const int row = m_radioList->currentRow();
-    if (row < 0 || row >= m_radios.size()) return;
-    emit connectRequested(m_radios[row]);
+    if (row < 0) return;
+
+    // Check if this is a WAN entry (stored in item data)
+    auto* item = m_radioList->item(row);
+    if (!item) return;
+
+    int wanIdx = item->data(Qt::UserRole + 1).toInt();
+    if (wanIdx > 0 && wanIdx <= m_wanRadios.size()) {
+        emit wanConnectRequested(m_wanRadios[wanIdx - 1]);  // 1-based index
+        return;
+    }
+
+    // LAN radio
+    if (row < m_radios.size())
+        emit connectRequested(m_radios[row]);
+}
+
+void ConnectionPanel::setSmartLinkClient(SmartLinkClient* client)
+{
+    m_smartLink = client;
+    if (!client) return;
+
+    connect(client, &SmartLinkClient::authenticated, this, [this] {
+        // Hide login form, show logout button
+        m_loginForm->setVisible(false);
+
+        // Add logout button below user label
+        m_loginBtn = new QPushButton("Log Out", m_smartLinkGroup);
+        qobject_cast<QVBoxLayout*>(m_smartLinkGroup->layout())->insertWidget(1, m_loginBtn);
+        connect(m_loginBtn, &QPushButton::clicked, this, [this] {
+            m_smartLink->logout();
+            // Remove logout button, show login form
+            m_loginBtn->deleteLater();
+            m_loginForm->setVisible(true);
+            m_loginBtn = m_loginForm->findChild<QPushButton*>();
+            m_slUserLabel->setVisible(false);
+            // Remove WAN entries from unified list
+            for (int i = m_radioList->count() - 1; i >= 0; --i) {
+                if (m_radioList->item(i)->data(Qt::UserRole + 1).toInt() > 0)
+                    delete m_radioList->takeItem(i);
+            }
+            m_wanRadios.clear();
+        });
+
+        // User info may not be available yet — show placeholder
+        m_slUserLabel->setText("Connected to SmartLink");
+        m_slUserLabel->setStyleSheet("QLabel { color: #00b4d8; font-size: 10px; }");
+        m_slUserLabel->setVisible(true);
+    });
+
+    // Update user label when server sends user_settings (after authenticated)
+    connect(client, &SmartLinkClient::serverConnected, this, [this] {
+        // User settings arrive shortly after server connect
+        QTimer::singleShot(500, this, [this] {
+            if (!m_smartLink->firstName().isEmpty()) {
+                m_slUserLabel->setText(QString("%1 %2 (%3)")
+                    .arg(m_smartLink->firstName(), m_smartLink->lastName(),
+                         m_smartLink->callsign()));
+            }
+        });
+    });
+
+    connect(client, &SmartLinkClient::authFailed, this, [this](const QString& err) {
+        m_loginBtn->setText("Log In");
+        m_loginBtn->setEnabled(true);
+        m_slUserLabel->setText("Login failed: " + err);
+        m_slUserLabel->setStyleSheet("QLabel { color: #ff4444; font-size: 10px; }");
+        m_slUserLabel->setVisible(true);
+    });
+
+    connect(client, &SmartLinkClient::radioListReceived, this,
+            [this](const QList<WanRadioInfo>& radios) {
+        // Remove old WAN entries from unified list
+        for (int i = m_radioList->count() - 1; i >= 0; --i) {
+            if (m_radioList->item(i)->data(Qt::UserRole + 1).toInt() > 0)
+                delete m_radioList->takeItem(i);
+        }
+
+        m_wanRadios = radios;
+        for (int i = 0; i < radios.size(); ++i) {
+            const auto& r = radios[i];
+            // Skip if already in LAN list (same serial)
+            bool isLan = false;
+            for (const auto& lan : m_radios) {
+                if (lan.serial == r.serial) { isLan = true; break; }
+            }
+            if (isLan) continue;
+
+            QString display = QString("%1  %2  %3\nAvailable (remote)")
+                .arg(r.model, r.nickname, r.callsign);
+            auto* item = new QListWidgetItem(display);
+            item->setData(Qt::UserRole + 1, i + 1);  // 1-based WAN index
+            m_radioList->addItem(item);
+        }
+    });
 }
 
 void ConnectionPanel::setCollapsed(bool collapsed)
@@ -134,6 +276,7 @@ void ConnectionPanel::setCollapsed(bool collapsed)
     m_connectBtn->setVisible(!collapsed);
     m_statusLabel->setVisible(!collapsed);
     m_collapseBtn->setVisible(!collapsed);
+    m_smartLinkGroup->setVisible(!collapsed);
 
     if (collapsed) {
         m_expandedWidth = width();

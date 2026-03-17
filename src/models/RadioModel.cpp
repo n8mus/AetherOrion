@@ -1,5 +1,6 @@
 #include "RadioModel.h"
 #include "core/CommandParser.h"
+#include "core/AppSettings.h"
 #include <QDebug>
 #include <QRegularExpression>
 #include <QSettings>
@@ -28,17 +29,17 @@ RadioModel::RadioModel(QObject* parent)
 
     // Forward tuner commands to the radio
     connect(&m_tunerModel, &TunerModel::commandReady, this, [this](const QString& cmd){
-        m_connection.sendCommand(cmd);
+        sendCmd(cmd);
     });
 
     // Forward transmit model commands to the radio
     connect(&m_transmitModel, &TransmitModel::commandReady, this, [this](const QString& cmd){
-        m_connection.sendCommand(cmd);
+        sendCmd(cmd);
     });
 
     // Forward equalizer model commands to the radio
     connect(&m_equalizerModel, &EqualizerModel::commandReady, this, [this](const QString& cmd){
-        m_connection.sendCommand(cmd);
+        sendCmd(cmd);
     });
 
     m_reconnectTimer.setSingleShot(true);
@@ -53,7 +54,7 @@ RadioModel::RadioModel(QObject* parent)
 
 bool RadioModel::isConnected() const
 {
-    return m_connection.isConnected();
+    return m_connection.isConnected() || (m_wanConn && m_wanConn->isConnected());
 }
 
 SliceModel* RadioModel::slice(int id) const
@@ -67,20 +68,48 @@ SliceModel* RadioModel::slice(int id) const
 
 void RadioModel::connectToRadio(const RadioInfo& info)
 {
+    m_wanConn = nullptr;  // LAN mode
     m_lastInfo = info;
     m_intentionalDisconnect = false;
     m_reconnectTimer.stop();
     m_name    = info.name;
     m_model   = info.model;
-    m_version = info.version;   // software version from discovery (e.g. "4.1.5")
+    m_version = info.version;
     m_connection.connectToRadio(info);
+}
+
+void RadioModel::connectViaWan(WanConnection* wan, const QString& publicIp, quint16 udpPort)
+{
+    m_wanConn = wan;
+    m_wanPublicIp = publicIp;
+    m_wanUdpPort = udpPort;
+    m_intentionalDisconnect = false;
+    m_reconnectTimer.stop();
+
+    // Wire WAN connection signals (same as RadioConnection)
+    connect(wan, &WanConnection::connected, this, &RadioModel::onConnected);
+    connect(wan, &WanConnection::disconnected, this, &RadioModel::onDisconnected);
+    connect(wan, &WanConnection::errorOccurred, this, &RadioModel::onConnectionError);
+    connect(wan, &WanConnection::versionReceived, this, &RadioModel::onVersionReceived);
+    connect(wan, &WanConnection::messageReceived, this, &RadioModel::onMessageReceived);
+    connect(wan, &WanConnection::statusReceived, this, &RadioModel::onStatusReceived);
+
+    // The WAN connection is already established (TLS + wan validate done)
+    // and has already received V/H. Trigger onConnected manually.
+    if (wan->isConnected())
+        onConnected();
 }
 
 void RadioModel::disconnectFromRadio()
 {
     m_intentionalDisconnect = true;
     m_reconnectTimer.stop();
-    m_connection.disconnectFromRadio();
+    if (m_wanConn) {
+        m_wanConn->disconnectFromRadio();
+        m_wanConn = nullptr;
+    } else {
+        m_connection.disconnectFromRadio();
+    }
 }
 
 void RadioModel::setTransmit(bool tx)
@@ -90,13 +119,13 @@ void RadioModel::setTransmit(bool tx)
     if (!tx)
         m_transmitModel.setTransmitting(false);
 
-    m_connection.sendCommand(QString("xmit %1").arg(tx ? 1 : 0));
+    sendCmd(QString("xmit %1").arg(tx ? 1 : 0));
 }
 
 void RadioModel::setPanBandwidth(double bandwidthMhz)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 bandwidth=%2")
             .arg(m_panId).arg(bandwidthMhz, 0, 'f', 6));
 }
@@ -104,7 +133,7 @@ void RadioModel::setPanBandwidth(double bandwidthMhz)
 void RadioModel::setPanCenter(double centerMhz)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 center=%2")
             .arg(m_panId).arg(centerMhz, 0, 'f', 6));
 }
@@ -112,7 +141,7 @@ void RadioModel::setPanCenter(double centerMhz)
 void RadioModel::setPanDbmRange(float minDbm, float maxDbm)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 min_dbm=%2 max_dbm=%3")
             .arg(m_panId)
             .arg(static_cast<double>(minDbm), 0, 'f', 2)
@@ -122,21 +151,21 @@ void RadioModel::setPanDbmRange(float minDbm, float maxDbm)
 void RadioModel::setPanWnb(bool on)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 wnb=%2").arg(m_panId).arg(on ? 1 : 0));
 }
 
 void RadioModel::setPanWnbLevel(int level)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 wnb_level=%2").arg(m_panId).arg(level));
 }
 
 void RadioModel::setPanRfGain(int gain)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 rfgain=%2").arg(m_panId).arg(gain));
 }
 
@@ -145,21 +174,21 @@ void RadioModel::setPanRfGain(int gain)
 void RadioModel::setPanAverage(int frames)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 average=%2").arg(m_panId).arg(frames));
 }
 
 void RadioModel::setPanFps(int fps)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 fps=%2").arg(m_panId).arg(fps));
 }
 
 void RadioModel::setPanWeightedAverage(bool on)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 weighted_average=%2").arg(m_panId).arg(on ? 1 : 0));
 }
 
@@ -168,42 +197,42 @@ void RadioModel::setPanWeightedAverage(bool on)
 void RadioModel::setWaterfallColorGain(int gain)
 {
     if (m_waterfallId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display panafall set %1 color_gain=%2").arg(m_waterfallId).arg(gain));
 }
 
 void RadioModel::setWaterfallBlackLevel(int level)
 {
     if (m_waterfallId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display panafall set %1 black_level=%2").arg(m_waterfallId).arg(level));
 }
 
 void RadioModel::setWaterfallAutoBlack(bool on)
 {
     if (m_waterfallId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display panafall set %1 auto_black=%2").arg(m_waterfallId).arg(on ? 1 : 0));
 }
 
 void RadioModel::setWaterfallLineDuration(int ms)
 {
     if (m_waterfallId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display panafall set %1 line_duration=%2").arg(m_waterfallId).arg(ms));
 }
 
 void RadioModel::setPanNoiseFloorPosition(int pos)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 noise_floor_position=%2").arg(m_panId).arg(pos));
 }
 
 void RadioModel::setPanNoiseFloorEnable(bool on)
 {
     if (m_panId.isEmpty()) return;
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 noise_floor_position_enable=%2").arg(m_panId).arg(on ? 1 : 0));
 }
 
@@ -214,34 +243,52 @@ void RadioModel::onConnected()
     qDebug() << "RadioModel: connected";
     m_panResized = false;
     emit connectionStateChanged(true);
-    startNetworkMonitor();
+    // Delay network monitor until after client gui registration
+    // (pings sent before registration cause "Malformed command" on WAN)
 
-    // Full command sequence — each step waits for its R response before sending the next.
-    // sub slice all → sub pan all → sub tx all → sub atu all → sub amplifier all
-    //   → sub meter all → sub audio all → client gui → client program → ...
-    m_connection.sendCommand("sub slice all", [this](int, const QString&) {
-      m_connection.sendCommand("sub pan all", [this](int, const QString&) {
-      m_connection.sendCommand("sub tx all", [this](int, const QString&) {
-        m_connection.sendCommand("sub atu all", [this](int, const QString&) {
-        m_connection.sendCommand("sub amplifier all", [this](int, const QString&) {
-          m_connection.sendCommand("sub meter all", [this](int, const QString&) {
-            m_connection.sendCommand("sub audio all", [this](int, const QString&) {
-            m_connection.sendCommand("sub gps all", [this](int, const QString&) {
-            m_connection.sendCommand("sub apd all", [this](int, const QString&) {
-            m_connection.sendCommand("sub xvtr all", [this](int, const QString&) {
-            // Memory status arrives via normal status handler — no subscription needed.
-            // "sub memory all" returns 500000A3 (invalid subscription object).
-            m_connection.sendCommand("client gui", [this](int code, const QString&) {
+    // Register as GUI client FIRST — required before subscriptions,
+    // especially on WAN/SmartLink where the radio is stricter.
+    const QString clientId = AppSettings::instance().value("GUIClientID").toString();
+
+    if (m_wanConn) {
+        // On WAN: wait for client ip response before sending client gui.
+        // The radio needs time after wan validate to accept GUI registration.
+        sendCmd("client ip", [this, clientId](int, const QString& body) {
+            qDebug() << "RadioModel: client ip ->" << body.trimmed();
+            registerAsGuiClient(clientId);
+        });
+    } else {
+        registerAsGuiClient(clientId);
+    }
+}
+
+void RadioModel::registerAsGuiClient(const QString& clientId)
+{
+    sendCmd(QString("client gui %1").arg(clientId), [this](int code, const QString&) {
         if (code != 0)
             qWarning() << "RadioModel: client gui failed, code" << Qt::hex << code;
 
-        // Identify this client to the radio; station name allows nCAT/nDAX to
-        // attach to this instance rather than creating a separate one.
-        m_connection.sendCommand("client program AetherSDR");
-        m_connection.sendCommand("client station AetherSDR");
+        sendCmd("client program AetherSDR");
+        sendCmd("client station AetherSDR");
+        startNetworkMonitor();
 
+    // Full command sequence — each step waits for its R response before sending the next.
+    // sub slice all → sub pan all → sub tx all → sub atu all → sub amplifier all
+    //   → sub meter all → sub audio all → ...
+    sendCmd("sub slice all", [this](int, const QString&) {
+      sendCmd("sub pan all", [this](int, const QString&) {
+      sendCmd("sub tx all", [this](int, const QString&) {
+        sendCmd("sub atu all", [this](int, const QString&) {
+        sendCmd("sub amplifier all", [this](int, const QString&) {
+          sendCmd("sub meter all", [this](int, const QString&) {
+            sendCmd("sub audio all", [this](int, const QString&) {
+            sendCmd("sub gps all", [this](int, const QString&) {
+            sendCmd("sub apd all", [this](int, const QString&) {
+            sendCmd("sub xvtr all", [this](int, const QString&) {
+            // Memory status arrives via normal status handler — no subscription needed.
+            // "sub memory all" returns 500000A3 (invalid subscription object).
         // Request available mic inputs (comma-separated response: "MIC,BAL,LINE,ACC")
-        m_connection.sendCommand("mic list", [this](int code, const QString& body) {
+        sendCmd("mic list", [this](int code, const QString& body) {
             if (code == 0) {
                 QStringList inputs = body.trimmed().split(',', Qt::SkipEmptyParts);
                 m_transmitModel.setMicInputList(inputs);
@@ -249,11 +296,15 @@ void RadioModel::onConnected()
             }
         });
 
-        if (!m_panStream.isRunning())
-            m_panStream.start(&m_connection);  // also sends one-byte UDP registration
+        if (!m_panStream.isRunning()) {
+            if (m_wanConn)
+                m_panStream.startWan(QHostAddress(m_wanPublicIp), m_wanUdpPort);
+            else
+                m_panStream.start(&m_connection);  // also sends one-byte UDP registration
+        }
 
         const quint16 udpPort = m_panStream.localPort();
-        m_connection.sendCommand(
+        sendCmd(
             QString("client udpport %1").arg(udpPort),
             [this, udpPort](int code2, const QString&) {
                 if (code2 == 0)
@@ -263,7 +314,7 @@ void RadioModel::onConnected()
 
                 // Query radio info (region, callsign, options, etc.)
                 // Response is comma-separated key=value pairs.
-                m_connection.sendCommand("info",
+                sendCmd("info",
                     [this](int code, const QString& body) {
                         if (code != 0) return;
                         for (const QString& kv : body.split(',')) {
@@ -289,7 +340,7 @@ void RadioModel::onConnected()
                         emit infoChanged();
                     });
 
-                m_connection.sendCommand("slice list",
+                sendCmd("slice list",
                     [this](int code3, const QString& body) {
                         if (code3 != 0) {
                             qWarning() << "RadioModel: slice list failed, code" << Qt::hex << code3;
@@ -320,14 +371,14 @@ void RadioModel::onConnected()
 
                         for (auto* s : m_slices) {
                             for (const QString& cmd : s->drainPendingCommands())
-                                m_connection.sendCommand(cmd);
+                                sendCmd(cmd);
                         }
 
                         // Request a remote audio RX stream (uncompressed).
                         // The radio creates an ExtDataWithStream VITA-49 stream
                         // (PCC 0x03E3, float32 stereo big-endian) and sends it
                         // to our registered UDP port.
-                        m_connection.sendCommand(
+                        sendCmd(
                             "stream create type=remote_audio_rx compression=none",
                             [this](int code, const QString& body) {
                                 if (code == 0) {
@@ -339,14 +390,14 @@ void RadioModel::onConnected()
                             });
 
                         // Request DAX TX audio stream (PC mic → radio)
-                        m_connection.sendCommand(
+                        sendCmd(
                             "stream create type=dax_tx",
                             [this](int code, const QString& body) {
                                 if (code == 0) {
                                     quint32 id = body.trimmed().toUInt(nullptr, 16);
                                     qDebug() << "RadioModel: dax_tx stream created, id:"
                                              << Qt::hex << id;
-                                    m_connection.sendCommand("transmit set mic_selection=PC");
+                                    sendCmd("transmit set mic_selection=PC");
                                     emit txAudioStreamReady(id);
                                 } else {
                                     qWarning() << "RadioModel: stream create dax_tx failed, code"
@@ -355,9 +406,8 @@ void RadioModel::onConnected()
                             });
                     });
             });
-    }); // client gui
             // Request global profile list
-            m_connection.sendCommand("profile global info");
+            sendCmd("profile global info");
             }); // sub xvtr all
             }); // sub apd all
             }); // sub gps all
@@ -368,6 +418,7 @@ void RadioModel::onConnected()
       }); // sub tx all
       }); // sub pan all
     }); // sub slice all
+    }); // client gui
 }
 
 void RadioModel::onDisconnected()
@@ -417,13 +468,13 @@ void RadioModel::startNetworkMonitor()
     m_lastPingRtt = 0;
 
     connect(&m_pingTimer, &QTimer::timeout, this, [this]() {
-        if (!m_connection.isConnected()) {
+        if (!isConnected()) {
             stopNetworkMonitor();
             return;
         }
         // Send ping and measure RTT
         m_pingStopwatch.restart();
-        m_connection.sendCommand("ping", [this](int code, const QString&) {
+        sendCmd("ping", [this](int code, const QString&) {
             if (code != 0) return;
             m_lastPingRtt = static_cast<int>(m_pingStopwatch.elapsed());
             evaluateNetworkQuality();
@@ -633,8 +684,22 @@ void RadioModel::onMessageReceived(const ParsedMessage& msg)
 void RadioModel::sendCommand(const QString& cmd)
 {
     qDebug() << "RadioModel::sendCommand:" << cmd
-             << "connected:" << m_connection.isConnected();
-    m_connection.sendCommand(cmd);
+             << "connected:" << isConnected() << "wan:" << (m_wanConn != nullptr);
+    this->sendCmd(cmd);
+}
+
+quint32 RadioModel::sendCmd(const QString& command, ResponseCallback cb)
+{
+    if (m_wanConn)
+        return m_wanConn->sendCommand(command, std::move(cb));
+    return m_connection.sendCommand(command, std::move(cb));
+}
+
+quint32 RadioModel::clientHandle() const
+{
+    if (m_wanConn)
+        return m_wanConn->clientHandle();
+    return m_connection.clientHandle();
 }
 
 void RadioModel::onStatusReceived(const QString& object,
@@ -757,7 +822,7 @@ void RadioModel::onStatusReceived(const QString& object,
                 // Claim this pan only if it belongs to us
                 if (kvs.contains("client_handle")) {
                     quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
-                    if (owner == m_connection.clientHandle()) {
+                    if (owner == clientHandle()) {
                         m_panId = panId;
                         updateStreamFilters();
                         qDebug() << "RadioModel: claimed panadapter" << m_panId;
@@ -785,7 +850,7 @@ void RadioModel::onStatusReceived(const QString& object,
             if (m_waterfallId.isEmpty()) {
                 if (kvs.contains("client_handle")) {
                     quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
-                    if (owner == m_connection.clientHandle()) {
+                    if (owner == clientHandle()) {
                         m_waterfallId = wfId;
                         updateStreamFilters();
                         qDebug() << "RadioModel: claimed waterfall" << m_waterfallId;
@@ -799,7 +864,7 @@ void RadioModel::onStatusReceived(const QString& object,
                 return;  // not our waterfall
             }
         }
-        if (!m_wfConfigured && !m_waterfallId.isEmpty() && m_connection.isConnected()) {
+        if (!m_wfConfigured && !m_waterfallId.isEmpty() && isConnected()) {
             m_wfConfigured = true;
             configureWaterfall();
         }
@@ -934,14 +999,14 @@ QString RadioModel::serial() const
 void RadioModel::setRemoteOnEnabled(bool on)
 {
     m_remoteOnEnabled = on;
-    m_connection.sendCommand(QString("radio set remote_on_enabled=%1").arg(on ? 1 : 0));
+    sendCmd(QString("radio set remote_on_enabled=%1").arg(on ? 1 : 0));
     emit infoChanged();
 }
 
 void RadioModel::setMultiFlexEnabled(bool on)
 {
     m_multiFlexEnabled = on;
-    m_connection.sendCommand(QString("radio set mf_enable=%1").arg(on ? 1 : 0));
+    sendCmd(QString("radio set mf_enable=%1").arg(on ? 1 : 0));
     emit infoChanged();
 }
 
@@ -996,7 +1061,7 @@ void RadioModel::handleSliceStatus(int id,
     // Track slice ownership via client_handle (only present in some messages)
     if (kvs.contains("client_handle")) {
         quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
-        if (owner == m_connection.clientHandle()) {
+        if (owner == clientHandle()) {
             m_ownedSliceIds.insert(id);
             qDebug() << "RadioModel: slice" << id << "is ours (client_handle match)";
         } else if (owner != 0) {
@@ -1034,7 +1099,7 @@ void RadioModel::handleSliceStatus(int id,
         s = new SliceModel(id, this);
         // Forward slice commands to the radio
         connect(s, &SliceModel::commandReady, this, [this](const QString& cmd){
-            m_connection.sendCommand(cmd);
+            sendCmd(cmd);
         });
         m_slices.append(s);
         s->applyStatus(kvs);  // populate frequency/mode before notifying UI
@@ -1045,9 +1110,9 @@ void RadioModel::handleSliceStatus(int id,
     s->applyStatus(kvs);
 
     // Send any queued commands (e.g. if GUI changed freq before status arrived)
-    if (m_connection.isConnected()) {
+    if (isConnected()) {
         for (const QString& cmd : s->drainPendingCommands())
-            m_connection.sendCommand(cmd);
+            sendCmd(cmd);
     }
 }
 
@@ -1170,7 +1235,7 @@ void RadioModel::handlePanadapterStatus(const QMap<QString, QString>& kvs)
     // Configure the panadapter once we know its ID.
     // x_pixels is not settable on firmware v1.4.0.0 (always returns 5000002D),
     // so we only set fps and disable averaging.
-    if (!m_panResized && !m_panId.isEmpty() && m_connection.isConnected()) {
+    if (!m_panResized && !m_panId.isEmpty() && isConnected()) {
         m_panResized = true;
         configurePan();
     }
@@ -1190,7 +1255,7 @@ void RadioModel::configurePan()
     // Set xpixels and ypixels — the radio requires explicit dimensions before
     // it will produce valid FFT data.  Note: the command uses "xpixels" (no
     // underscore) but status messages report "x_pixels" (with underscore).
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 xpixels=1024 ypixels=700").arg(m_panId),
         [this](int code, const QString&) {
             if (code != 0)
@@ -1200,7 +1265,7 @@ void RadioModel::configurePan()
                 qDebug() << "RadioModel: panadapter xpixels=1024 ypixels=700 set OK";
         });
 
-    m_connection.sendCommand(
+    sendCmd(
         QString("display pan set %1 fps=25 average=0 min_dbm=-130 max_dbm=-40").arg(m_panId),
         [](int code, const QString&) {
             if (code != 0)
@@ -1216,12 +1281,12 @@ void RadioModel::configureWaterfall()
     // FlexLib uses "display panafall set" addressed to the waterfall stream ID.
     const QString cmd = QString("display panafall set %1 auto_black=0 black_level=15 color_gain=50")
                             .arg(m_waterfallId);
-    m_connection.sendCommand(cmd, [this](int code, const QString&) {
+    sendCmd(cmd, [this](int code, const QString&) {
         if (code != 0) {
             qDebug() << "RadioModel: display panafall set waterfall failed, code"
                      << Qt::hex << code << "— trying display waterfall set";
             // Fallback for firmware that doesn't support panafall addressing
-            m_connection.sendCommand(
+            sendCmd(
                 QString("display waterfall set %1 auto_black=0 black_level=15 color_gain=50")
                     .arg(m_waterfallId),
                 [](int code2, const QString&) {
@@ -1255,7 +1320,7 @@ void RadioModel::createDefaultSlice(const QString& freqMhz,
     qDebug() << "RadioModel: standalone mode — creating panadapter + slice"
              << freqMhz << mode << antenna;
 
-    m_connection.sendCommand("panadapter create",
+    sendCmd("panadapter create",
         [this, freqMhz, mode, antenna](int code, const QString& body) {
             if (code != 0) {
                 qWarning() << "RadioModel: panadapter create failed, code" << Qt::hex << code
@@ -1288,7 +1353,7 @@ void RadioModel::createDefaultSlice(const QString& freqMhz,
                 QString("slice create pan=%1 freq=%2 antenna=%3 mode=%4")
                     .arg(panId, freqMhz, antenna, mode);
 
-            m_connection.sendCommand(sliceCmd,
+            sendCmd(sliceCmd,
                 [panId](int code2, const QString& body2) {
                     if (code2 != 0) {
                         qWarning() << "RadioModel: slice create failed, code"
@@ -1359,7 +1424,7 @@ void RadioModel::handleProfileStatusRaw(const QString& profileType,
 
 void RadioModel::loadGlobalProfile(const QString& name)
 {
-    m_connection.sendCommand(QString("profile global load \"%1\"").arg(name));
+    sendCmd(QString("profile global load \"%1\"").arg(name));
 }
 
 void RadioModel::resetPanState()
@@ -1374,11 +1439,11 @@ void RadioModel::createAudioStream()
     if (!m_rxAudioStreamId.isEmpty()) {
         const QString oldId = m_rxAudioStreamId;
         m_rxAudioStreamId.clear();
-        m_connection.sendCommand(
+        sendCmd(
             QString("stream remove 0x%1").arg(oldId),
             [this](int, const QString&) {
                 // Old stream removed — now create the new one
-                m_connection.sendCommand(
+                sendCmd(
                     "stream create type=remote_audio_rx compression=none",
                     [this](int code, const QString& body) {
                         if (code == 0) {
@@ -1390,7 +1455,7 @@ void RadioModel::createAudioStream()
                     });
             });
     } else {
-        m_connection.sendCommand(
+        sendCmd(
             "stream create type=remote_audio_rx compression=none",
             [this](int code, const QString& body) {
                 if (code == 0) {
@@ -1402,13 +1467,13 @@ void RadioModel::createAudioStream()
             });
     }
 
-    m_connection.sendCommand(
+    sendCmd(
         "stream create type=dax_tx",
         [this](int code, const QString& body) {
             if (code == 0) {
                 quint32 id = body.trimmed().toUInt(nullptr, 16);
                 qDebug() << "RadioModel: dax_tx stream re-created, id:" << Qt::hex << id;
-                m_connection.sendCommand("transmit set mic_selection=PC");
+                sendCmd("transmit set mic_selection=PC");
                 emit txAudioStreamReady(id);
             }
         });

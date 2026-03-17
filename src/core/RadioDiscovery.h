@@ -16,6 +16,8 @@ struct RadioInfo {
     QString model;
     QString serial;
     QString version;
+    QString nickname;
+    QString callsign;
     QHostAddress address;
     quint16 port{4992};
     QString status;         // "Available" | "In_Use" | etc.
@@ -23,7 +25,8 @@ struct RadioInfo {
     bool inUse{false};
 
     QString displayName() const {
-        return QString("%1 (%2) @ %3").arg(model, serial, address.toString());
+        return QString("%1  %2  %3\nAvailable (local)")
+            .arg(model, nickname, callsign);
     }
 };
 
