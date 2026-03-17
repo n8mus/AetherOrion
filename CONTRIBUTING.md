@@ -276,8 +276,8 @@ sudo cmake --install build
 
 ### Logging
 
-Debug logs are written to `build/aethersdr.log` (overwritten each launch).
-Include relevant log excerpts in bug reports and PRs.
+Debug logs are written to `~/.config/AetherSDR/AetherSDR/aethersdr.log`
+(overwritten each launch). Include relevant log excerpts in bug reports and PRs.
 
 ### Hardware
 
@@ -285,6 +285,76 @@ A FlexRadio FLEX-6000 or FLEX-8000 series radio is the reference target.
 Tested on FLEX-8600 running SmartSDR v4.1.5. If you don't have hardware,
 you can still contribute to UI, protocol parsing, and model logic — just
 note in your PR how you tested.
+
+---
+
+## AI-Assisted Feature Requests
+
+**You don't need to be a developer to contribute a great feature request.** If you
+have an idea for AetherSDR but aren't sure how to write it up in a way that's
+useful to developers, you can use [Claude.ai](https://claude.ai) (free) to help
+you structure it. This saves us time and gets your feature implemented faster.
+
+### How it works
+
+1. Go to [claude.ai](https://claude.ai) and start a new conversation.
+2. Paste the prompt below, filling in the parts in `[brackets]` with your idea.
+3. Claude will generate a structured feature request.
+4. Copy the output and paste it into a [new GitHub issue](https://github.com/ten9876/AetherSDR/issues/new).
+
+### The prompt
+
+Copy and paste this into Claude.ai:
+
+```
+I want to request a feature for AetherSDR, a Linux-native Qt6/C++20 client
+for FlexRadio transceivers. It uses the SmartSDR protocol over TCP/UDP.
+
+Please write a GitHub issue for this feature request. Include:
+1. A clear title
+2. A "What" section describing what the feature does from the user's perspective
+3. A "Why" section explaining why this is useful (what problem it solves)
+4. A "SmartSDR Reference" section — if this feature exists in SmartSDR for
+   Windows, describe how it works there (screenshots welcome)
+5. A "Suggested Behavior" section with specific details about how it should
+   work in AetherSDR (what the user clicks, what they see, what happens)
+6. A "Protocol Hints" section — if you know the SmartSDR commands involved,
+   list them. If not, just say "Unknown — needs research"
+
+Here is my feature idea:
+
+[Describe your feature here in plain English. Be as specific as you can.
+For example: "I want to be able to right-click on a signal in the waterfall
+and have it automatically look up the callsign on QRZ.com" or "I want the
+S-meter to show a bar graph option instead of just the analog needle" or
+"I want AetherSDR to remember which band I was on for each mode so when
+I switch from USB to CW it goes back to where I was on CW"]
+```
+
+### What makes a good feature request
+
+- **Be specific.** "Better audio" is hard to act on. "Add a noise gate with
+  adjustable threshold to the TX audio path" is actionable.
+- **Describe the problem, not just the solution.** Tell us *why* you want it.
+  "I run WSJT-X on a separate slice and need independent CAT control" helps
+  us understand the use case.
+- **Reference SmartSDR.** If the feature exists in SmartSDR, tell us. A
+  screenshot of the Windows client is worth a thousand words.
+- **One feature per issue.** Don't bundle "add CW memories AND fix the
+  waterfall colors AND add a band map" into one request.
+
+### Example
+
+A user might type into Claude.ai:
+
+> I want AetherSDR to support band stacking. When I change bands, I want it
+> to remember the frequency, mode, and filter I was using on that band. When
+> I come back to the band, it should restore those settings. SmartSDR does
+> this with a "band stack" feature.
+
+Claude would produce a nicely structured issue with title, sections, and
+protocol hints that our development team (including our AI pair-programmer)
+can immediately work from.
 
 ---
 

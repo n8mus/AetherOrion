@@ -193,7 +193,9 @@ See the full [issue tracker](https://github.com/ten9876/AetherSDR/issues) for 45
 
 ## Contributing
 
-PRs and bug reports welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+PRs, bug reports, and feature requests welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+**Not a developer?** You can still contribute great feature requests using AI. See the [AI-Assisted Feature Requests](CONTRIBUTING.md#ai-assisted-feature-requests) section in our contributing guide — it walks you through using Claude.ai to turn your idea into a well-structured request that's easy for us to implement.
 
 The codebase is modular — each subsystem (core protocol, models, GUI widgets) can be worked on independently. Check [Issues](https://github.com/ten9876/AetherSDR/issues) for current tasks.
 
