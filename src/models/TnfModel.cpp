@@ -84,6 +84,8 @@ void TnfModel::setTnfPermanent(int id, bool on)
 void TnfModel::requestRemoveTnf(int id)
 {
     emit commandReady(QString("tnf remove %1").arg(id));
+    // Radio does not send a removal status — remove optimistically
+    removeTnf(id);
 }
 
 void TnfModel::requestGlobalTnfEnabled(bool on)
