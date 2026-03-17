@@ -248,8 +248,12 @@ void RadioModel::onConnected()
 
     // Register as GUI client FIRST — required before subscriptions,
     // especially on WAN/SmartLink where the radio is stricter.
-    // Include GUI client ID — required on WAN/SmartLink connections
     const QString clientId = AppSettings::instance().value("GUIClientID").toString();
+
+    // On WAN, send client ip first (FlexLib does this before client gui)
+    if (m_wanConn)
+        sendCmd("client ip");
+
     sendCmd(QString("client gui %1").arg(clientId), [this](int code, const QString&) {
         if (code != 0)
             qWarning() << "RadioModel: client gui failed, code" << Qt::hex << code;
