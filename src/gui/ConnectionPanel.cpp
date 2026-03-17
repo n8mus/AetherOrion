@@ -51,6 +51,62 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
     m_connectBtn->setEnabled(false);
     vbox->addWidget(m_connectBtn);
 
+    // ── SmartLink section ────────────────────────────────────────────────
+    m_smartLinkGroup = new QGroupBox("SmartLink", this);
+    auto* slBox = new QVBoxLayout(m_smartLinkGroup);
+    slBox->setSpacing(4);
+
+    // Email
+    auto* emailRow = new QHBoxLayout;
+    emailRow->addWidget(new QLabel("Email:", m_smartLinkGroup));
+    m_emailEdit = new QLineEdit(m_smartLinkGroup);
+    m_emailEdit->setPlaceholderText("flexradio account email");
+    emailRow->addWidget(m_emailEdit, 1);
+    slBox->addLayout(emailRow);
+
+    // Password
+    auto* passRow = new QHBoxLayout;
+    passRow->addWidget(new QLabel("Pass:", m_smartLinkGroup));
+    m_passwordEdit = new QLineEdit(m_smartLinkGroup);
+    m_passwordEdit->setEchoMode(QLineEdit::Password);
+    m_passwordEdit->setPlaceholderText("password");
+    passRow->addWidget(m_passwordEdit, 1);
+    slBox->addLayout(passRow);
+
+    // Login button
+    m_loginBtn = new QPushButton("Log In", m_smartLinkGroup);
+    slBox->addWidget(m_loginBtn);
+
+    // User info (shown after login)
+    m_slUserLabel = new QLabel("", m_smartLinkGroup);
+    m_slUserLabel->setStyleSheet("QLabel { color: #00b4d8; font-size: 10px; }");
+    m_slUserLabel->setVisible(false);
+    slBox->addWidget(m_slUserLabel);
+
+    // WAN radio list
+    m_wanRadioList = new QListWidget(m_smartLinkGroup);
+    m_wanRadioList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_wanRadioList->setVisible(false);
+    slBox->addWidget(m_wanRadioList, 1);
+
+    vbox->addWidget(m_smartLinkGroup);
+
+    // Login button click
+    connect(m_loginBtn, &QPushButton::clicked, this, [this] {
+        const QString email = m_emailEdit->text().trimmed();
+        const QString pass  = m_passwordEdit->text();
+        if (email.isEmpty() || pass.isEmpty()) return;
+        m_loginBtn->setEnabled(false);
+        m_loginBtn->setText("Logging in...");
+        emit smartLinkLoginRequested(email, pass);
+    });
+
+    // WAN radio list selection enables Connect button
+    connect(m_wanRadioList, &QListWidget::itemSelectionChanged, this, [this] {
+        if (!m_connected && m_wanRadioList->currentItem())
+            m_connectBtn->setEnabled(true);
+    });
+
     // Stretch at the bottom keeps the indicator at the top when collapsed
     vbox->addStretch();
 
@@ -122,9 +178,79 @@ void ConnectionPanel::onConnectClicked()
         return;
     }
 
+    // Check WAN radio list first (if a WAN radio is selected)
+    const int wanRow = m_wanRadioList->currentRow();
+    if (wanRow >= 0 && wanRow < m_wanRadios.size() &&
+        m_wanRadioList->currentItem() && m_wanRadioList->currentItem()->isSelected()) {
+        emit wanConnectRequested(m_wanRadios[wanRow]);
+        return;
+    }
+
+    // Fall back to LAN radio
     const int row = m_radioList->currentRow();
     if (row < 0 || row >= m_radios.size()) return;
     emit connectRequested(m_radios[row]);
+}
+
+void ConnectionPanel::setSmartLinkClient(SmartLinkClient* client)
+{
+    m_smartLink = client;
+    if (!client) return;
+
+    connect(client, &SmartLinkClient::authenticated, this, [this] {
+        m_loginBtn->setText("Log Out");
+        m_loginBtn->setEnabled(true);
+        m_emailEdit->setVisible(false);
+        m_passwordEdit->setVisible(false);
+        m_slUserLabel->setText(QString("%1 %2 (%3)")
+            .arg(m_smartLink->firstName(), m_smartLink->lastName(),
+                 m_smartLink->callsign()));
+        m_slUserLabel->setVisible(true);
+        m_wanRadioList->setVisible(true);
+
+        // Reconnect login button for logout
+        disconnect(m_loginBtn, &QPushButton::clicked, nullptr, nullptr);
+        connect(m_loginBtn, &QPushButton::clicked, this, [this] {
+            m_smartLink->logout();
+            m_loginBtn->setText("Log In");
+            m_emailEdit->setVisible(true);
+            m_passwordEdit->setVisible(true);
+            m_slUserLabel->setVisible(false);
+            m_wanRadioList->setVisible(false);
+            m_wanRadioList->clear();
+            m_wanRadios.clear();
+
+            // Reconnect for login
+            disconnect(m_loginBtn, &QPushButton::clicked, nullptr, nullptr);
+            connect(m_loginBtn, &QPushButton::clicked, this, [this] {
+                const QString email = m_emailEdit->text().trimmed();
+                const QString pass  = m_passwordEdit->text();
+                if (email.isEmpty() || pass.isEmpty()) return;
+                m_loginBtn->setEnabled(false);
+                m_loginBtn->setText("Logging in...");
+                emit smartLinkLoginRequested(email, pass);
+            });
+        });
+    });
+
+    connect(client, &SmartLinkClient::authFailed, this, [this](const QString& err) {
+        m_loginBtn->setText("Log In");
+        m_loginBtn->setEnabled(true);
+        m_slUserLabel->setText("Login failed: " + err);
+        m_slUserLabel->setStyleSheet("QLabel { color: #ff4444; font-size: 10px; }");
+        m_slUserLabel->setVisible(true);
+    });
+
+    connect(client, &SmartLinkClient::radioListReceived, this,
+            [this](const QList<WanRadioInfo>& radios) {
+        m_wanRadios = radios;
+        m_wanRadioList->clear();
+        for (const auto& r : radios) {
+            QString display = QString("%1  %2  %3\n%4")
+                .arg(r.model, r.nickname, r.callsign, r.status);
+            m_wanRadioList->addItem(display);
+        }
+    });
 }
 
 void ConnectionPanel::setCollapsed(bool collapsed)
@@ -134,6 +260,7 @@ void ConnectionPanel::setCollapsed(bool collapsed)
     m_connectBtn->setVisible(!collapsed);
     m_statusLabel->setVisible(!collapsed);
     m_collapseBtn->setVisible(!collapsed);
+    m_smartLinkGroup->setVisible(!collapsed);
 
     if (collapsed) {
         m_expandedWidth = width();

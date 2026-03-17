@@ -6,6 +6,8 @@
 #include "core/AudioEngine.h"
 #include "core/RigctlServer.h"
 #include "core/RigctlPty.h"
+#include "core/SmartLinkClient.h"
+#include "core/WanConnection.h"
 
 #include <QMainWindow>
 #include <QSplitter>
@@ -56,6 +58,8 @@ private:
     BandSettings      m_bandSettings;
     RigctlServer      m_rigctlServer{&m_radioModel};
     RigctlPty         m_rigctlPty{&m_radioModel};
+    SmartLinkClient   m_smartLink;
+    WanConnection     m_wanConnection;
 
     // GUI — left sidebar
     ConnectionPanel* m_connPanel{nullptr};
@@ -72,6 +76,9 @@ private:
 
     // Audio stream re-creation flag (after profile load)
     bool             m_needAudioStream{false};
+
+    // Pending WAN radio (between requestConnect and connectReady)
+    WanRadioInfo     m_pendingWanRadio;
 
     // Status bar labels
     QLabel* m_connStatusLabel{nullptr};

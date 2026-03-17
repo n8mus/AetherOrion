@@ -113,6 +113,51 @@ MainWindow::MainWindow(QWidget* parent)
         m_radioModel.disconnectFromRadio();
     });
 
+    // ── SmartLink ──────────────────────────────────────────────────────────
+    m_connPanel->setSmartLinkClient(&m_smartLink);
+
+    connect(m_connPanel, &ConnectionPanel::smartLinkLoginRequested,
+            this, [this](const QString& email, const QString& pass) {
+        m_smartLink.login(email, pass);
+    });
+
+    // WAN radio connect: ask SmartLink server for a handle, then TLS to radio
+    connect(m_connPanel, &ConnectionPanel::wanConnectRequested,
+            this, [this](const WanRadioInfo& info) {
+        m_connPanel->setStatusText("Requesting SmartLink connection…");
+        // Store WAN radio info for when connect_ready arrives
+        m_pendingWanRadio = info;
+        m_smartLink.requestConnect(info.serial);
+    });
+
+    // SmartLink server says radio is ready — connect via TLS
+    connect(&m_smartLink, &SmartLinkClient::connectReady,
+            this, [this](const QString& handle, const QString& serial) {
+        if (serial != m_pendingWanRadio.serial) return;
+        m_connPanel->setStatusText("TLS connecting to radio…");
+        m_wanConnection.connectToRadio(
+            m_pendingWanRadio.publicIp,
+            static_cast<quint16>(m_pendingWanRadio.publicTlsPort),
+            handle);
+    });
+
+    // WAN connection established — wire to RadioModel
+    // TODO: RadioModel needs to accept WanConnection as an alternative
+    // to RadioConnection. For now, log the event.
+    connect(&m_wanConnection, &WanConnection::connected, this, [this] {
+        qDebug() << "MainWindow: WAN connection established!";
+        m_connPanel->setStatusText("Connected via SmartLink");
+        m_connPanel->setConnected(true);
+    });
+    connect(&m_wanConnection, &WanConnection::disconnected, this, [this] {
+        qDebug() << "MainWindow: WAN connection lost";
+        m_connPanel->setStatusText("SmartLink disconnected");
+        m_connPanel->setConnected(false);
+    });
+    connect(&m_wanConnection, &WanConnection::errorOccurred, this, [this](const QString& err) {
+        m_connPanel->setStatusText("SmartLink error: " + err);
+    });
+
     // ── Wire up radio model ────────────────────────────────────────────────
     connect(&m_radioModel, &RadioModel::connectionStateChanged,
             this, &MainWindow::onConnectionStateChanged);
