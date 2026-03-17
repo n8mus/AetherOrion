@@ -1,0 +1,75 @@
+name: macOS DMG
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build-dmg:
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install qt@6 ninja create-dmg
+          echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
+
+      - name: Generate .icns from PNG
+        run: |
+          mkdir -p AetherSDR.iconset
+          sips -z 16 16     docs/logo-circle.png --out AetherSDR.iconset/icon_16x16.png
+          sips -z 32 32     docs/logo-circle.png --out AetherSDR.iconset/icon_16x16@2x.png
+          sips -z 32 32     docs/logo-circle.png --out AetherSDR.iconset/icon_32x32.png
+          sips -z 64 64     docs/logo-circle.png --out AetherSDR.iconset/icon_32x32@2x.png
+          sips -z 128 128   docs/logo-circle.png --out AetherSDR.iconset/icon_128x128.png
+          sips -z 256 256   docs/logo-circle.png --out AetherSDR.iconset/icon_128x128@2x.png
+          sips -z 256 256   docs/logo-circle.png --out AetherSDR.iconset/icon_256x256.png
+          sips -z 512 512   docs/logo-circle.png --out AetherSDR.iconset/icon_256x256@2x.png
+          sips -z 512 512   docs/logo-circle.png --out AetherSDR.iconset/icon_512x512.png
+          sips -z 768 768   docs/logo-circle.png --out AetherSDR.iconset/icon_512x512@2x.png
+          iconutil -c icns AetherSDR.iconset -o docs/AetherSDR.icns
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
+
+      - name: Build
+        run: cmake --build build -j$(sysctl -n hw.ncpu)
+
+      - name: Bundle Qt frameworks
+        run: |
+          macdeployqt build/AetherSDR.app \
+            -verbose=1 \
+            -always-overwrite
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "AetherSDR" \
+            --volicon "docs/AetherSDR.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "AetherSDR.app" 150 190 \
+            --hide-extension "AetherSDR.app" \
+            --app-drop-link 450 190 \
+            "AetherSDR-${{ github.ref_name }}-macOS-arm64.dmg" \
+            "build/AetherSDR.app" \
+          || true  # create-dmg returns 2 on success with no code sign
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-DMG
+          path: AetherSDR-*.dmg
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AetherSDR-*.dmg

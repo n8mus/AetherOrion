@@ -21,8 +21,10 @@ find_package(Qt6 REQUIRED COMPONENTS
 )
 
 # PortAudio (optional fallback for audio)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(PORTAUDIO portaudio-2.0)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(PORTAUDIO portaudio-2.0)
+endif()
 
 # Sources
 set(CORE_SOURCES
@@ -82,6 +84,24 @@ set(ALL_SOURCES
 qt_add_resources(RESOURCES resources.qrc)
 
 add_executable(AetherSDR ${ALL_SOURCES} ${RESOURCES})
+
+# macOS app bundle
+if(APPLE)
+    set_target_properties(AetherSDR PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.aethersdr.AetherSDR"
+        MACOSX_BUNDLE_BUNDLE_NAME "AetherSDR"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_ICON_FILE "AetherSDR.icns"
+    )
+    set(MACOSX_ICON "${CMAKE_SOURCE_DIR}/docs/AetherSDR.icns")
+    if(EXISTS "${MACOSX_ICON}")
+        target_sources(AetherSDR PRIVATE "${MACOSX_ICON}")
+        set_source_files_properties("${MACOSX_ICON}" PROPERTIES
+            MACOSX_PACKAGE_LOCATION "Resources")
+    endif()
+endif()
 
 target_include_directories(AetherSDR PRIVATE
     src/
