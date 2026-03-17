@@ -63,6 +63,7 @@ private:
     // SmartLink UI
     SmartLinkClient* m_smartLink{nullptr};
     QWidget*     m_smartLinkGroup{nullptr};
+    QWidget*     m_loginForm{nullptr};
     QLineEdit*   m_emailEdit{nullptr};
     QLineEdit*   m_passwordEdit{nullptr};
     QPushButton* m_loginBtn{nullptr};

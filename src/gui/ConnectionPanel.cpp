@@ -56,26 +56,31 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
     auto* slBox = new QVBoxLayout(m_smartLinkGroup);
     slBox->setSpacing(4);
 
-    // Email
+    // Login form container (hidden after successful login)
+    m_loginForm = new QWidget(m_smartLinkGroup);
+    auto* loginLayout = new QVBoxLayout(m_loginForm);
+    loginLayout->setContentsMargins(0, 0, 0, 0);
+    loginLayout->setSpacing(4);
+
     auto* emailRow = new QHBoxLayout;
-    emailRow->addWidget(new QLabel("Email:", m_smartLinkGroup));
-    m_emailEdit = new QLineEdit(m_smartLinkGroup);
+    emailRow->addWidget(new QLabel("Email:", m_loginForm));
+    m_emailEdit = new QLineEdit(m_loginForm);
     m_emailEdit->setPlaceholderText("flexradio account email");
     emailRow->addWidget(m_emailEdit, 1);
-    slBox->addLayout(emailRow);
+    loginLayout->addLayout(emailRow);
 
-    // Password
     auto* passRow = new QHBoxLayout;
-    passRow->addWidget(new QLabel("Pass:", m_smartLinkGroup));
-    m_passwordEdit = new QLineEdit(m_smartLinkGroup);
+    passRow->addWidget(new QLabel("Pass:", m_loginForm));
+    m_passwordEdit = new QLineEdit(m_loginForm);
     m_passwordEdit->setEchoMode(QLineEdit::Password);
     m_passwordEdit->setPlaceholderText("password");
     passRow->addWidget(m_passwordEdit, 1);
-    slBox->addLayout(passRow);
+    loginLayout->addLayout(passRow);
 
-    // Login button
-    m_loginBtn = new QPushButton("Log In", m_smartLinkGroup);
-    slBox->addWidget(m_loginBtn);
+    m_loginBtn = new QPushButton("Log In", m_loginForm);
+    loginLayout->addWidget(m_loginBtn);
+
+    slBox->addWidget(m_loginForm);
 
     // User info (shown after login)
     m_slUserLabel = new QLabel("", m_smartLinkGroup);
@@ -198,38 +203,40 @@ void ConnectionPanel::setSmartLinkClient(SmartLinkClient* client)
     if (!client) return;
 
     connect(client, &SmartLinkClient::authenticated, this, [this] {
-        m_loginBtn->setText("Log Out");
-        m_loginBtn->setEnabled(true);
-        m_emailEdit->setVisible(false);
-        m_passwordEdit->setVisible(false);
-        m_slUserLabel->setText(QString("%1 %2 (%3)")
-            .arg(m_smartLink->firstName(), m_smartLink->lastName(),
-                 m_smartLink->callsign()));
-        m_slUserLabel->setVisible(true);
-        m_wanRadioList->setVisible(true);
+        // Hide login form, show logout button
+        m_loginForm->setVisible(false);
 
-        // Reconnect login button for logout
-        disconnect(m_loginBtn, &QPushButton::clicked, nullptr, nullptr);
+        // Add logout button below user label
+        m_loginBtn = new QPushButton("Log Out", m_smartLinkGroup);
+        qobject_cast<QVBoxLayout*>(m_smartLinkGroup->layout())->insertWidget(1, m_loginBtn);
         connect(m_loginBtn, &QPushButton::clicked, this, [this] {
             m_smartLink->logout();
-            m_loginBtn->setText("Log In");
-            m_emailEdit->setVisible(true);
-            m_passwordEdit->setVisible(true);
+            // Remove logout button, show login form
+            m_loginBtn->deleteLater();
+            m_loginForm->setVisible(true);
+            m_loginBtn = m_loginForm->findChild<QPushButton*>();
             m_slUserLabel->setVisible(false);
             m_wanRadioList->setVisible(false);
             m_wanRadioList->clear();
             m_wanRadios.clear();
+        });
 
-            // Reconnect for login
-            disconnect(m_loginBtn, &QPushButton::clicked, nullptr, nullptr);
-            connect(m_loginBtn, &QPushButton::clicked, this, [this] {
-                const QString email = m_emailEdit->text().trimmed();
-                const QString pass  = m_passwordEdit->text();
-                if (email.isEmpty() || pass.isEmpty()) return;
-                m_loginBtn->setEnabled(false);
-                m_loginBtn->setText("Logging in...");
-                emit smartLinkLoginRequested(email, pass);
-            });
+        // User info may not be available yet — show placeholder
+        m_slUserLabel->setText("Connected to SmartLink");
+        m_slUserLabel->setStyleSheet("QLabel { color: #00b4d8; font-size: 10px; }");
+        m_slUserLabel->setVisible(true);
+        m_wanRadioList->setVisible(true);
+    });
+
+    // Update user label when server sends user_settings (after authenticated)
+    connect(client, &SmartLinkClient::serverConnected, this, [this] {
+        // User settings arrive shortly after server connect
+        QTimer::singleShot(500, this, [this] {
+            if (!m_smartLink->firstName().isEmpty()) {
+                m_slUserLabel->setText(QString("%1 %2 (%3)")
+                    .arg(m_smartLink->firstName(), m_smartLink->lastName(),
+                         m_smartLink->callsign()));
+            }
         });
     });
 
