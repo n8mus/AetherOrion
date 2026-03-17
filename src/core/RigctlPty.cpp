@@ -5,6 +5,7 @@
 #include <QSocketNotifier>
 #include <QDebug>
 
+#ifndef _WIN32
 #include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
@@ -14,6 +15,7 @@
 #else
 #include <pty.h>        // openpty() on Linux
 #endif
+#endif // !_WIN32
 
 namespace AetherSDR {
 
@@ -29,6 +31,10 @@ RigctlPty::~RigctlPty()
 
 bool RigctlPty::start()
 {
+#ifdef _WIN32
+    qWarning() << "RigctlPty: PTY not supported on Windows";
+    return false;
+#else
     if (m_masterFd >= 0)
         return true;  // already running
 
@@ -70,10 +76,14 @@ bool RigctlPty::start()
     qInfo() << "RigctlPty: started on" << m_slavePath << "symlink:" << m_symlinkPath;
     emit started(m_symlinkPath);
     return true;
+#endif
 }
 
 void RigctlPty::stop()
 {
+#ifdef _WIN32
+    return;
+#else
     if (m_masterFd < 0)
         return;
 
@@ -94,10 +104,14 @@ void RigctlPty::stop()
 
     qInfo() << "RigctlPty: stopped";
     emit stopped();
+#endif
 }
 
 void RigctlPty::onDataReady()
 {
+#ifdef _WIN32
+    return;
+#else
     char buf[4096];
     ssize_t n = ::read(m_masterFd, buf, sizeof(buf));
     if (n <= 0) {
@@ -131,6 +145,7 @@ void RigctlPty::onDataReady()
             ::write(m_masterFd, data.constData(), data.size());
         }
     }
+#endif
 }
 
 } // namespace AetherSDR
