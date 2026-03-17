@@ -34,6 +34,7 @@ set(CORE_SOURCES
     src/core/PanadapterStream.cpp
     src/core/RigctlProtocol.cpp
     src/core/RigctlPty.cpp
+    src/core/SmartLinkClient.cpp
     src/core/RigctlServer.cpp
 )
 
