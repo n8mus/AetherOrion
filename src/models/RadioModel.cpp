@@ -1,5 +1,6 @@
 #include "RadioModel.h"
 #include "core/CommandParser.h"
+#include "core/AppSettings.h"
 #include <QDebug>
 #include <QRegularExpression>
 #include <QSettings>
@@ -242,16 +243,20 @@ void RadioModel::onConnected()
     qDebug() << "RadioModel: connected";
     m_panResized = false;
     emit connectionStateChanged(true);
-    startNetworkMonitor();
+    // Delay network monitor until after client gui registration
+    // (pings sent before registration cause "Malformed command" on WAN)
 
     // Register as GUI client FIRST — required before subscriptions,
     // especially on WAN/SmartLink where the radio is stricter.
-    sendCmd("client gui", [this](int code, const QString&) {
+    // Include GUI client ID — required on WAN/SmartLink connections
+    const QString clientId = AppSettings::instance().value("GUIClientID").toString();
+    sendCmd(QString("client gui %1").arg(clientId), [this](int code, const QString&) {
         if (code != 0)
             qWarning() << "RadioModel: client gui failed, code" << Qt::hex << code;
 
         sendCmd("client program AetherSDR");
         sendCmd("client station AetherSDR");
+        startNetworkMonitor();
 
     // Full command sequence — each step waits for its R response before sending the next.
     // sub slice all → sub pan all → sub tx all → sub atu all → sub amplifier all
