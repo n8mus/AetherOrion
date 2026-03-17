@@ -56,10 +56,10 @@ RadioSetupDialog::RadioSetupDialog(RadioModel* model, QWidget* parent)
     tabs->addTab(buildRadioTab(), "Radio");
     tabs->addTab(buildNetworkTab(), "Network");
     tabs->addTab(buildGpsTab(), "GPS");
+    tabs->addTab(buildAudioTab(), "Audio");
     tabs->addTab(buildTxTab(), "TX");
     tabs->addTab(buildPhoneCwTab(), "Phone/CW");
     tabs->addTab(buildRxTab(), "RX");
-    tabs->addTab(buildAudioTab(), "Audio");
     tabs->addTab(buildFiltersTab(), "Filters");
     tabs->addTab(buildXvtrTab(), "XVTR");
 
