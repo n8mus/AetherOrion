@@ -10,6 +10,7 @@
 #include <QMainWindow>
 #include <QSplitter>
 #include <QLabel>
+#include <QMenu>
 #include <QStatusBar>
 
 namespace AetherSDR {
@@ -65,6 +66,12 @@ private:
 
     // GUI — right applet panel
     AppletPanel*     m_appletPanel{nullptr};
+
+    // Menus
+    QMenu*           m_profilesMenu{nullptr};
+
+    // Audio stream re-creation flag (after profile load)
+    bool             m_needAudioStream{false};
 
     // Status bar labels
     QLabel* m_connStatusLabel{nullptr};

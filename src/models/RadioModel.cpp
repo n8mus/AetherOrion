@@ -329,10 +329,11 @@ void RadioModel::onConnected()
                         // to our registered UDP port.
                         m_connection.sendCommand(
                             "stream create type=remote_audio_rx compression=none",
-                            [](int code, const QString& body) {
-                                if (code == 0)
-                                    qDebug() << "RadioModel: remote_audio_rx stream created, id:" << body;
-                                else
+                            [this](int code, const QString& body) {
+                                if (code == 0) {
+                                    m_rxAudioStreamId = body.trimmed();
+                                    qDebug() << "RadioModel: remote_audio_rx stream created, id:" << m_rxAudioStreamId;
+                                } else
                                     qWarning() << "RadioModel: stream create remote_audio_rx failed, code"
                                                << Qt::hex << code << "body:" << body;
                             });
@@ -355,6 +356,8 @@ void RadioModel::onConnected()
                     });
             });
     }); // client gui
+            // Request global profile list
+            m_connection.sendCommand("profile global info");
             }); // sub xvtr all
             }); // sub apd all
             }); // sub gps all
@@ -600,6 +603,10 @@ void RadioModel::onMessageReceived(const ParsedMessage& msg)
     }
     if (body.startsWith("profile mic ")) {
         handleProfileStatusRaw("mic", body.mid(12));  // skip "profile mic "
+        return;
+    }
+    if (body.startsWith("profile global ")) {
+        handleProfileStatusRaw("global", body.mid(15));  // skip "profile global "
         return;
     }
 
@@ -1337,7 +1344,74 @@ void RadioModel::handleProfileStatusRaw(const QString& profileType,
             m_transmitModel.setActiveMicProfile(val);
             qDebug() << "RadioModel: active mic profile:" << val;
         }
+    } else if (profileType == "global") {
+        if (key == "list") {
+            m_globalProfiles = val.split('^', Qt::SkipEmptyParts);
+            qDebug() << "RadioModel: global profiles:" << m_globalProfiles;
+            emit globalProfilesChanged();
+        } else if (key == "current") {
+            m_activeGlobalProfile = val;
+            qDebug() << "RadioModel: active global profile:" << val;
+            emit globalProfilesChanged();
+        }
     }
+}
+
+void RadioModel::loadGlobalProfile(const QString& name)
+{
+    m_connection.sendCommand(QString("profile global load \"%1\"").arg(name));
+}
+
+void RadioModel::resetPanState()
+{
+    m_panResized = false;
+    m_wfConfigured = false;
+}
+
+void RadioModel::createAudioStream()
+{
+    // Remove old audio stream first, then create new one in the callback
+    if (!m_rxAudioStreamId.isEmpty()) {
+        const QString oldId = m_rxAudioStreamId;
+        m_rxAudioStreamId.clear();
+        m_connection.sendCommand(
+            QString("stream remove 0x%1").arg(oldId),
+            [this](int, const QString&) {
+                // Old stream removed — now create the new one
+                m_connection.sendCommand(
+                    "stream create type=remote_audio_rx compression=none",
+                    [this](int code, const QString& body) {
+                        if (code == 0) {
+                            m_rxAudioStreamId = body.trimmed();
+                            qDebug() << "RadioModel: remote_audio_rx stream re-created, id:" << m_rxAudioStreamId;
+                        } else
+                            qWarning() << "RadioModel: stream create remote_audio_rx failed, code"
+                                       << Qt::hex << code << "body:" << body;
+                    });
+            });
+    } else {
+        m_connection.sendCommand(
+            "stream create type=remote_audio_rx compression=none",
+            [this](int code, const QString& body) {
+                if (code == 0) {
+                    m_rxAudioStreamId = body.trimmed();
+                    qDebug() << "RadioModel: remote_audio_rx stream re-created, id:" << m_rxAudioStreamId;
+                } else
+                    qWarning() << "RadioModel: stream create remote_audio_rx failed, code"
+                               << Qt::hex << code << "body:" << body;
+            });
+    }
+
+    m_connection.sendCommand(
+        "stream create type=dax_tx",
+        [this](int code, const QString& body) {
+            if (code == 0) {
+                quint32 id = body.trimmed().toUInt(nullptr, 16);
+                qDebug() << "RadioModel: dax_tx stream re-created, id:" << Qt::hex << id;
+                m_connection.sendCommand("transmit set mic_selection=PC");
+                emit txAudioStreamReady(id);
+            }
+        });
 }
 
 } // namespace AetherSDR

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(AetherSDR VERSION 0.2.9 LANGUAGES CXX)
+project(AetherSDR VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -57,6 +57,7 @@ set(GUI_SOURCES
     src/gui/NetworkDiagnosticsDialog.cpp
     src/gui/MemoryDialog.cpp
     src/gui/SpotSettingsDialog.cpp
+    src/gui/ProfileManagerDialog.cpp
     src/gui/PanadapterApplet.cpp
     src/gui/AppletPanel.cpp
     src/gui/RxApplet.cpp

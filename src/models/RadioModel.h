@@ -121,6 +121,13 @@ public:
     int     filterSharpnessDigital()   const { return m_filterDigital; }
     bool    filterSharpnessDigitalAuto() const { return m_filterDigitalAuto; }
 
+    // Global profiles
+    QStringList globalProfiles() const { return m_globalProfiles; }
+    QString activeGlobalProfile() const { return m_activeGlobalProfile; }
+    void loadGlobalProfile(const QString& name);
+    void resetPanState();
+    void createAudioStream();
+
     // Memory channel cache
     const QMap<int, MemoryEntry>& memories() const { return m_memories; }
     void handleMemoryStatus(int index, const QMap<QString, QString>& kvs);
@@ -191,6 +198,8 @@ signals:
     void networkQualityChanged(const QString& quality, int pingMs);
     // Emitted when the radio assigns a TX audio stream ID.
     void txAudioStreamReady(quint32 streamId);
+    // Emitted when global profile list or active profile changes.
+    void globalProfilesChanged();
     // Generic status relay — for dialogs that need to listen for specific objects.
     void statusReceived(const QString& object, const QMap<QString, QString>& kvs);
 
@@ -333,6 +342,9 @@ private:
 private:
     QList<SliceModel*> m_slices;
     QMap<int, MemoryEntry> m_memories;
+    QStringList m_globalProfiles;
+    QString     m_activeGlobalProfile;
+    QString     m_rxAudioStreamId;
     QSet<int>          m_ownedSliceIds;   // slice IDs that belong to our client
 
     RadioInfo m_lastInfo;               // stored for auto-reconnect

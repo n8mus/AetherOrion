@@ -17,6 +17,7 @@
 #include "NetworkDiagnosticsDialog.h"
 #include "MemoryDialog.h"
 #include "SpotSettingsDialog.h"
+#include "ProfileManagerDialog.h"
 #include "models/SliceModel.h"
 #include "models/MeterModel.h"
 #include "models/TunerModel.h"
@@ -513,6 +514,39 @@ void MainWindow::buildMenuBar()
         }
     }
 
+    // ── Profiles menu ──────────────────────────────────────────────────────
+    m_profilesMenu = menuBar()->addMenu("&Profiles");
+    auto* profileMgrAct = m_profilesMenu->addAction("Profile Manager...");
+    connect(profileMgrAct, &QAction::triggered, this, [this] {
+        ProfileManagerDialog dlg(&m_radioModel, this);
+        dlg.exec();
+    });
+    auto* profileImportExportAct = m_profilesMenu->addAction("Import/Export Profiles...");
+    connect(profileImportExportAct, &QAction::triggered, this, [this] {
+        // TODO: open import/export dialog
+    });
+    m_profilesMenu->addSeparator();
+
+    // Global profile list (populated on connect)
+    connect(&m_radioModel, &RadioModel::globalProfilesChanged, this, [this] {
+        // Remove old profile actions (after the separator)
+        const auto actions = m_profilesMenu->actions();
+        for (int i = 3; i < actions.size(); ++i)  // skip Manager, Import/Export, separator
+            m_profilesMenu->removeAction(actions[i]);
+
+        // Add current global profiles
+        const auto profiles = m_radioModel.globalProfiles();
+        const auto active = m_radioModel.activeGlobalProfile();
+        for (const auto& name : profiles) {
+            auto* act = m_profilesMenu->addAction(name);
+            act->setCheckable(true);
+            act->setChecked(name == active);
+            connect(act, &QAction::triggered, this, [this, name] {
+                m_radioModel.loadGlobalProfile(name);
+            });
+        }
+    });
+
     auto* viewMenu = menuBar()->addMenu("&View");
     auto* themeAct = viewMenu->addAction("Toggle Dark/Light Theme");
     connect(themeAct, &QAction::triggered, this, [this]{
@@ -766,6 +800,14 @@ void MainWindow::onSliceAdded(SliceModel* s)
             m_bandSettings.setCurrentBand(BandSettings::bandForFrequency(s->frequency()));
 
         // Band persistence is deprecated (issue #9) — radio state is source of truth
+
+        // Re-create audio stream if it was invalidated by a profile load
+        if (m_needAudioStream) {
+            m_needAudioStream = false;
+            // Clear any dax=1 persisted in the profile (kills RX audio)
+            m_radioModel.sendCommand(QString("slice set %1 dax=0").arg(s->sliceId()));
+            m_radioModel.createAudioStream();
+        }
     }
 
     // Forward slice frequency/mode changes → spectrum
@@ -804,6 +846,20 @@ void MainWindow::onSliceAdded(SliceModel* s)
 void MainWindow::onSliceRemoved(int id)
 {
     qDebug() << "MainWindow: slice removed" << id;
+
+    // Clear stale slice pointers before re-wiring (the removed slice is
+    // already deleted — calling disconnect on it would SEGV).
+    m_appletPanel->setSlice(nullptr);
+    spectrum()->vfoWidget()->setSlice(nullptr);
+    spectrum()->overlayMenu()->setSlice(nullptr);
+
+    // Reset panadapter state so display settings re-sync with the radio
+    // (e.g., after a global profile load that changes pan center/bw/dBm)
+    m_radioModel.resetPanState();
+
+    // The old audio stream is invalidated when the slice is removed.
+    // Re-create it when the next slice is added.
+    m_needAudioStream = true;
 
     // If we still have a slice, re-wire the GUI to it
     if (auto* s = activeSlice()) {
