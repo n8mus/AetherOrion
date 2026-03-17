@@ -244,9 +244,18 @@ void RadioModel::onConnected()
     emit connectionStateChanged(true);
     startNetworkMonitor();
 
+    // Register as GUI client FIRST — required before subscriptions,
+    // especially on WAN/SmartLink where the radio is stricter.
+    sendCmd("client gui", [this](int code, const QString&) {
+        if (code != 0)
+            qWarning() << "RadioModel: client gui failed, code" << Qt::hex << code;
+
+        sendCmd("client program AetherSDR");
+        sendCmd("client station AetherSDR");
+
     // Full command sequence — each step waits for its R response before sending the next.
     // sub slice all → sub pan all → sub tx all → sub atu all → sub amplifier all
-    //   → sub meter all → sub audio all → client gui → client program → ...
+    //   → sub meter all → sub audio all → ...
     sendCmd("sub slice all", [this](int, const QString&) {
       sendCmd("sub pan all", [this](int, const QString&) {
       sendCmd("sub tx all", [this](int, const QString&) {
@@ -259,15 +268,6 @@ void RadioModel::onConnected()
             sendCmd("sub xvtr all", [this](int, const QString&) {
             // Memory status arrives via normal status handler — no subscription needed.
             // "sub memory all" returns 500000A3 (invalid subscription object).
-            sendCmd("client gui", [this](int code, const QString&) {
-        if (code != 0)
-            qWarning() << "RadioModel: client gui failed, code" << Qt::hex << code;
-
-        // Identify this client to the radio; station name allows nCAT/nDAX to
-        // attach to this instance rather than creating a separate one.
-        sendCmd("client program AetherSDR");
-        sendCmd("client station AetherSDR");
-
         // Request available mic inputs (comma-separated response: "MIC,BAL,LINE,ACC")
         sendCmd("mic list", [this](int code, const QString& body) {
             if (code == 0) {
@@ -387,7 +387,6 @@ void RadioModel::onConnected()
                             });
                     });
             });
-    }); // client gui
             // Request global profile list
             sendCmd("profile global info");
             }); // sub xvtr all
@@ -400,6 +399,7 @@ void RadioModel::onConnected()
       }); // sub tx all
       }); // sub pan all
     }); // sub slice all
+    }); // client gui
 }
 
 void RadioModel::onDisconnected()
