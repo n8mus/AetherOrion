@@ -51,7 +51,7 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
     m_connectBtn->setEnabled(false);
     vbox->addWidget(m_connectBtn);
 
-    // ── SmartLink section ────────────────────────────────────────────────
+    // ── SmartLink login section ──────────────────────────────────────────
     m_smartLinkGroup = new QGroupBox("SmartLink", this);
     auto* slBox = new QVBoxLayout(m_smartLinkGroup);
     slBox->setSpacing(4);
@@ -88,12 +88,6 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
     m_slUserLabel->setVisible(false);
     slBox->addWidget(m_slUserLabel);
 
-    // WAN radio list
-    m_wanRadioList = new QListWidget(m_smartLinkGroup);
-    m_wanRadioList->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_wanRadioList->setVisible(false);
-    slBox->addWidget(m_wanRadioList, 1);
-
     vbox->addWidget(m_smartLinkGroup);
 
     // Login button click
@@ -104,12 +98,6 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
         m_loginBtn->setEnabled(false);
         m_loginBtn->setText("Logging in...");
         emit smartLinkLoginRequested(email, pass);
-    });
-
-    // WAN radio list selection enables Connect button
-    connect(m_wanRadioList, &QListWidget::itemSelectionChanged, this, [this] {
-        if (!m_connected && m_wanRadioList->currentItem())
-            m_connectBtn->setEnabled(true);
     });
 
     // Stretch at the bottom keeps the indicator at the top when collapsed
@@ -183,18 +171,22 @@ void ConnectionPanel::onConnectClicked()
         return;
     }
 
-    // Check WAN radio list first (if a WAN radio is selected)
-    const int wanRow = m_wanRadioList->currentRow();
-    if (wanRow >= 0 && wanRow < m_wanRadios.size() &&
-        m_wanRadioList->currentItem() && m_wanRadioList->currentItem()->isSelected()) {
-        emit wanConnectRequested(m_wanRadios[wanRow]);
+    const int row = m_radioList->currentRow();
+    if (row < 0) return;
+
+    // Check if this is a WAN entry (stored in item data)
+    auto* item = m_radioList->item(row);
+    if (!item) return;
+
+    int wanIdx = item->data(Qt::UserRole + 1).toInt();
+    if (wanIdx > 0 && wanIdx <= m_wanRadios.size()) {
+        emit wanConnectRequested(m_wanRadios[wanIdx - 1]);  // 1-based index
         return;
     }
 
-    // Fall back to LAN radio
-    const int row = m_radioList->currentRow();
-    if (row < 0 || row >= m_radios.size()) return;
-    emit connectRequested(m_radios[row]);
+    // LAN radio
+    if (row < m_radios.size())
+        emit connectRequested(m_radios[row]);
 }
 
 void ConnectionPanel::setSmartLinkClient(SmartLinkClient* client)
@@ -216,8 +208,11 @@ void ConnectionPanel::setSmartLinkClient(SmartLinkClient* client)
             m_loginForm->setVisible(true);
             m_loginBtn = m_loginForm->findChild<QPushButton*>();
             m_slUserLabel->setVisible(false);
-            m_wanRadioList->setVisible(false);
-            m_wanRadioList->clear();
+            // Remove WAN entries from unified list
+            for (int i = m_radioList->count() - 1; i >= 0; --i) {
+                if (m_radioList->item(i)->data(Qt::UserRole + 1).toInt() > 0)
+                    delete m_radioList->takeItem(i);
+            }
             m_wanRadios.clear();
         });
 
@@ -225,7 +220,6 @@ void ConnectionPanel::setSmartLinkClient(SmartLinkClient* client)
         m_slUserLabel->setText("Connected to SmartLink");
         m_slUserLabel->setStyleSheet("QLabel { color: #00b4d8; font-size: 10px; }");
         m_slUserLabel->setVisible(true);
-        m_wanRadioList->setVisible(true);
     });
 
     // Update user label when server sends user_settings (after authenticated)
@@ -250,12 +244,27 @@ void ConnectionPanel::setSmartLinkClient(SmartLinkClient* client)
 
     connect(client, &SmartLinkClient::radioListReceived, this,
             [this](const QList<WanRadioInfo>& radios) {
+        // Remove old WAN entries from unified list
+        for (int i = m_radioList->count() - 1; i >= 0; --i) {
+            if (m_radioList->item(i)->data(Qt::UserRole + 1).toInt() > 0)
+                delete m_radioList->takeItem(i);
+        }
+
         m_wanRadios = radios;
-        m_wanRadioList->clear();
-        for (const auto& r : radios) {
-            QString display = QString("%1  %2  %3\n%4")
-                .arg(r.model, r.nickname, r.callsign, r.status);
-            m_wanRadioList->addItem(display);
+        for (int i = 0; i < radios.size(); ++i) {
+            const auto& r = radios[i];
+            // Skip if already in LAN list (same serial)
+            bool isLan = false;
+            for (const auto& lan : m_radios) {
+                if (lan.serial == r.serial) { isLan = true; break; }
+            }
+            if (isLan) continue;
+
+            QString display = QString("%1  %2  %3\nAvailable (remote)")
+                .arg(r.model, r.nickname, r.callsign);
+            auto* item = new QListWidgetItem(display);
+            item->setData(Qt::UserRole + 1, i + 1);  // 1-based WAN index
+            m_radioList->addItem(item);
         }
     });
 }

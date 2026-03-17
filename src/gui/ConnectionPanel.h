@@ -68,7 +68,6 @@ private:
     QLineEdit*   m_passwordEdit{nullptr};
     QPushButton* m_loginBtn{nullptr};
     QLabel*      m_slUserLabel{nullptr};
-    QListWidget* m_wanRadioList{nullptr};
     QList<WanRadioInfo> m_wanRadios;
 };
 
