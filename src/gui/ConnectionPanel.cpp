@@ -195,6 +195,9 @@ void ConnectionPanel::setSmartLinkClient(SmartLinkClient* client)
     if (!client) return;
 
     connect(client, &SmartLinkClient::authenticated, this, [this] {
+        // Clear password from memory immediately
+        m_passwordEdit->clear();
+
         // Hide login form, show logout button
         m_loginForm->setVisible(false);
 
@@ -235,6 +238,7 @@ void ConnectionPanel::setSmartLinkClient(SmartLinkClient* client)
     });
 
     connect(client, &SmartLinkClient::authFailed, this, [this](const QString& err) {
+        m_passwordEdit->clear();
         m_loginBtn->setText("Log In");
         m_loginBtn->setEnabled(true);
         m_slUserLabel->setText("Login failed: " + err);

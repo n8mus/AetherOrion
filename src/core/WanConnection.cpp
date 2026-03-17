@@ -98,7 +98,7 @@ void WanConnection::onTlsConnected()
     // FlexLib uses SendCommand() for this, not raw write.
     const quint32 seq = m_seqCounter.fetch_add(1);
     const QByteArray data = CommandParser::buildCommand(seq, QString("wan validate handle=%1").arg(m_wanHandle));
-    qDebug() << "WAN TX:" << data.trimmed();
+    qDebug() << "WAN TX: C" << seq << "|wan validate handle=***REDACTED***";
     m_socket.write(data);
     m_validated = true;
 

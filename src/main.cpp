@@ -42,6 +42,8 @@ int main(int argc, char* argv[])
     const QString logPath = QCoreApplication::applicationDirPath() + "/aethersdr.log";
     s_logFile = new QFile(logPath);
     if (s_logFile->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        // Restrict log file to owner-only (may contain session identifiers)
+        s_logFile->setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         qInstallMessageHandler(messageHandler);
     } else {
         fprintf(stderr, "Warning: could not open log file %s\n", logPath.toLocal8Bit().constData());

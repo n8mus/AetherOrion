@@ -47,7 +47,7 @@ void SmartLinkClient::login(const QString& email, const QString& password)
     body["client_id"]   = AUTH0_CLIENT_ID;
     body["scope"]       = "openid email given_name family_name profile picture offline_access";
 
-    qDebug() << "SmartLinkClient: Auth0 login for" << email;
+    qDebug() << "SmartLinkClient: Auth0 login for" << email.left(3) + "***";
 
     auto* reply = m_nam.post(req, QJsonDocument(body).toJson());
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
@@ -234,7 +234,11 @@ void SmartLinkClient::onPingTimer()
 
 void SmartLinkClient::parseMessage(const QString& msg)
 {
-    qDebug() << "SmartLink RX:" << msg.left(120);
+    // Redact any token= values from log output
+    if (msg.contains("token="))
+        qDebug() << "SmartLink RX:" << msg.left(msg.indexOf("token=") + 6) + "***REDACTED***";
+    else
+        qDebug() << "SmartLink RX:" << msg.left(120);
 
     if (msg.startsWith("radio list ")) {
         parseRadioList(msg);
@@ -317,7 +321,7 @@ void SmartLinkClient::parseConnectReady(const QString& msg)
     QString handle = kv.value("handle");
     QString serial = kv.value("serial");
 
-    qDebug() << "SmartLinkClient: connect ready, handle:" << handle << "serial:" << serial;
+    qDebug() << "SmartLinkClient: connect ready, serial:" << serial;
     emit connectReady(handle, serial);
 }
 
