@@ -46,7 +46,6 @@ void SmartLinkClient::login(const QString& email, const QString& password)
     body["password"]    = password;
     body["client_id"]   = AUTH0_CLIENT_ID;
     body["scope"]       = "openid email given_name family_name profile picture offline_access";
-    body["audience"]    = QString("https://%1/api/v2/").arg(AUTH0_DOMAIN);
 
     qDebug() << "SmartLinkClient: Auth0 login for" << email;
 
