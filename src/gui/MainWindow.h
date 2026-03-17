@@ -6,7 +6,6 @@
 #include "core/AudioEngine.h"
 #include "core/RigctlServer.h"
 #include "core/RigctlPty.h"
-#include "core/DaxAudioManager.h"
 
 #include <QMainWindow>
 #include <QSplitter>
@@ -56,7 +55,6 @@ private:
     BandSettings      m_bandSettings;
     RigctlServer      m_rigctlServer{&m_radioModel};
     RigctlPty         m_rigctlPty{&m_radioModel};
-    DaxAudioManager   m_daxManager;
 
     // GUI — left sidebar
     ConnectionPanel* m_connPanel{nullptr};

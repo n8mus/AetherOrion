@@ -62,8 +62,6 @@ signals:
     // Raw PCM payload (header stripped) from IF-Data (audio) VITA-49 packets.
     // Format: 16-bit signed, stereo, 24 kHz, little-endian.
     void audioDataReady(const QByteArray& pcm);
-    // DAX channel audio (same format as audioDataReady but routed by stream ID).
-    void daxAudioReady(int channel, const QByteArray& pcm);
     // Meter data: parallel arrays of (meter_index, raw_int16_value).
     void meterDataReady(const QVector<quint16>& ids, const QVector<qint16>& vals);
 
@@ -137,19 +135,13 @@ private:
 
     quint32         m_ownedPanStreamId{0};
     quint32         m_ownedWfStreamId{0};
-    QMap<quint32, int> m_daxStreamIds;  // VITA-49 stream ID → DAX channel (1-4)
-
-public:
-    void setDaxStreamId(int channel, quint32 streamId);
-    void removeDaxStreamId(int channel);
-private:
     QUdpSocket      m_socket;
     quint16         m_localPort{0};
     float           m_minDbm{-130.0f};
     float           m_maxDbm{-20.0f};
     RadioConnection* m_conn{nullptr};
     FrameAssembler  m_frame;
-    QMap<quint32, StreamStats> m_streamStats;  // keyed by stream ID
+    QMap<quint16, StreamStats> m_streamStats;  // keyed by PCC
 
 public:
     // Packet error/total counts across all streams (for network quality monitor).
@@ -159,7 +151,6 @@ public:
 
 private:
     qint64 m_totalRxBytes{0};
-    QByteArray m_pendingAudio;  // temp buffer for DAX routing in processDatagram
 };
 
 } // namespace AetherSDR

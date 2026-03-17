@@ -144,61 +144,39 @@ void PanadapterStream::processDatagram(const QByteArray& data)
                  << "trailer=" << hasTrailer;
     }
 
-    // Track packet sequence per stream ID (only for packets we process).
-    auto trackSeq = [&]() {
-        const int seq = (word0 >> 16) & 0x0F;
-        auto& stats = m_streamStats[streamId];
-        stats.totalCount++;
-        if (stats.lastSeq >= 0) {
-            const int expected = (stats.lastSeq + 1) & 0x0F;
-            if (seq != expected)
-                stats.errorCount++;
-        }
-        stats.lastSeq = seq;
-    };
+    // Track packet sequence for network quality monitoring.
+    // VITA-49 packet count is a 4-bit field (bits 19:16 of word0).
+    const int seq = (word0 >> 16) & 0x0F;
+    auto& stats = m_streamStats[pcc];
+    stats.totalCount++;
+    if (stats.lastSeq >= 0) {
+        const int expected = (stats.lastSeq + 1) & 0x0F;
+        if (seq != expected)
+            stats.errorCount++;
+    }
+    stats.lastSeq = seq;
 
     // Route by PacketClassCode
     switch (pcc) {
     case PCC_IF_NARROW:
-        trackSeq();
         decodeNarrowAudio(raw, data.size(), hasTrailer);
-        if (!m_pendingAudio.isEmpty()) {
-            const int daxCh = m_daxStreamIds.value(streamId, 0);
-            if (daxCh > 0)
-                emit daxAudioReady(daxCh, m_pendingAudio);
-            else
-                emit audioDataReady(m_pendingAudio);
-            m_pendingAudio.clear();
-        }
         return;
     case PCC_IF_NARROW_REDUCED:
-        trackSeq();
         decodeReducedBwAudio(raw, data.size(), hasTrailer);
-        if (!m_pendingAudio.isEmpty()) {
-            const int daxCh = m_daxStreamIds.value(streamId, 0);
-            if (daxCh > 0)
-                emit daxAudioReady(daxCh, m_pendingAudio);
-            else
-                emit audioDataReady(m_pendingAudio);
-            m_pendingAudio.clear();
-        }
         return;
     case PCC_FFT:
         // Filter: only process FFT from our panadapter
         if (m_ownedPanStreamId != 0 && streamId != m_ownedPanStreamId)
             return;
-        trackSeq();
         decodeFFT(raw, data.size(), hasTrailer);
         return;
     case PCC_WATERFALL:
         // Filter: only process waterfall from our display
         if (m_ownedWfStreamId != 0 && streamId != m_ownedWfStreamId)
             return;
-        trackSeq();
         decodeWaterfallTile(raw, data.size(), hasTrailer);
         return;
     case PCC_METER:
-        trackSeq();
         decodeMeterData(raw, data.size(), hasTrailer);
         return;
     default:
@@ -382,7 +360,7 @@ void PanadapterStream::decodeNarrowAudio(const uchar* raw, int totalBytes, bool 
         dst[i] = static_cast<qint16>(qBound(-1.0f, f, 1.0f) * 32767.0f);
     }
 
-    m_pendingAudio = pcm;
+    emit audioDataReady(pcm);
 }
 
 void PanadapterStream::decodeReducedBwAudio(const uchar* raw, int totalBytes, bool hasTrailer)
@@ -404,27 +382,7 @@ void PanadapterStream::decodeReducedBwAudio(const uchar* raw, int totalBytes, bo
         dst[i * 2 + 1] = s;  // R
     }
 
-    m_pendingAudio = pcm;
-}
-
-// ─── DAX stream routing ──────────────────────────────────────────────────────
-
-void PanadapterStream::setDaxStreamId(int channel, quint32 streamId)
-{
-    m_daxStreamIds[streamId] = channel;
-    qDebug() << "PanadapterStream: DAX channel" << channel
-             << "-> stream 0x" + QString::number(streamId, 16);
-}
-
-void PanadapterStream::removeDaxStreamId(int channel)
-{
-    for (auto it = m_daxStreamIds.begin(); it != m_daxStreamIds.end(); ) {
-        if (it.value() == channel)
-            it = m_daxStreamIds.erase(it);
-        else
-            ++it;
-    }
-    qDebug() << "PanadapterStream: removed DAX channel" << channel;
+    emit audioDataReady(pcm);
 }
 
 // ─── Meter data decode ───────────────────────────────────────────────────────

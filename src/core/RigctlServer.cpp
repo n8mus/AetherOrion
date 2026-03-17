@@ -116,10 +116,8 @@ void RigctlServer::onClientData()
 
         QString response = cs.protocol->handleLine(line);
         if (!response.isEmpty()) {
-            // Only log non-polling commands (skip frequent v/f/m/t queries)
-            if (trimmed.size() > 1 || trimmed == "T" || trimmed == "F" || trimmed == "M")
-                qDebug() << "rigctld cmd:" << trimmed
-                         << "-> resp:" << response.left(60).trimmed();
+            qDebug() << "rigctld cmd:" << trimmed
+                     << "-> resp:" << response.left(60).trimmed();
             socket->write(response.toUtf8());
         }
     }
