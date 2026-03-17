@@ -13,7 +13,7 @@
 
 AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
 
-**Current version: 0.3.90** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+**Current version: 0.4.0** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
 
 > **Cross-platform downloads available:** Linux AppImage, macOS universal DMG, and Windows ZIP.
 > Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
@@ -70,28 +70,50 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - Repeater offset with simplex/up/down direction
 - REV (reverse) toggle
 
+### Tracking Notch Filters (TNF)
+- Right-click spectrum or waterfall to add TNF at any frequency
+- Drag TNF markers to reposition
+- Right-click TNF to adjust width (50/100/200/500 Hz) and depth (Normal/Deep/Very Deep)
+- Permanent TNFs (green) survive radio power cycles; temporary (yellow) are session-only
+- TNF markers render across both spectrum and waterfall with grab handles
+- Global TNF enable/disable synced with radio
+
 ### CAT Control & Integration
-- Hamlib rigctld-compatible TCP server (port 4532) for WSJT-X, fldigi, N1MM
-- Virtual serial port (PTY) at `/tmp/AetherSDR-CAT`
+- 4-channel Hamlib rigctld TCP server (ports 4532-4535), one per slice (A-D)
+- Virtual serial ports (PTY) at `/tmp/AetherSDR-CAT-A` through `-D`
+- PTT auto TX-switch: keying a channel moves TX to that channel's slice
 - Autostart options for rigctld and TTY
 - Supports: get/set frequency, get/set mode, PTT, split, dump_state
 
+### SmartLink Remote Operation (beta)
+- Log in with FlexRadio SmartSDR+ account (email/password via Auth0)
+- Radio auto-discovered via SmartLink relay server
+- Full TCP command channel over TLS — tune, change modes, all controls work
+- UDP streaming (FFT, waterfall, audio) in progress
+
+### Connectivity
+- Auto-discovery of radios on the local network (UDP broadcast)
+- Manual connection for routed networks (cross-subnet, VLANs)
+- SmartLink for internet remote access
+- Auto-reconnect on connection loss
+- Auto-connect to last used radio on launch
+
 ### Radio Setup
-- Full settings dialog (8 tabs): Radio, Network, GPS, TX, Phone/CW, RX, Filters, XVTR
+- Full settings dialog (9 tabs): Radio, Network, GPS, Audio, TX, Phone/CW, RX, Filters, XVTR
+- Audio tab: line out gain/mute, headphone gain/mute, front speaker mute, PC audio device selection
 - Per-band TX settings: RF power, tune power, PTT inhibit, interlock routing
 - TX profile management
 - XVTR transverter configuration
 - Network diagnostics, memory channels, spot settings
 
 ### General
-- Auto-discovery of radios on the network
-- Auto-reconnect on connection loss
-- Auto-connect to last used radio on launch
+- Dynamic mode list from radio (supports FDVU, FDVM, and future modes)
 - Click-to-tune and scroll-wheel tuning on spectrum
 - Multi-Flex support (independent operation alongside SmartSDR/Maestro)
 - XML settings persistence (SSDR-compatible format)
 - Persistent window layout and display preferences
-- Desktop integration (`.desktop` file, icon, `cmake --install`)
+- Cross-platform: Linux (primary), macOS, Windows
+- Desktop integration (`.desktop` file, icon, `cmake --install`, AUR package)
 - PC audio TX via DAX stream (mic TX also supported)
 
 ---
@@ -157,13 +179,12 @@ This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app laun
 
 ## Roadmap
 
+- [ ] SmartLink UDP streaming (FFT, waterfall, audio over WAN)
 - [ ] DAX audio channels — PipeWire virtual devices for digital mode apps (FreeDV, WSJT-X, fldigi, JS8Call)
 - [ ] Multi-slice support
-- [ ] TNF (tracking notch filter) management
 - [ ] Band stacking registers
 - [ ] Spot / DX cluster integration
 - [ ] CW keyer and memory support
-- [x] SmartLink remote operation (beta — TCP command channel working, UDP streaming in progress)
 - [ ] Keyboard shortcuts and hotkeys
 
 See the full [issue tracker](https://github.com/ten9876/AetherSDR/issues) for 45+ tracked features and enhancements.
