@@ -286,6 +286,22 @@ Disabled by `m_intentionalDisconnect` flag on user-initiated disconnect.
 If the radio already has slices (`slice list` returns IDs), `RadioModel` fetches
 them with `slice get <id>` rather than creating new ones.
 
+### Optimistic Updates Policy
+
+Some radio commands do not produce a corresponding status update from the radio
+(e.g. `tnf remove`, `tnf set permanent=`). In these cases we update the local
+model optimistically — applying the change immediately without waiting for
+confirmation from the radio.
+
+**Every time an optimistic update is added, file a GitHub issue** recommending
+that FlexRadio add proper status feedback for that command. The radio should
+always echo state changes via status messages so all connected clients stay in
+sync. Optimistic updates are fragile — they break Multi-Flex (other clients
+don't see the change) and can drift out of sync if the command silently fails.
+
+Tag these issues with `protocol` and `upstream`. Include the exact command that
+lacks status feedback and the expected status message format.
+
 ---
 
 ## Known Bugs
