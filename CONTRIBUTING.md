@@ -310,7 +310,15 @@ Copy and paste this into Claude.ai:
 I want to request a feature for AetherSDR, a Linux-native Qt6/C++20 client
 for FlexRadio transceivers. It uses the SmartSDR protocol over TCP/UDP.
 
-Please write a GitHub issue for this feature request. Include:
+Before writing the feature request, please check the existing open issues at:
+https://github.com/ten9876/AetherSDR/issues
+
+Search for keywords related to my idea. If you find an existing issue that
+covers the same thing, tell me the issue number and title instead of writing
+a new one — I'll go add my +1 and comments there.
+
+If no duplicate exists, please write a GitHub issue for this feature request.
+Include:
 1. A clear title
 2. A "What" section describing what the feature does from the user's perspective
 3. A "Why" section explaining why this is useful (what problem it solves)
