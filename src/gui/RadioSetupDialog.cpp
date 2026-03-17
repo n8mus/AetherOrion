@@ -59,6 +59,7 @@ RadioSetupDialog::RadioSetupDialog(RadioModel* model, QWidget* parent)
     tabs->addTab(buildTxTab(), "TX");
     tabs->addTab(buildPhoneCwTab(), "Phone/CW");
     tabs->addTab(buildRxTab(), "RX");
+    tabs->addTab(buildAudioTab(), "Audio");
     tabs->addTab(buildFiltersTab(), "Filters");
     tabs->addTab(buildXvtrTab(), "XVTR");
 
@@ -1044,6 +1045,112 @@ QWidget* RadioSetupDialog::buildRxTab()
     vbox->addStretch(1);
     return page;
 }
+// ── Audio tab ────────────────────────────────────────────────────────────────
+
+QWidget* RadioSetupDialog::buildAudioTab()
+{
+    auto* page = new QWidget;
+    auto* vbox = new QVBoxLayout(page);
+
+    // ── Radio Audio Outputs ──────────────────────────────────────────────
+    auto* outGroup = new QGroupBox("Radio Audio Outputs");
+    outGroup->setStyleSheet(kGroupStyle);
+    auto* outLayout = new QVBoxLayout(outGroup);
+
+    // Line Out
+    auto* lineoutRow = new QHBoxLayout;
+    auto* lineoutLabel = new QLabel("Line Out:");
+    lineoutLabel->setStyleSheet(kLabelStyle);
+    lineoutLabel->setFixedWidth(90);
+    auto* lineoutSlider = new QSlider(Qt::Horizontal);
+    lineoutSlider->setRange(0, 100);
+    lineoutSlider->setValue(m_model->lineoutGain());
+    auto* lineoutValue = new QLabel(QString::number(m_model->lineoutGain()));
+    lineoutValue->setStyleSheet(kValueStyle);
+    lineoutValue->setFixedWidth(30);
+    auto* lineoutMute = new QPushButton("Mute");
+    lineoutMute->setCheckable(true);
+    lineoutMute->setChecked(m_model->lineoutMute());
+    lineoutMute->setFixedWidth(50);
+    lineoutMute->setStyleSheet(
+        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+        "border-radius: 3px; color: #c8d8e8; font-size: 11px; padding: 2px; }"
+        "QPushButton:checked { background: #8b0000; color: #fff; }");
+    lineoutRow->addWidget(lineoutLabel);
+    lineoutRow->addWidget(lineoutSlider, 1);
+    lineoutRow->addWidget(lineoutValue);
+    lineoutRow->addWidget(lineoutMute);
+    outLayout->addLayout(lineoutRow);
+
+    connect(lineoutSlider, &QSlider::valueChanged, this, [this, lineoutValue](int v) {
+        lineoutValue->setText(QString::number(v));
+        m_model->setLineoutGain(v);
+    });
+    connect(lineoutMute, &QPushButton::toggled, m_model, &RadioModel::setLineoutMute);
+
+    // Headphone
+    auto* hpRow = new QHBoxLayout;
+    auto* hpLabel = new QLabel("Headphone:");
+    hpLabel->setStyleSheet(kLabelStyle);
+    hpLabel->setFixedWidth(90);
+    auto* hpSlider = new QSlider(Qt::Horizontal);
+    hpSlider->setRange(0, 100);
+    hpSlider->setValue(m_model->headphoneGain());
+    auto* hpValue = new QLabel(QString::number(m_model->headphoneGain()));
+    hpValue->setStyleSheet(kValueStyle);
+    hpValue->setFixedWidth(30);
+    auto* hpMute = new QPushButton("Mute");
+    hpMute->setCheckable(true);
+    hpMute->setChecked(m_model->headphoneMute());
+    hpMute->setFixedWidth(50);
+    hpMute->setStyleSheet(
+        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+        "border-radius: 3px; color: #c8d8e8; font-size: 11px; padding: 2px; }"
+        "QPushButton:checked { background: #8b0000; color: #fff; }");
+    hpRow->addWidget(hpLabel);
+    hpRow->addWidget(hpSlider, 1);
+    hpRow->addWidget(hpValue);
+    hpRow->addWidget(hpMute);
+    outLayout->addLayout(hpRow);
+
+    connect(hpSlider, &QSlider::valueChanged, this, [this, hpValue](int v) {
+        hpValue->setText(QString::number(v));
+        m_model->setHeadphoneGain(v);
+    });
+    connect(hpMute, &QPushButton::toggled, m_model, &RadioModel::setHeadphoneMute);
+
+    // Update from radio status
+    connect(m_model, &RadioModel::audioOutputChanged, this,
+            [this, lineoutSlider, lineoutValue, lineoutMute, hpSlider, hpValue, hpMute] {
+        QSignalBlocker b1(lineoutSlider), b2(lineoutMute), b3(hpSlider), b4(hpMute);
+        lineoutSlider->setValue(m_model->lineoutGain());
+        lineoutValue->setText(QString::number(m_model->lineoutGain()));
+        lineoutMute->setChecked(m_model->lineoutMute());
+        hpSlider->setValue(m_model->headphoneGain());
+        hpValue->setText(QString::number(m_model->headphoneGain()));
+        hpMute->setChecked(m_model->headphoneMute());
+    });
+
+    vbox->addWidget(outGroup);
+
+    // ── PC Audio (placeholder for future PipeWire integration) ──────────
+    auto* pcGroup = new QGroupBox("PC Audio");
+    pcGroup->setStyleSheet(kGroupStyle);
+    auto* pcLayout = new QVBoxLayout(pcGroup);
+
+    auto* pcNote = new QLabel("PC audio input/output device selection coming soon.\n"
+                              "Currently using system default audio device.");
+    pcNote->setStyleSheet(kLabelStyle);
+    pcNote->setWordWrap(true);
+    pcLayout->addWidget(pcNote);
+
+    vbox->addWidget(pcGroup);
+    vbox->addStretch(1);
+    return page;
+}
+
+// ── Filters tab ─────────────────────────────────────────────────────────────
+
 QWidget* RadioSetupDialog::buildFiltersTab()
 {
     auto* page = new QWidget;

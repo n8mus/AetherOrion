@@ -117,6 +117,16 @@ public:
     bool    binauralRx()   const { return m_binauralRx; }
     bool    muteLocalWhenRemote() const { return m_muteLocalWhenRemote; }
     int     freqErrorPpb() const { return m_freqErrorPpb; }
+
+    // Audio output
+    int     lineoutGain()    const { return m_lineoutGain; }
+    bool    lineoutMute()    const { return m_lineoutMute; }
+    int     headphoneGain()  const { return m_headphoneGain; }
+    bool    headphoneMute()  const { return m_headphoneMute; }
+    void setLineoutGain(int v);
+    void setLineoutMute(bool m);
+    void setHeadphoneGain(int v);
+    void setHeadphoneMute(bool m);
     int     filterSharpnessVoice()     const { return m_filterVoice; }
     bool    filterSharpnessVoiceAuto() const { return m_filterVoiceAuto; }
     int     filterSharpnessCw()        const { return m_filterCw; }
@@ -192,6 +202,7 @@ signals:
     void antListChanged(QStringList ants);
     // Emitted when a power amplifier (e.g. PGXL) is detected or lost.
     void amplifierChanged(bool present);
+    void audioOutputChanged();
     // Emitted when GPS status changes (from "sub gps all").
     void gpsStatusChanged(const QString& status, int tracked, int visible,
                           const QString& grid, const QString& altitude,
@@ -281,6 +292,10 @@ private:
     bool        m_tcxoPresent{false};
     bool        m_binauralRx{false};
     bool        m_muteLocalWhenRemote{false};
+    int         m_lineoutGain{50};
+    bool        m_lineoutMute{false};
+    int         m_headphoneGain{50};
+    bool        m_headphoneMute{false};
     int         m_freqErrorPpb{0};
     int         m_filterVoice{2};
     bool        m_filterVoiceAuto{false};

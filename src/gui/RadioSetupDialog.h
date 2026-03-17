@@ -25,6 +25,7 @@ private:
     QWidget* buildTxTab();
     QWidget* buildPhoneCwTab();
     QWidget* buildRxTab();
+    QWidget* buildAudioTab();
     QWidget* buildFiltersTab();
     QWidget* buildXvtrTab();
 

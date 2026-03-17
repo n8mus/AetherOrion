@@ -1069,7 +1069,48 @@ void RadioModel::handleRadioStatus(const QMap<QString, QString>& kvs)
     if (kvs.contains("tnf_enabled")) {
         m_tnfModel.setGlobalEnabled(kvs["tnf_enabled"] == "1");
     }
+    // Audio outputs
+    bool audioChanged = false;
+    if (kvs.contains("lineout_gain")) {
+        m_lineoutGain = kvs["lineout_gain"].toInt();
+        audioChanged = true;
+    }
+    if (kvs.contains("lineout_mute")) {
+        m_lineoutMute = kvs["lineout_mute"] == "1";
+        audioChanged = true;
+    }
+    if (kvs.contains("headphone_gain")) {
+        m_headphoneGain = kvs["headphone_gain"].toInt();
+        audioChanged = true;
+    }
+    if (kvs.contains("headphone_mute")) {
+        m_headphoneMute = kvs["headphone_mute"] == "1";
+        audioChanged = true;
+    }
+    if (audioChanged) emit audioOutputChanged();
     if (changed) emit infoChanged();
+}
+
+void RadioModel::setLineoutGain(int v)
+{
+    v = std::clamp(v, 0, 100);
+    sendCmd(QString("mixer lineout gain %1").arg(v));
+}
+
+void RadioModel::setLineoutMute(bool m)
+{
+    sendCmd(QString("mixer lineout mute %1").arg(m ? 1 : 0));
+}
+
+void RadioModel::setHeadphoneGain(int v)
+{
+    v = std::clamp(v, 0, 100);
+    sendCmd(QString("mixer headphone gain %1").arg(v));
+}
+
+void RadioModel::setHeadphoneMute(bool m)
+{
+    sendCmd(QString("mixer headphone mute %1").arg(m ? 1 : 0));
 }
 
 void RadioModel::handleSliceStatus(int id,
