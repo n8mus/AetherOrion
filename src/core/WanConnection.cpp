@@ -94,10 +94,12 @@ void WanConnection::onTlsConnected()
 {
     qDebug() << "WanConnection: TLS handshake complete";
 
-    // First thing: send wan validate to authenticate our WAN handle
-    QString cmd = QString("wan validate handle=%1\n").arg(m_wanHandle);
-    qDebug() << "WAN TX:" << cmd.trimmed();
-    m_socket.write(cmd.toUtf8());
+    // Send wan validate as a proper command (C<seq>|wan validate handle=...)
+    // FlexLib uses SendCommand() for this, not raw write.
+    const quint32 seq = m_seqCounter.fetch_add(1);
+    const QByteArray data = CommandParser::buildCommand(seq, QString("wan validate handle=%1").arg(m_wanHandle));
+    qDebug() << "WAN TX:" << data.trimmed();
+    m_socket.write(data);
     m_validated = true;
 
     // The radio will now send V<version>\n then H<handle>\n
