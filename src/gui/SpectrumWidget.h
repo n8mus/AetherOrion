@@ -46,6 +46,12 @@ public:
     // Update the dBm range used for the waterfall colour map and spectrum Y axis.
     void setDbmRange(float minDbm, float maxDbm);
 
+    // Noise floor auto-adjust: position (0=top, 100=bottom), enable on/off.
+    void setNoiseFloorPosition(int pos) { m_noiseFloorPosition = pos; }
+    void setNoiseFloorEnable(bool on)   { m_noiseFloorEnable = on; }
+
+    // (getters for display settings are below with their members)
+
     // Set the VFO frequency (draws the orange VFO marker).
     void setVfoFrequency(double freqMhz);
 
@@ -165,6 +171,11 @@ private:
 
     float m_refLevel{-50.0f};       // top of display (dBm)
     float m_dynamicRange{100.0f};   // dB range shown in spectrum (-50 to -150)
+
+    // Noise floor auto-adjust
+    bool  m_noiseFloorEnable{false};
+    int   m_noiseFloorPosition{75};  // 0=top, 100=bottom
+    int   m_noiseFloorFrameCount{0};
 
     // Tuning step size for click-snap and wheel scroll (Hz)
     int m_stepHz{100};

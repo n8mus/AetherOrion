@@ -147,6 +147,25 @@ MainWindow::MainWindow(QWidget* parent)
     });
     connect(&m_radioModel, &RadioModel::panadapterInfoChanged,
             spectrum(), &SpectrumWidget::setFrequencyRange);
+    connect(&m_radioModel, &RadioModel::panadapterInfoChanged,
+            this, [this]() {
+        if (!m_displaySettingsPushed) {
+            m_displaySettingsPushed = true;
+            m_radioModel.setPanAverage(spectrum()->fftAverage());
+            m_radioModel.setPanFps(spectrum()->fftFps());
+            m_radioModel.setPanWeightedAverage(spectrum()->fftWeightedAvg());
+            m_radioModel.setWaterfallColorGain(spectrum()->wfColorGain());
+            m_radioModel.setWaterfallBlackLevel(spectrum()->wfBlackLevel());
+            m_radioModel.setWaterfallAutoBlack(spectrum()->wfAutoBlack());
+            int rate = spectrum()->wfLineDuration();
+            m_radioModel.setWaterfallLineDuration(rate);
+            // Nudge rate to force waterfall tile re-sync
+            QTimer::singleShot(500, this, [this, rate]() {
+                m_radioModel.setWaterfallLineDuration(rate + 1);
+                m_radioModel.setWaterfallLineDuration(rate);
+            });
+        }
+    });
     connect(&m_radioModel, &RadioModel::panadapterLevelChanged,
             spectrum(), &SpectrumWidget::setDbmRange);
     connect(spectrum(), &SpectrumWidget::bandwidthChangeRequested,
@@ -234,6 +253,11 @@ MainWindow::MainWindow(QWidget* parent)
         spectrum()->setWfLineDuration(ms);
         m_radioModel.setWaterfallLineDuration(ms);
     });
+    // Noise floor auto-adjust (client-side, adjusts min_dbm)
+    connect(overlay, &SpectrumOverlayMenu::noiseFloorPositionChanged,
+            spectrum(), &SpectrumWidget::setNoiseFloorPosition);
+    connect(overlay, &SpectrumOverlayMenu::noiseFloorEnableChanged,
+            spectrum(), &SpectrumWidget::setNoiseFloorEnable);
 
     // ── Panadapter stream → audio engine ──────────────────────────────────
     // All VITA-49 traffic arrives on the single client udpport socket owned
@@ -705,6 +729,8 @@ void MainWindow::onConnectionStateChanged(bool connected)
                     m_appletPanel->catApplet()->setPtyEnabled(true);
             }
         }
+        // Apply saved display settings after panadapter is created
+        m_displaySettingsPushed = false;
     } else {
         m_connStatusLabel->setText("Disconnected");
         m_radioInfoLabel->setText("");

@@ -708,7 +708,10 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         "QPushButton:checked { background: #006040; color: #00ff88; border-color: #00a060; }");
 
     int row = 0;
+    // Grid columns: 0=label, 1=button (optional), 2=slider, 3=value
+    grid->setColumnMinimumWidth(1, 22);  // button column
 
+    // Helper: label col 0, slider col 2, value col 3
     auto makeRow = [&](const QString& text, int lo, int hi, int def,
                        QSlider*& slider, QLabel*& valLbl) {
         auto* lbl = new QLabel(text);
@@ -719,12 +722,42 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         slider->setRange(lo, hi);
         slider->setValue(def);
         slider->setStyleSheet(sliderStyle);
-        grid->addWidget(slider, row, 1);
+        grid->addWidget(slider, row, 2);
 
         valLbl = new QLabel(QString::number(def));
         valLbl->setStyleSheet(valStyle);
+        valLbl->setFixedWidth(28);
         valLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        grid->addWidget(valLbl, row, 2);
+        grid->addWidget(valLbl, row, 3);
+        ++row;
+    };
+
+    // Helper: label col 0, button col 1, slider col 2, value col 3
+    auto makeRowWithBtn = [&](const QString& text, int lo, int hi, int def,
+                              QSlider*& slider, QLabel*& valLbl,
+                              QPushButton*& btn, const QString& btnText,
+                              int btnW = 36) {
+        auto* lbl = new QLabel(text);
+        lbl->setStyleSheet(labelStyle);
+        grid->addWidget(lbl, row, 0);
+
+        btn = new QPushButton(btnText);
+        btn->setCheckable(true);
+        btn->setFixedSize(btnW, 18);
+        btn->setStyleSheet(btnStyle);
+        grid->addWidget(btn, row, 1);
+
+        slider = new QSlider(Qt::Horizontal);
+        slider->setRange(lo, hi);
+        slider->setValue(def);
+        slider->setStyleSheet(sliderStyle);
+        grid->addWidget(slider, row, 2);
+
+        valLbl = new QLabel(QString::number(def));
+        valLbl->setStyleSheet(valStyle);
+        valLbl->setFixedWidth(28);
+        valLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        grid->addWidget(valLbl, row, 3);
         ++row;
     };
 
@@ -741,18 +774,11 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         emit fftFpsChanged(v);
     });
 
-    // Fill row with color picker button
+    // Fill row: color picker button in col 1, slider in col 2
     {
         auto* lbl = new QLabel("Fill:");
         lbl->setStyleSheet(labelStyle);
         grid->addWidget(lbl, row, 0);
-
-        auto* fillRow = new QHBoxLayout;
-        m_fillSlider = new QSlider(Qt::Horizontal);
-        m_fillSlider->setRange(0, 100);
-        m_fillSlider->setValue(70);
-        m_fillSlider->setStyleSheet(sliderStyle);
-        fillRow->addWidget(m_fillSlider);
 
         m_fillColorBtn = new QPushButton;
         m_fillColorBtn->setFixedSize(18, 18);
@@ -761,9 +787,19 @@ void SpectrumOverlayMenu::buildDisplayPanel()
                     " border-radius: 2px; }")
                 .arg(m_fillColor.name()));
         m_fillColorBtn->setToolTip("Choose fill color");
-        fillRow->addWidget(m_fillColorBtn);
+        grid->addWidget(m_fillColorBtn, row, 1);
 
-        grid->addLayout(fillRow, row, 1, 1, 2);
+        m_fillSlider = new QSlider(Qt::Horizontal);
+        m_fillSlider->setRange(0, 100);
+        m_fillSlider->setValue(70);
+        m_fillSlider->setStyleSheet(sliderStyle);
+        grid->addWidget(m_fillSlider, row, 2);
+
+        m_fillLabel = new QLabel("70");
+        m_fillLabel->setStyleSheet(valStyle);
+        m_fillLabel->setFixedWidth(28);
+        m_fillLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        grid->addWidget(m_fillLabel, row, 3);
         ++row;
 
         connect(m_fillSlider, &QSlider::valueChanged, this, [this](int v) {
@@ -783,28 +819,30 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         });
     }
 
-    // Weighted Average toggle
-    auto* waLbl = new QLabel("Weighted Average:");
-    waLbl->setStyleSheet(labelStyle);
-    grid->addWidget(waLbl, row, 0);
-    m_weightedAvgBtn = new QPushButton("Off");
-    m_weightedAvgBtn->setCheckable(true);
-    m_weightedAvgBtn->setChecked(false);
-    m_weightedAvgBtn->setFixedWidth(40);
-    m_weightedAvgBtn->setStyleSheet(btnStyle);
-    connect(m_weightedAvgBtn, &QPushButton::toggled, this, [this](bool on) {
-        m_weightedAvgBtn->setText(on ? "On" : "Off");
-        emit fftWeightedAverageChanged(on);
-    });
-    grid->addWidget(m_weightedAvgBtn, row, 2);
-    ++row;
+    // Weighted Average: label spans col 0-1, button in col 2
+    {
+        auto* waLbl = new QLabel("Weighted Average:");
+        waLbl->setStyleSheet(labelStyle);
+        grid->addWidget(waLbl, row, 0, 1, 2);  // span label + button cols
+        m_weightedAvgBtn = new QPushButton("Off");
+        m_weightedAvgBtn->setCheckable(true);
+        m_weightedAvgBtn->setChecked(false);
+        m_weightedAvgBtn->setFixedSize(36, 18);
+        m_weightedAvgBtn->setStyleSheet(btnStyle);
+        grid->addWidget(m_weightedAvgBtn, row, 3, Qt::AlignRight);
+        connect(m_weightedAvgBtn, &QPushButton::toggled, this, [this](bool on) {
+            m_weightedAvgBtn->setText(on ? "On" : "Off");
+            emit fftWeightedAverageChanged(on);
+        });
+        ++row;
+    }
 
     // ── Separator ─────────────────────────────────────────────────────────
     auto* sep = new QFrame;
     sep->setFrameShape(QFrame::HLine);
     sep->setStyleSheet("QFrame { color: #304050; border: none; }");
     sep->setFixedHeight(2);
-    grid->addWidget(sep, row, 0, 1, 3);
+    grid->addWidget(sep, row, 0, 1, 4);
     ++row;
 
     // ── Waterfall section ─────────────────────────────────────────────────
@@ -814,39 +852,18 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         emit wfColorGainChanged(v);
     });
 
-    // Black + Auto
-    auto* blackLbl = new QLabel("Black:");
-    blackLbl->setStyleSheet(labelStyle);
-    grid->addWidget(blackLbl, row, 0);
-
-    auto* blackRow = new QHBoxLayout;
-    m_blackSlider = new QSlider(Qt::Horizontal);
-    m_blackSlider->setRange(0, 100);
-    m_blackSlider->setValue(15);
-    m_blackSlider->setStyleSheet(sliderStyle);
-    blackRow->addWidget(m_blackSlider);
-
-    m_blackLabel = new QLabel("15");
-    m_blackLabel->setStyleSheet(valStyle);
-    m_blackLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    blackRow->addWidget(m_blackLabel);
-
-    m_autoBlackBtn = new QPushButton("Auto");
-    m_autoBlackBtn->setCheckable(true);
+    // Black + Auto: Auto button in col 1
+    makeRowWithBtn("Black:", 0, 100, 15, m_blackSlider, m_blackLabel,
+                   m_autoBlackBtn, "Auto");
     m_autoBlackBtn->setChecked(true);
-    m_autoBlackBtn->setFixedWidth(40);
-    m_autoBlackBtn->setStyleSheet(btnStyle);
-    blackRow->addWidget(m_autoBlackBtn);
-
-    grid->addLayout(blackRow, row, 1, 1, 2);
-    ++row;
-
     connect(m_blackSlider, &QSlider::valueChanged, this, [this](int v) {
         m_blackLabel->setText(QString::number(v));
         emit wfBlackLevelChanged(v);
     });
     connect(m_autoBlackBtn, &QPushButton::toggled, this, [this](bool on) {
         emit wfAutoBlackChanged(on);
+        if (!on)
+            emit wfBlackLevelChanged(m_blackSlider->value());
     });
 
     makeRow("Rate:", 50, 500, 100, m_rateSlider, m_rateLabel);
@@ -860,7 +877,8 @@ void SpectrumOverlayMenu::buildDisplayPanel()
 
 void SpectrumOverlayMenu::syncDisplaySettings(int avg, int fps, int fillPct,
                                                bool weightedAvg, const QColor& fillColor,
-                                               int gain, int black, bool autoBlack, int rate)
+                                               int gain, int black, bool autoBlack, int rate,
+                                               int floorPos, bool floorEnable)
 {
     if (!m_avgSlider) return;  // panel not built yet
 
@@ -886,6 +904,15 @@ void SpectrumOverlayMenu::syncDisplaySettings(int avg, int fps, int fillPct,
     m_autoBlackBtn->setChecked(autoBlack);
     m_rateSlider->setValue(rate);
     m_rateLabel->setText(QString::number(rate));
+
+    if (m_floorSlider) {
+        QSignalBlocker bf(m_floorSlider), be(m_floorEnableBtn);
+        m_floorSlider->setValue(floorPos);
+        m_floorLabel->setText(QString::number(floorPos));
+        m_floorEnableBtn->setChecked(floorEnable);
+        m_floorEnableBtn->setText(floorEnable ? "On" : "Off");
+        m_floorSlider->setEnabled(floorEnable);
+    }
 }
 
 void SpectrumOverlayMenu::toggleDisplayPanel()
@@ -894,8 +921,9 @@ void SpectrumOverlayMenu::toggleDisplayPanel()
     hideAllSubPanels();
     if (!wasVisible) {
         m_displayPanelVisible = true;
-        int btnCenterY = m_menuBtns[5]->y() + m_menuBtns[5]->height() / 2;
-        int panelY = y() + btnCenterY - m_displayPanel->sizeHint().height() / 2;
+        int menuBottom = y() + height();
+        int panelH = m_displayPanel->sizeHint().height();
+        int panelY = menuBottom - panelH;
         m_displayPanel->move(x() + width(), std::max(0, panelY));
         m_displayPanel->raise();
         m_displayPanel->show();

@@ -161,6 +161,10 @@ public:
     void setWaterfallAutoBlack(bool on);
     void setWaterfallLineDuration(int ms);
 
+    // Display controls — Noise floor
+    void setPanNoiseFloorPosition(int pos);
+    void setPanNoiseFloorEnable(bool on);
+
 signals:
     void infoChanged();
     void connectionStateChanged(bool connected);

@@ -193,6 +193,20 @@ void RadioModel::setWaterfallLineDuration(int ms)
         QString("display panafall set %1 line_duration=%2").arg(m_waterfallId).arg(ms));
 }
 
+void RadioModel::setPanNoiseFloorPosition(int pos)
+{
+    if (m_panId.isEmpty()) return;
+    m_connection.sendCommand(
+        QString("display pan set %1 noise_floor_position=%2").arg(m_panId).arg(pos));
+}
+
+void RadioModel::setPanNoiseFloorEnable(bool on)
+{
+    if (m_panId.isEmpty()) return;
+    m_connection.sendCommand(
+        QString("display pan set %1 noise_floor_position_enable=%2").arg(m_panId).arg(on ? 1 : 0));
+}
+
 // ─── Connection slots ─────────────────────────────────────────────────────────
 
 void RadioModel::onConnected()

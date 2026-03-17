@@ -28,7 +28,8 @@ public:
     // Sync Display sub-panel controls with saved settings.
     void syncDisplaySettings(int avg, int fps, int fillPct, bool weightedAvg,
                              const QColor& fillColor, int gain, int black,
-                             bool autoBlack, int rate);
+                             bool autoBlack, int rate,
+                             int floorPos = 75, bool floorEnable = false);
 
     // Connect/disconnect the ANT panel to a slice model.
     void setSlice(SliceModel* slice);
@@ -50,6 +51,8 @@ signals:
     void wfBlackLevelChanged(int level);
     void wfAutoBlackChanged(bool on);
     void wfLineDurationChanged(int ms);
+    void noiseFloorPositionChanged(int pos);
+    void noiseFloorEnableChanged(bool on);
     // Emitted when user selects a band from the sub-panel.
     void bandSelected(const QString& bandName, double freqMhz, const QString& mode);
     // Emitted when WNB toggle changes.
@@ -129,6 +132,9 @@ private:
     QPushButton* m_autoBlackBtn{nullptr};
     QSlider*     m_rateSlider{nullptr};
     QLabel*      m_rateLabel{nullptr};
+    QSlider*     m_floorSlider{nullptr};
+    QLabel*      m_floorLabel{nullptr};
+    QPushButton* m_floorEnableBtn{nullptr};
 
     QStringList  m_antList;
     SliceModel*  m_slice{nullptr};
