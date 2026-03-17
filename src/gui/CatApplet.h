@@ -7,10 +7,12 @@ class QLabel;
 class QLineEdit;
 class QComboBox;
 class QSlider;
+class QProgressBar;
 
 namespace AetherSDR {
 
 class RadioModel;
+class SliceModel;
 class RigctlServer;
 class RigctlPty;
 class AudioEngine;
@@ -37,6 +39,9 @@ private:
     void updateTcpStatus();
     void updatePtyStatus();
     void onConnectionStateChanged(bool connected);
+    void wireSliceDax(SliceModel* s);
+    void updateDaxSliceAssignments();
+    void updateDaxTxStatus();
 
     RadioModel*    m_model{nullptr};
     RigctlServer*  m_server{nullptr};
@@ -55,8 +60,12 @@ private:
     // Slice selector
     QComboBox*   m_sliceSelect{nullptr};
 
-    // DAX section (placeholder — needs PipeWire virtual devices, issue #15)
-    QLabel*      m_daxPlaceholder{nullptr};
+    // DAX section
+    QPushButton*  m_daxEnable{nullptr};
+    QProgressBar* m_daxRxLevel[4]{};
+    QLabel*       m_daxRxStatus[4]{};
+    QProgressBar* m_daxTxLevel{nullptr};
+    QLabel*       m_daxTxStatus{nullptr};
 };
 
 } // namespace AetherSDR

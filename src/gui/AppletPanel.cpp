@@ -54,12 +54,12 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     btnRow->setStyleSheet(
         "QWidget { background: #0a0a18; border-bottom: 1px solid #1e2e3e; }"
         "QPushButton { background: #1a2a3a; border: 1px solid #203040; "
-        "border-radius: 3px; padding: 2px 5px; font-size: 11px; color: #c8d8e8; }"
+        "border-radius: 3px; padding: 2px 3px; font-size: 11px; color: #c8d8e8; }"
         "QPushButton:checked { background: #0070c0; color: #ffffff; "
         "border: 1px solid #0090e0; }");
     auto* btnLayout = new QHBoxLayout(btnRow);
-    btnLayout->setContentsMargins(3, 3, 3, 3);
-    btnLayout->setSpacing(2);
+    btnLayout->setContentsMargins(2, 3, 2, 3);
+    btnLayout->setSpacing(1);
     root->addWidget(btnRow);
 
     // ── S-Meter section (with title bar, toggled by ANLG button) ─────────────
@@ -158,7 +158,7 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
 
     // ANLG button — toggles the S-Meter section (default: visible)
     {
-        auto* anlgBtn = new QPushButton("ANLG", btnRow);
+        auto* anlgBtn = new QPushButton("VU", btnRow);
         anlgBtn->setCheckable(true);
         bool anlgOn = settings.value("applet/ANLG", true).toBool();
         anlgBtn->setChecked(anlgOn);
@@ -176,7 +176,7 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     // Tuner applet — hidden until TGXL detected via amplifier subscription
     m_tunerApplet = new TunerApplet;
     {
-        m_tuneBtn = new QPushButton("TUNE", btnRow);
+        m_tuneBtn = new QPushButton("TUN", btnRow);
         m_tuneBtn->setCheckable(true);
         m_tuneBtn->hide();  // hidden until setTunerVisible(true)
         btnLayout->addWidget(m_tuneBtn);
@@ -197,7 +197,7 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     addApplet("EQ", m_eqApplet, true);
 
     m_catApplet = new CatApplet;
-    addApplet("CAT", m_catApplet, false);
+    addApplet("DIGI", m_catApplet, false);
 
     btnLayout->addStretch();
 }

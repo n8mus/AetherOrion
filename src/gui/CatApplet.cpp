@@ -4,6 +4,8 @@
 #include "core/AudioEngine.h"
 #include "ComboStyle.h"
 #include "models/RadioModel.h"
+#include "models/SliceModel.h"
+#include "models/TransmitModel.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -12,6 +14,7 @@
 #include <QLineEdit>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QProgressBar>
 #include <QApplication>
 #include "core/AppSettings.h"
 #include <QFrame>
@@ -221,14 +224,76 @@ void CatApplet::buildUI()
         }
     });
 
-    // ── DAX Section (placeholder) ───────────────────────────────────────────
+    // ── DAX Section ─────────────────────────────────────────────────────────
     outer->addWidget(appletTitleBar("DAX Audio Channels"));
 
-    m_daxPlaceholder = new QLabel("DAX virtual audio requires PipeWire\n"
-                                   "integration — coming soon (issue #15)");
-    m_daxPlaceholder->setStyleSheet("QLabel { color: #506070; font-size: 10px; }");
-    m_daxPlaceholder->setAlignment(Qt::AlignCenter);
-    outer->addWidget(m_daxPlaceholder);
+    // DAX enable row
+    auto* daxEnRow = new QHBoxLayout;
+    daxEnRow->setContentsMargins(4, 2, 4, 2);
+    auto* daxLabel = new QLabel("DAX:");
+    daxLabel->setStyleSheet(kDimLabel);
+    daxEnRow->addWidget(daxLabel);
+    daxEnRow->addStretch();
+    m_daxEnable = new QPushButton("Enable");
+    m_daxEnable->setCheckable(true);
+    m_daxEnable->setStyleSheet(kGreenToggle);
+    m_daxEnable->setFixedSize(60, 22);
+    daxEnRow->addWidget(m_daxEnable);
+    outer->addLayout(daxEnRow);
+
+    // RX channel meters (DAX 1-4)
+    const QString kMeterStyle =
+        "QProgressBar { background: #0a0a18; border: 1px solid #1e2e3e;"
+        "  border-radius: 2px; max-height: 10px; }"
+        "QProgressBar::chunk { background: #00b4d8; border-radius: 1px; }";
+    const QString kStatusLabel = "QLabel { color: #506070; font-size: 11px; }";
+
+    for (int i = 0; i < 4; ++i) {
+        auto* row = new QHBoxLayout;
+        row->setContentsMargins(4, 1, 4, 1);
+        row->setSpacing(4);
+        auto* chLabel = new QLabel(QString("DAX %1:").arg(i + 1));
+        chLabel->setStyleSheet(kDimLabel);
+        chLabel->setFixedWidth(40);
+        row->addWidget(chLabel);
+
+        m_daxRxStatus[i] = new QLabel("—");
+        m_daxRxStatus[i]->setStyleSheet(kStatusLabel);
+        m_daxRxStatus[i]->setFixedWidth(40);
+        row->addWidget(m_daxRxStatus[i]);
+
+        m_daxRxLevel[i] = new QProgressBar;
+        m_daxRxLevel[i]->setRange(0, 100);
+        m_daxRxLevel[i]->setValue(0);
+        m_daxRxLevel[i]->setTextVisible(false);
+        m_daxRxLevel[i]->setStyleSheet(kMeterStyle);
+        row->addWidget(m_daxRxLevel[i], 1);
+
+        outer->addLayout(row);
+    }
+
+    // TX meter
+    auto* txRow = new QHBoxLayout;
+    txRow->setContentsMargins(4, 1, 4, 1);
+    txRow->setSpacing(4);
+    auto* txLabel = new QLabel("TX:");
+    txLabel->setStyleSheet(kDimLabel);
+    txLabel->setFixedWidth(40);
+    txRow->addWidget(txLabel);
+
+    m_daxTxStatus = new QLabel("—");
+    m_daxTxStatus->setStyleSheet(kStatusLabel);
+    m_daxTxStatus->setFixedWidth(40);
+    txRow->addWidget(m_daxTxStatus);
+
+    m_daxTxLevel = new QProgressBar;
+    m_daxTxLevel->setRange(0, 100);
+    m_daxTxLevel->setValue(0);
+    m_daxTxLevel->setTextVisible(false);
+    m_daxTxLevel->setStyleSheet(kMeterStyle);
+    txRow->addWidget(m_daxTxLevel, 1);
+
+    outer->addLayout(txRow);
 }
 
 void CatApplet::setRadioModel(RadioModel* model)
@@ -246,6 +311,69 @@ void CatApplet::setRadioModel(RadioModel* model)
             for (int i = 0; i < maxSlices && i < 8; ++i)
                 m_sliceSelect->addItem(QString("Slice %1").arg(letters[i]));
         });
+
+        // Wire slice add/remove for DAX channel tracking
+        connect(model, &RadioModel::sliceAdded, this, [this](SliceModel* s) {
+            wireSliceDax(s);
+        });
+        connect(model, &RadioModel::sliceRemoved, this, [this](int) {
+            updateDaxSliceAssignments();
+        });
+
+        // Wire TX state for TX status label
+        connect(model->transmitModel(), &TransmitModel::moxChanged, this, [this]() {
+            updateDaxTxStatus();
+        });
+    }
+}
+
+void CatApplet::wireSliceDax(SliceModel* s)
+{
+    connect(s, &SliceModel::daxChannelChanged, this, [this]() {
+        updateDaxSliceAssignments();
+    });
+    updateDaxSliceAssignments();
+}
+
+void CatApplet::updateDaxSliceAssignments()
+{
+    // Clear all
+    for (int i = 0; i < 4; ++i)
+        m_daxRxStatus[i]->setText("—");
+
+    if (!m_model) return;
+
+    static const char letters[] = "ABCDEFGH";
+    for (auto* s : m_model->slices()) {
+        int ch = s->daxChannel();
+        if (ch >= 1 && ch <= 4) {
+            int idx = ch - 1;
+            QString name = QString("Slice %1").arg(letters[s->sliceId()]);
+            m_daxRxStatus[idx]->setText(name);
+        }
+    }
+}
+
+void CatApplet::updateDaxTxStatus()
+{
+    if (!m_model) {
+        m_daxTxStatus->setText("—");
+        return;
+    }
+
+    bool isTx = m_model->transmitModel()->isMox();
+    if (isTx) {
+        // Find the TX slice
+        static const char letters[] = "ABCDEFGH";
+        for (auto* s : m_model->slices()) {
+            if (s->isTxSlice()) {
+                m_daxTxStatus->setText(QString("Slice %1").arg(letters[s->sliceId()]));
+                return;
+            }
+        }
+        m_daxTxStatus->setText("TX");
+    } else {
+        m_daxTxStatus->setText("Ready");
     }
 }
 

@@ -345,9 +345,6 @@ void RadioModel::onConnected()
                                     quint32 id = body.trimmed().toUInt(nullptr, 16);
                                     qDebug() << "RadioModel: dax_tx stream created, id:"
                                              << Qt::hex << id;
-                                    // Enable DAX and set mic source to PC so radio
-                                    // uses our DAX TX audio instead of physical mic
-                                    m_connection.sendCommand("transmit set dax=1");
                                     m_connection.sendCommand("transmit set mic_selection=PC");
                                     emit txAudioStreamReady(id);
                                 } else {
