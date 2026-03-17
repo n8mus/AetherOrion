@@ -96,13 +96,11 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
     manBox->setSpacing(4);
 
     auto* manRow = new QHBoxLayout;
-    auto* ipLabel = new QLabel("IP:", m_manualGroup);
-    ipLabel->setFixedWidth(20);
+    manRow->setContentsMargins(0, 0, 0, 0);
     m_manualIpEdit = new QLineEdit(m_manualGroup);
-    m_manualIpEdit->setPlaceholderText("radio IP address");
+    m_manualIpEdit->setPlaceholderText("IP address");
     m_manualProbeBtn = new QPushButton("Go", m_manualGroup);
-    m_manualProbeBtn->setFixedWidth(32);
-    manRow->addWidget(ipLabel);
+    m_manualProbeBtn->setFixedWidth(30);
     manRow->addWidget(m_manualIpEdit, 1);
     manRow->addWidget(m_manualProbeBtn);
     manBox->addLayout(manRow);
