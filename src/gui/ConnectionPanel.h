@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QComboBox>
 #include <QLineEdit>
+#include <QTcpSocket>
 
 namespace AetherSDR {
 
@@ -69,6 +70,12 @@ private:
     QPushButton* m_loginBtn{nullptr};
     QLabel*      m_slUserLabel{nullptr};
     QList<WanRadioInfo> m_wanRadios;
+
+    // Manual (routed) connection
+    QWidget*     m_manualGroup{nullptr};
+    QLineEdit*   m_manualIpEdit{nullptr};
+    QPushButton* m_manualProbeBtn{nullptr};
+    void probeRadio(const QString& ip);
 };
 
 } // namespace AetherSDR

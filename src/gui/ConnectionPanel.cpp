@@ -90,6 +90,34 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
 
     vbox->addWidget(m_smartLinkGroup);
 
+    // ── Manual (routed) connection ───────────────────────────────────────
+    m_manualGroup = new QGroupBox("Manual Connection", this);
+    auto* manBox = new QVBoxLayout(m_manualGroup);
+    manBox->setSpacing(4);
+
+    auto* manRow = new QHBoxLayout;
+    auto* ipLabel = new QLabel("IP:", m_manualGroup);
+    ipLabel->setFixedWidth(20);
+    m_manualIpEdit = new QLineEdit(m_manualGroup);
+    m_manualIpEdit->setPlaceholderText("radio IP address");
+    m_manualProbeBtn = new QPushButton("Connect", m_manualGroup);
+    m_manualProbeBtn->setFixedWidth(65);
+    manRow->addWidget(ipLabel);
+    manRow->addWidget(m_manualIpEdit, 1);
+    manRow->addWidget(m_manualProbeBtn);
+    manBox->addLayout(manRow);
+
+    connect(m_manualProbeBtn, &QPushButton::clicked, this, [this] {
+        const QString ip = m_manualIpEdit->text().trimmed();
+        if (!ip.isEmpty()) probeRadio(ip);
+    });
+    connect(m_manualIpEdit, &QLineEdit::returnPressed, this, [this] {
+        const QString ip = m_manualIpEdit->text().trimmed();
+        if (!ip.isEmpty()) probeRadio(ip);
+    });
+
+    vbox->addWidget(m_manualGroup);
+
     // Login button click
     connect(m_loginBtn, &QPushButton::clicked, this, [this] {
         const QString email = m_emailEdit->text().trimmed();
@@ -281,6 +309,7 @@ void ConnectionPanel::setCollapsed(bool collapsed)
     m_statusLabel->setVisible(!collapsed);
     m_collapseBtn->setVisible(!collapsed);
     m_smartLinkGroup->setVisible(!collapsed);
+    m_manualGroup->setVisible(!collapsed);
 
     if (collapsed) {
         m_expandedWidth = width();
@@ -302,6 +331,90 @@ bool ConnectionPanel::eventFilter(QObject* obj, QEvent* event)
         return true;
     }
     return QWidget::eventFilter(obj, event);
+}
+
+void ConnectionPanel::probeRadio(const QString& ip)
+{
+    m_manualProbeBtn->setEnabled(false);
+    m_manualProbeBtn->setText("Probing...");
+
+    auto* sock = new QTcpSocket(this);
+    sock->connectToHost(ip, 4992);
+
+    // 3-second timeout
+    QTimer::singleShot(3000, sock, [this, sock] {
+        if (sock->state() != QAbstractSocket::ConnectedState) {
+            sock->abort();
+            sock->deleteLater();
+            m_manualProbeBtn->setEnabled(true);
+            m_manualProbeBtn->setText("Connect");
+        }
+    });
+
+    connect(sock, &QTcpSocket::connected, this, [this, sock, ip] {
+        // Connected — read V/H lines, then disconnect
+        connect(sock, &QTcpSocket::readyRead, this, [this, sock, ip] {
+            static QByteArray buf;
+            buf.append(sock->readAll());
+
+            // We need V<version>\n and H<handle>\n
+            QString version;
+            while (buf.contains('\n')) {
+                int idx = buf.indexOf('\n');
+                QString line = QString::fromUtf8(buf.left(idx)).trimmed();
+                buf.remove(0, idx + 1);
+
+                if (line.startsWith('V'))
+                    version = line.mid(1);
+                else if (line.startsWith('H')) {
+                    // Got both V and H — we have enough info
+                    sock->disconnectFromHost();
+                    sock->deleteLater();
+                    buf.clear();
+
+                    // Build a RadioInfo for this routed radio
+                    RadioInfo info;
+                    info.address = QHostAddress(ip);
+                    info.port = 4992;
+                    info.version = version;
+                    info.status = "Available";
+                    info.model = "FLEX";
+                    info.name = "FLEX";
+                    info.serial = ip;  // use IP as unique ID for routed radios
+                    info.isRouted = true;
+
+                    // Check if already in list
+                    for (int i = 0; i < m_radios.size(); ++i) {
+                        if (m_radios[i].address == info.address) {
+                            m_radios[i] = info;
+                            m_radioList->item(i)->setText(info.displayName());
+                            m_manualProbeBtn->setEnabled(true);
+                            m_manualProbeBtn->setText("Connect");
+                            return;
+                        }
+                    }
+
+                    m_radios.append(info);
+                    m_radioList->addItem(info.displayName());
+
+                    m_manualProbeBtn->setEnabled(true);
+                    m_manualProbeBtn->setText("Connect");
+
+                    qDebug() << "ConnectionPanel: routed radio found at" << ip
+                             << "version:" << version;
+                    return;
+                }
+            }
+        });
+    });
+
+    connect(sock, &QTcpSocket::errorOccurred, this,
+            [this, sock](QAbstractSocket::SocketError) {
+        qWarning() << "ConnectionPanel: probe failed:" << sock->errorString();
+        sock->deleteLater();
+        m_manualProbeBtn->setEnabled(true);
+        m_manualProbeBtn->setText("Connect");
+    });
 }
 
 } // namespace AetherSDR

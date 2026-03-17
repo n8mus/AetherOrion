@@ -23,10 +23,15 @@ struct RadioInfo {
     QString status;         // "Available" | "In_Use" | etc.
     int maxLicensedVersion{0};
     bool inUse{false};
+    bool isRouted{false};
 
     QString displayName() const {
-        return QString("%1  %2  %3\nAvailable (local)")
-            .arg(model, nickname, callsign);
+        const QString connType = isRouted ? "routed" : "local";
+        if (nickname.isEmpty() && callsign.isEmpty())
+            return QString("%1 @ %2\nAvailable (%3)")
+                .arg(model, address.toString(), connType);
+        return QString("%1  %2  %3\nAvailable (%4)")
+            .arg(model, nickname, callsign, connType);
     }
 };
 
