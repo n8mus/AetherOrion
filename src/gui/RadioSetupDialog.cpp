@@ -798,24 +798,6 @@ QWidget* RadioSetupDialog::buildPhoneCwTab()
         row2->addStretch(1);
         gvb->addLayout(row2);
 
-        // PC Audio Input device selector
-        auto* row3 = new QHBoxLayout;
-        row3->setSpacing(4);
-        auto* pcLbl = new QLabel("PC Audio Input:");
-        pcLbl->setStyleSheet(kLabelStyle);
-        row3->addWidget(pcLbl);
-        auto* pcCmb = new QComboBox;
-        AetherSDR::applyComboStyle(pcCmb);
-        const auto devices = QMediaDevices::audioInputs();
-        for (const auto& dev : devices)
-            pcCmb->addItem(dev.description(), dev.id());
-        // Select current default
-        const auto defaultDev = QMediaDevices::defaultAudioInput();
-        int defIdx = pcCmb->findData(defaultDev.id());
-        if (defIdx >= 0) pcCmb->setCurrentIndex(defIdx);
-        row3->addWidget(pcCmb, 1);
-        gvb->addLayout(row3);
-
         vbox->addWidget(group);
     }
 
@@ -1156,16 +1138,44 @@ QWidget* RadioSetupDialog::buildAudioTab()
 
     vbox->addWidget(outGroup);
 
-    // ── PC Audio (placeholder for future PipeWire integration) ──────────
-    auto* pcGroup = new QGroupBox("PC Audio");
+    // ── PC Audio Devices ────────────────────────────────────────────────
+    auto* pcGroup = new QGroupBox("PC Audio Devices");
     pcGroup->setStyleSheet(kGroupStyle);
     auto* pcLayout = new QVBoxLayout(pcGroup);
 
-    auto* pcNote = new QLabel("PC audio input/output device selection coming soon.\n"
-                              "Currently using system default audio device.");
-    pcNote->setStyleSheet(kLabelStyle);
-    pcNote->setWordWrap(true);
-    pcLayout->addWidget(pcNote);
+    // Input device
+    auto* inRow = new QHBoxLayout;
+    auto* inLabel = new QLabel("Input:");
+    inLabel->setStyleSheet(kLabelStyle);
+    inLabel->setFixedWidth(90);
+    auto* inCombo = new QComboBox;
+    AetherSDR::applyComboStyle(inCombo);
+    const auto inDevices = QMediaDevices::audioInputs();
+    for (const auto& dev : inDevices)
+        inCombo->addItem(dev.description(), dev.id());
+    const auto defaultIn = QMediaDevices::defaultAudioInput();
+    int inIdx = inCombo->findData(defaultIn.id());
+    if (inIdx >= 0) inCombo->setCurrentIndex(inIdx);
+    inRow->addWidget(inLabel);
+    inRow->addWidget(inCombo, 1);
+    pcLayout->addLayout(inRow);
+
+    // Output device
+    auto* outRow = new QHBoxLayout;
+    auto* outLabel = new QLabel("Output:");
+    outLabel->setStyleSheet(kLabelStyle);
+    outLabel->setFixedWidth(90);
+    auto* outCombo = new QComboBox;
+    AetherSDR::applyComboStyle(outCombo);
+    const auto outDevices = QMediaDevices::audioOutputs();
+    for (const auto& dev : outDevices)
+        outCombo->addItem(dev.description(), dev.id());
+    const auto defaultOut = QMediaDevices::defaultAudioOutput();
+    int outIdx = outCombo->findData(defaultOut.id());
+    if (outIdx >= 0) outCombo->setCurrentIndex(outIdx);
+    outRow->addWidget(outLabel);
+    outRow->addWidget(outCombo, 1);
+    pcLayout->addLayout(outRow);
 
     vbox->addWidget(pcGroup);
     vbox->addStretch(1);
