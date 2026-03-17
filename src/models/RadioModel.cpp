@@ -1087,6 +1087,10 @@ void RadioModel::handleRadioStatus(const QMap<QString, QString>& kvs)
         m_headphoneMute = kvs["headphone_mute"] == "1";
         audioChanged = true;
     }
+    if (kvs.contains("front_speaker_mute")) {
+        m_frontSpeakerMute = kvs["front_speaker_mute"] == "1";
+        audioChanged = true;
+    }
     if (audioChanged) emit audioOutputChanged();
     if (changed) emit infoChanged();
 }
@@ -1111,6 +1115,11 @@ void RadioModel::setHeadphoneGain(int v)
 void RadioModel::setHeadphoneMute(bool m)
 {
     sendCmd(QString("mixer headphone mute %1").arg(m ? 1 : 0));
+}
+
+void RadioModel::setFrontSpeakerMute(bool m)
+{
+    sendCmd(QString("mixer front_speaker mute %1").arg(m ? 1 : 0));
 }
 
 void RadioModel::handleSliceStatus(int id,

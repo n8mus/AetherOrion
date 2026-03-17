@@ -123,10 +123,12 @@ public:
     bool    lineoutMute()    const { return m_lineoutMute; }
     int     headphoneGain()  const { return m_headphoneGain; }
     bool    headphoneMute()  const { return m_headphoneMute; }
+    bool    frontSpeakerMute() const { return m_frontSpeakerMute; }
     void setLineoutGain(int v);
     void setLineoutMute(bool m);
     void setHeadphoneGain(int v);
     void setHeadphoneMute(bool m);
+    void setFrontSpeakerMute(bool m);
     int     filterSharpnessVoice()     const { return m_filterVoice; }
     bool    filterSharpnessVoiceAuto() const { return m_filterVoiceAuto; }
     int     filterSharpnessCw()        const { return m_filterCw; }
@@ -296,6 +298,7 @@ private:
     bool        m_lineoutMute{false};
     int         m_headphoneGain{50};
     bool        m_headphoneMute{false};
+    bool        m_frontSpeakerMute{false};
     int         m_freqErrorPpb{0};
     int         m_filterVoice{2};
     bool        m_filterVoiceAuto{false};
