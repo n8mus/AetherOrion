@@ -30,7 +30,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf`
 
-Current version: **0.3.0** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.3.99** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -364,7 +364,7 @@ and panadapter. The radio assigns these to our `client_handle`.
 
 ---
 
-## What's Implemented (v0.3.0)
+## What's Implemented (v0.3.99)
 
 - UDP radio discovery and TCP command/control
 - SmartSDR V/H/R/S/M protocol parsing
