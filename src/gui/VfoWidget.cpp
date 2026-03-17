@@ -768,6 +768,7 @@ void VfoWidget::buildTabContent()
         // Mode dropdown (same style as RxApplet)
         m_modeCombo = new QComboBox;
         m_modeCombo->setFixedHeight(26);
+        // Default modes — replaced dynamically when slice connects and sends mode_list
         m_modeCombo->addItems({"USB", "LSB", "CW", "AM", "SAM", "FM",
                                 "NFM", "DFM", "DIGU", "DIGL", "RTTY"});
         AetherSDR::applyComboStyle(m_modeCombo);
@@ -1125,6 +1126,24 @@ void VfoWidget::setSlice(SliceModel* slice)
 
     // Frequency
     connect(m_slice, &SliceModel::frequencyChanged, this, [this](double) { updateFreqLabel(); });
+    // Mode list (dynamic from radio)
+    connect(m_slice, &SliceModel::modeListChanged, this, [this](const QStringList& modes) {
+        QSignalBlocker sb(m_modeCombo);
+        QString cur = m_modeCombo->currentText();
+        m_modeCombo->clear();
+        m_modeCombo->addItems(modes);
+        int idx = m_modeCombo->findText(cur);
+        if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
+    });
+    // Populate now if already available
+    if (!m_slice->modeList().isEmpty()) {
+        QSignalBlocker sb(m_modeCombo);
+        QString cur = m_modeCombo->currentText();
+        m_modeCombo->clear();
+        m_modeCombo->addItems(m_slice->modeList());
+        int idx = m_modeCombo->findText(cur);
+        if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
+    }
     // Mode
     connect(m_slice, &SliceModel::modeChanged, this, [this](const QString& mode) {
         m_tabBtns[2]->setText(mode);  // update mode tab label

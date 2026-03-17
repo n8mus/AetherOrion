@@ -26,6 +26,7 @@ public:
     int     sliceId()    const { return m_id; }
     double  frequency()  const { return m_frequency; }   // MHz
     QString mode()       const { return m_mode; }
+    QStringList modeList() const { return m_modeList; }
     int     filterLow()  const { return m_filterLow; }   // Hz offset
     int     filterHigh() const { return m_filterHigh; }
     bool    isActive()   const { return m_active; }
@@ -187,12 +188,14 @@ signals:
     void txOffsetFreqChanged(double mhz);
     void fmDeviationChanged(int hz);
 
+    void modeListChanged(const QStringList& modes);
     void commandReady(const QString& cmd);  // ready to send to radio
 
 private:
     int     m_id{0};
     double  m_frequency{0.0};
     QString m_mode{"USB"};
+    QStringList m_modeList;
     int     m_filterLow{-1500};
     int     m_filterHigh{1500};
     bool    m_active{false};

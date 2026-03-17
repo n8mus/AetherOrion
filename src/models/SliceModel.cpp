@@ -422,6 +422,13 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
         m_filterHigh = kvs.value("filter_hi", QString::number(m_filterHigh)).toInt();
         filterChanged_ = true;
     }
+    if (kvs.contains("mode_list")) {
+        QStringList modes = kvs["mode_list"].split(',', Qt::SkipEmptyParts);
+        if (modes != m_modeList) {
+            m_modeList = modes;
+            emit modeListChanged(modes);
+        }
+    }
     if (kvs.contains("active"))
         m_active = kvs["active"] == "1";
     if (kvs.contains("tx")) {

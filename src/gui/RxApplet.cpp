@@ -1012,6 +1012,22 @@ void RxApplet::connectSlice(SliceModel* s)
         int idx = m_modeCombo->findText(s->mode());
         if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
     }
+    connect(s, &SliceModel::modeListChanged, this, [this](const QStringList& modes) {
+        QSignalBlocker b(m_modeCombo);
+        QString cur = m_modeCombo->currentText();
+        m_modeCombo->clear();
+        m_modeCombo->addItems(modes);
+        int idx = m_modeCombo->findText(cur);
+        if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
+    });
+    if (!s->modeList().isEmpty()) {
+        QSignalBlocker b(m_modeCombo);
+        QString cur = m_modeCombo->currentText();
+        m_modeCombo->clear();
+        m_modeCombo->addItems(s->modeList());
+        int idx = m_modeCombo->findText(cur);
+        if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
+    }
     connect(s, &SliceModel::modeChanged, this, [this](const QString& mode) {
         QSignalBlocker b(m_modeCombo);
         int idx = m_modeCombo->findText(mode);
