@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QDateTime>
 #include <QTextStream>
+#include <QStandardPaths>
 
 static QFile* s_logFile = nullptr;
 
@@ -38,8 +39,11 @@ int main(int argc, char* argv[])
     app.setOrganizationName("AetherSDR");
     app.setDesktopFileName("AetherSDR");  // matches .desktop file for taskbar icon
 
-    // Set up file logging next to the executable
-    const QString logPath = QCoreApplication::applicationDirPath() + "/aethersdr.log";
+    // Set up file logging in config directory (works inside AppImage where
+    // applicationDirPath() is read-only)
+    const QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QDir().mkpath(logDir);
+    const QString logPath = logDir + "/aethersdr.log";
     s_logFile = new QFile(logPath);
     if (s_logFile->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
         // Restrict log file to owner-only (may contain session identifiers)

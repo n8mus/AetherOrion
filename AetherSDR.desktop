@@ -6,3 +6,4 @@ Icon=aethersdr
 Type=Application
 Categories=HamRadio;Audio;
 Terminal=false
+StartupWMClass=AetherSDR

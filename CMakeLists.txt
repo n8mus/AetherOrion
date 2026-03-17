@@ -132,6 +132,3 @@ install(FILES docs/logo-circle.png
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps
     RENAME aethersdr.png
 )
-
-# Install
-install(TARGETS AetherSDR DESTINATION bin)
