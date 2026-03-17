@@ -53,7 +53,7 @@ RadioModel::RadioModel(QObject* parent)
 
 bool RadioModel::isConnected() const
 {
-    return isConnected() || (m_wanConn && m_wanConn->isConnected());
+    return m_connection.isConnected() || (m_wanConn && m_wanConn->isConnected());
 }
 
 SliceModel* RadioModel::slice(int id) const
