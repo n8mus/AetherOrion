@@ -250,10 +250,20 @@ void RadioModel::onConnected()
     // especially on WAN/SmartLink where the radio is stricter.
     const QString clientId = AppSettings::instance().value("GUIClientID").toString();
 
-    // On WAN, send client ip first (FlexLib does this before client gui)
-    if (m_wanConn)
-        sendCmd("client ip");
+    if (m_wanConn) {
+        // On WAN: wait for client ip response before sending client gui.
+        // The radio needs time after wan validate to accept GUI registration.
+        sendCmd("client ip", [this, clientId](int, const QString& body) {
+            qDebug() << "RadioModel: client ip ->" << body.trimmed();
+            registerAsGuiClient(clientId);
+        });
+    } else {
+        registerAsGuiClient(clientId);
+    }
+}
 
+void RadioModel::registerAsGuiClient(const QString& clientId)
+{
     sendCmd(QString("client gui %1").arg(clientId), [this](int code, const QString&) {
         if (code != 0)
             qWarning() << "RadioModel: client gui failed, code" << Qt::hex << code;

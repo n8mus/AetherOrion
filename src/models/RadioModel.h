@@ -228,6 +228,7 @@ private:
 
     void configurePan();
     void configureWaterfall();
+    void registerAsGuiClient(const QString& clientId);
 
     // Route command to active connection (LAN or WAN)
     using ResponseCallback = RadioConnection::ResponseCallback;
