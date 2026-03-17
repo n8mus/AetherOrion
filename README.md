@@ -13,7 +13,11 @@
 
 AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
 
-**Current version: 0.3.90** | [Releases](https://github.com/ten9876/AetherSDR/releases) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+**Current version: 0.3.90** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+
+> **Cross-platform downloads available:** Linux AppImage, macOS universal DMG, and Windows ZIP.
+> Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
+> but are unsupported and low priority until post-v1.0.
 
 ![AetherSDR Screenshot](docs/screenshot-v4.png)
 
@@ -92,9 +96,26 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 
 ---
 
-## Installation
+## Download
 
-### Dependencies
+Pre-built binaries are available from [Releases](https://github.com/ten9876/AetherSDR/releases/latest):
+
+| Platform | Download | Notes |
+|----------|----------|-------|
+| **Linux** | `AetherSDR-*-x86_64.AppImage` | Single file, no install needed. `chmod +x` and run. |
+| **macOS** | `AetherSDR-*-macOS-universal.dmg` | Intel + Apple Silicon. Drag to Applications. |
+| **Windows** | `AetherSDR-*-Windows-x64.zip` | Extract and run `AetherSDR.exe`. |
+
+Linux is the primary development platform and receives the most testing. macOS and Windows
+builds are provided as a convenience — they compile from the same codebase but are not
+actively tested or supported. Bug reports are welcome but fixes for macOS/Windows issues
+will be low priority until after v1.0.
+
+---
+
+## Building from Source
+
+### Dependencies (Linux)
 
 ```bash
 # Arch / CachyOS / Manjaro
@@ -107,7 +128,7 @@ sudo apt install qt6-base-dev qt6-multimedia-dev cmake ninja-build pkg-config
 sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel cmake ninja-build
 
 # macOS (Homebrew)
-brew install qt@6 ninja portaudio pkgconf cmake
+brew install qt@6 ninja cmake
 ```
 
 ### Build & Run
@@ -122,7 +143,7 @@ cmake --build build -j$(nproc)
 
 The application will automatically discover FlexRadio transceivers on your local network.
 
-### Install (optional)
+### Install (optional, Linux)
 
 Install the binary, desktop entry, and icon system-wide:
 
@@ -130,7 +151,7 @@ Install the binary, desktop entry, and icon system-wide:
 sudo cmake --install build
 ```
 
-This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app launcher, and the icon in the system icon theme. You can then launch from your application menu or by typing `AetherSDR` in a terminal.
+This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app launcher, and the icon in the system icon theme.
 
 ---
 
@@ -142,7 +163,7 @@ This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app laun
 - [ ] Band stacking registers
 - [ ] Spot / DX cluster integration
 - [ ] CW keyer and memory support
-- [ ] SmartLink remote operation
+- [x] SmartLink remote operation (beta — TCP command channel working, UDP streaming in progress)
 - [ ] Keyboard shortcuts and hotkeys
 
 See the full [issue tracker](https://github.com/ten9876/AetherSDR/issues) for 45+ tracked features and enhancements.
