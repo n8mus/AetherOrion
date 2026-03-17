@@ -7,6 +7,7 @@
 #include <QResizeEvent>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QMenu>
 #include "core/AppSettings.h"
 #include <QDateTime>
 #include <cmath>
@@ -399,6 +400,49 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         }
     }
 
+    // Right-click context menu
+    if (ev->button() == Qt::RightButton && y < specH) {
+        const int mx = static_cast<int>(ev->position().x());
+        const double freqMhz = xToMhz(mx);
+        const int hitTnf = tnfAtPixel(mx);
+
+        QMenu menu(this);
+        if (hitTnf >= 0) {
+            menu.addAction("Remove TNF", this, [this, hitTnf]{ emit tnfRemoveRequested(hitTnf); });
+            auto* widthMenu = menu.addMenu("Width");
+            for (int w : {50, 100, 200, 500}) {
+                widthMenu->addAction(QString("%1 Hz").arg(w), this,
+                    [this, hitTnf, w]{ emit tnfWidthRequested(hitTnf, w); });
+            }
+            auto* depthMenu = menu.addMenu("Depth");
+            depthMenu->addAction("Normal", this, [this, hitTnf]{ emit tnfDepthRequested(hitTnf, 1); });
+            depthMenu->addAction("Deep", this, [this, hitTnf]{ emit tnfDepthRequested(hitTnf, 2); });
+            depthMenu->addAction("Very Deep", this, [this, hitTnf]{ emit tnfDepthRequested(hitTnf, 3); });
+        } else {
+            const QString freqStr = QString::number(freqMhz, 'f', 6);
+            menu.addAction(QString("Add TNF at %1 MHz").arg(freqStr), this,
+                [this, freqMhz]{ emit tnfCreateRequested(freqMhz); });
+        }
+        menu.exec(ev->globalPosition().toPoint());
+        ev->accept();
+        return;
+    }
+
+    // Check for click on TNF marker in FFT area → start drag
+    if (ev->button() == Qt::LeftButton && y < specH) {
+        const int mx = static_cast<int>(ev->position().x());
+        const int hitTnf = tnfAtPixel(mx);
+        if (hitTnf >= 0) {
+            m_draggingTnfId = hitTnf;
+            for (const auto& t : m_tnfMarkers) {
+                if (t.id == hitTnf) { m_dragTnfOrigFreq = t.freqMhz; break; }
+            }
+            setCursor(Qt::SizeHorCursor);
+            ev->accept();
+            return;
+        }
+    }
+
     // Check for click on filter edges in FFT area (5px grab zone)
     if (y < specH) {
         const int mx = static_cast<int>(ev->position().x());
@@ -433,6 +477,18 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
     const int chromeH  = FREQ_SCALE_H + DIVIDER_H;
     const int contentH = height() - chromeH;
     const int y = static_cast<int>(ev->position().y());
+
+    // TNF drag
+    if (m_draggingTnfId >= 0) {
+        const int mx = static_cast<int>(ev->position().x());
+        const double newFreq = xToMhz(mx);
+        for (auto& t : m_tnfMarkers) {
+            if (t.id == m_draggingTnfId) { t.freqMhz = newFreq; break; }
+        }
+        update();
+        ev->accept();
+        return;
+    }
 
     if (m_draggingDivider) {
         // Clamp the divider position: 10%–90% of content area
@@ -563,6 +619,15 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
 
 void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
 {
+    if (m_draggingTnfId >= 0) {
+        const int mx = static_cast<int>(ev->position().x());
+        const double newFreq = xToMhz(mx);
+        emit tnfMoveRequested(m_draggingTnfId, newFreq);
+        m_draggingTnfId = -1;
+        setCursor(Qt::CrossCursor);
+        ev->accept();
+        return;
+    }
     if (m_draggingDivider) {
         m_draggingDivider = false;
         setCursor(Qt::CrossCursor);
@@ -805,6 +870,7 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
 
     drawFreqScale(p, scaleRect);
     drawWaterfall(p, wfRect);
+    drawTnfMarkers(p, specRect, wfRect);
     drawVfoMarker(p, specRect, wfRect);
     drawOffScreenVfo(p, specRect);
 
@@ -951,6 +1017,69 @@ void SpectrumWidget::drawWaterfall(QPainter& p, const QRect& r)
         return;
     }
     p.drawImage(r, m_waterfall);
+}
+
+// ─── TNF markers ────────────────────────────────────────────────────────────
+
+void SpectrumWidget::setTnfMarkers(const QVector<TnfMarker>& markers)
+{
+    m_tnfMarkers = markers;
+    update();
+}
+
+void SpectrumWidget::setTnfGlobalEnabled(bool on)
+{
+    m_tnfGlobalEnabled = on;
+    update();
+}
+
+void SpectrumWidget::drawTnfMarkers(QPainter& p, const QRect& specRect, const QRect& wfRect)
+{
+    if (m_tnfMarkers.isEmpty()) return;
+
+    const int alpha = m_tnfGlobalEnabled ? 40 : 15;
+    const int lineAlpha = m_tnfGlobalEnabled ? 140 : 50;
+
+    for (const auto& tnf : m_tnfMarkers) {
+        const int cx = mhzToX(tnf.freqMhz);
+        const int halfW = std::max(2, mhzToX(tnf.freqMhz + tnf.widthHz / 2.0e6) - cx);
+        const int left = cx - halfW;
+        const int right = cx + halfW;
+
+        // Skip if fully off-screen
+        if (right < 0 || left > width()) continue;
+
+        // Shaded fill across spectrum + waterfall
+        const QColor fillColor(0xff, 0x30, 0x30, alpha);
+        p.fillRect(left, specRect.top(), right - left, specRect.height(), fillColor);
+        p.fillRect(left, wfRect.top(), right - left, wfRect.height(), fillColor);
+
+        // Edge lines
+        const QPen edgePen(QColor(0xff, 0x40, 0x40, lineAlpha), 1, Qt::SolidLine);
+        p.setPen(edgePen);
+        p.drawLine(left, specRect.top(), left, wfRect.bottom());
+        p.drawLine(right, specRect.top(), right, wfRect.bottom());
+
+        // Center triangle (grab handle) at top of spectrum
+        const int triH = 8 + tnf.depthDb * 2;  // bigger triangle for deeper notch
+        QPolygon tri;
+        tri << QPoint(cx - 5, specRect.top())
+            << QPoint(cx + 5, specRect.top())
+            << QPoint(cx, specRect.top() + triH);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0xff, 0x40, 0x40, m_tnfGlobalEnabled ? 200 : 80));
+        p.drawPolygon(tri);
+    }
+}
+
+int SpectrumWidget::tnfAtPixel(int x) const
+{
+    for (const auto& tnf : m_tnfMarkers) {
+        int cx = mhzToX(tnf.freqMhz);
+        if (std::abs(x - cx) <= 8)
+            return tnf.id;
+    }
+    return -1;
 }
 
 // ─── VFO marker (filter passband + tuned frequency line) ──────────────────────

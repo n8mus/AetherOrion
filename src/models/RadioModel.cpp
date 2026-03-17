@@ -42,6 +42,11 @@ RadioModel::RadioModel(QObject* parent)
         sendCmd(cmd);
     });
 
+    // Forward TNF model commands to the radio
+    connect(&m_tnfModel, &TnfModel::commandReady, this, [this](const QString& cmd){
+        sendCmd(cmd);
+    });
+
     m_reconnectTimer.setSingleShot(true);
     m_reconnectTimer.setInterval(3000);
     connect(&m_reconnectTimer, &QTimer::timeout, this, [this]() {
@@ -408,6 +413,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
             });
             // Request global profile list
             sendCmd("profile global info");
+            sendCmd("sub tnf all");
             }); // sub xvtr all
             }); // sub apd all
             }); // sub gps all
@@ -988,6 +994,15 @@ void RadioModel::onStatusReceived(const QString& object,
         return;
     }
 
+    // TNF status: "tnf <id> freq=14.100000 width=100 depth=1 permanent=0"
+    static const QRegularExpression tnfRe(R"(^tnf\s+(\d+)$)");
+    auto tnfMatch = tnfRe.match(object);
+    if (tnfMatch.hasMatch()) {
+        int tnfId = tnfMatch.captured(1).toInt();
+        m_tnfModel.applyTnfStatus(tnfId, kvs);
+        return;
+    }
+
     // WAN, etc. — informational, ignore for now.
 }
 
@@ -1050,6 +1065,9 @@ void RadioModel::handleRadioStatus(const QMap<QString, QString>& kvs)
     if (kvs.contains("low_latency_digital_modes")) {
         m_lowLatencyDigital = kvs["low_latency_digital_modes"] == "1";
         changed = true;
+    }
+    if (kvs.contains("tnf_enabled")) {
+        m_tnfModel.setGlobalEnabled(kvs["tnf_enabled"] == "1");
     }
     if (changed) emit infoChanged();
 }

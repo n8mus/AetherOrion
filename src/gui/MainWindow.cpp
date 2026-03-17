@@ -231,6 +231,30 @@ MainWindow::MainWindow(QWidget* parent)
     connect(spectrum(), &SpectrumWidget::dbmRangeChangeRequested,
             &m_radioModel, &RadioModel::setPanDbmRange);
 
+    // ── TNF model ↔ spectrum widget ──────────────────────────────────────
+    auto* tnf = m_radioModel.tnfModel();
+    auto rebuildTnfMarkers = [this]() {
+        auto* t = m_radioModel.tnfModel();
+        QVector<SpectrumWidget::TnfMarker> markers;
+        for (const auto& e : t->tnfs())
+            markers.append({e.id, e.freqMhz, e.widthHz, e.depthDb, e.permanent});
+        spectrum()->setTnfMarkers(markers);
+    };
+    connect(tnf, &TnfModel::tnfChanged,          this, rebuildTnfMarkers);
+    connect(tnf, &TnfModel::tnfRemoved,           this, rebuildTnfMarkers);
+    connect(tnf, &TnfModel::globalEnabledChanged,
+            spectrum(), &SpectrumWidget::setTnfGlobalEnabled);
+    connect(spectrum(), &SpectrumWidget::tnfCreateRequested,
+            tnf, &TnfModel::createTnf);
+    connect(spectrum(), &SpectrumWidget::tnfMoveRequested,
+            tnf, &TnfModel::setTnfFreq);
+    connect(spectrum(), &SpectrumWidget::tnfRemoveRequested,
+            tnf, &TnfModel::requestRemoveTnf);
+    connect(spectrum(), &SpectrumWidget::tnfWidthRequested,
+            tnf, &TnfModel::setTnfWidth);
+    connect(spectrum(), &SpectrumWidget::tnfDepthRequested,
+            tnf, &TnfModel::setTnfDepth);
+
     // ── Click-to-tune on the spectrum ─────────────────────────────────────
     connect(spectrum(), &SpectrumWidget::frequencyClicked,
             this, &MainWindow::onFrequencyChanged);

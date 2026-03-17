@@ -48,6 +48,7 @@ set(MODEL_SOURCES
     src/models/TunerModel.cpp
     src/models/TransmitModel.cpp
     src/models/EqualizerModel.cpp
+    src/models/TnfModel.cpp
     src/models/BandSettings.cpp
 )
 

@@ -115,6 +115,17 @@ public:
         m_sliceId = sliceId; m_isTxSlice = isTxSlice;
     }
 
+    // ── TNF overlay ─────────────────────────────────────────────────────
+    struct TnfMarker {
+        int    id;
+        double freqMhz;
+        int    widthHz;
+        int    depthDb;
+        bool   permanent;
+    };
+    void setTnfMarkers(const QVector<TnfMarker>& markers);
+    void setTnfGlobalEnabled(bool on);
+
 signals:
     // Emitted when the user clicks or scrolls in the panadapter area.
     void frequencyClicked(double mhz);
@@ -126,6 +137,13 @@ signals:
     void filterChangeRequested(int lowHz, int highHz);
     // Emitted when the user adjusts the dBm scale (drag or arrows).
     void dbmRangeChangeRequested(float minDbm, float maxDbm);
+
+    // TNF signals
+    void tnfCreateRequested(double freqMhz);
+    void tnfMoveRequested(int id, double newFreqMhz);
+    void tnfRemoveRequested(int id);
+    void tnfWidthRequested(int id, int widthHz);
+    void tnfDepthRequested(int id, int depthDb);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -140,6 +158,8 @@ private:
     void drawGrid(QPainter& p, const QRect& r);
     void drawSpectrum(QPainter& p, const QRect& r);
     void drawVfoMarker(QPainter& p, const QRect& specRect, const QRect& wfRect);
+    void drawTnfMarkers(QPainter& p, const QRect& specRect, const QRect& wfRect);
+    int  tnfAtPixel(int x) const;
     void drawWaterfall(QPainter& p, const QRect& r);
     void drawFreqScale(QPainter& p, const QRect& r);
     void drawDbmScale(QPainter& p, const QRect& specRect);
@@ -240,6 +260,12 @@ private:
     // On-screen indicators (WNB, RF Gain)
     bool m_wnbActive{false};
     int  m_rfGainValue{0};
+
+    // ── TNF markers ────────────────────────────────────────────────────
+    QVector<TnfMarker> m_tnfMarkers;
+    bool m_tnfGlobalEnabled{true};
+    int  m_draggingTnfId{-1};
+    double m_dragTnfOrigFreq{0.0};
 
     // Floating overlay menu (child widget, anchored top-left)
     SpectrumOverlayMenu* m_overlayMenu{nullptr};
