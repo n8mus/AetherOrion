@@ -1185,15 +1185,20 @@ void SpectrumWidget::drawBandPlan(QPainter& p, const QRect& specRect)
         const int x2 = mhzToX(std::min(seg.highMhz, endMhz));
         if (x2 <= x1) continue;
 
-        // Extra-only segments slightly dimmer, wider access = brighter
+        // License class contrast: Extra-only = dim, wider access = brighter
         const QString lic(seg.license);
-        int alpha = 130;
-        if (lic == "E")        alpha = 80;
-        else if (lic == "E,A") alpha = 95;
+        int alpha = 150;
+        if (lic == "E")          alpha = 50;
+        else if (lic == "E,A")   alpha = 75;
         else if (lic == "E,A,G") alpha = 110;
+        else if (lic.contains("T") || lic.contains("N")) alpha = 150;
 
         p.fillRect(x1, bandY, x2 - x1, bandH,
                    QColor(seg.r, seg.g, seg.b, alpha));
+
+        // Draw separator lines between adjacent segments
+        p.setPen(QColor(0x0f, 0x0f, 0x1a, 200));
+        p.drawLine(x1, bandY, x1, bandY + bandH);
 
         // Label with license class when there's room
         if (x2 - x1 > 20) {
