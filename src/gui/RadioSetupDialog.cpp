@@ -2,6 +2,7 @@
 #include "ComboStyle.h"
 #include "models/RadioModel.h"
 #include "core/AudioEngine.h"
+#include "core/FirmwareUploader.h"
 
 #include <QTabWidget>
 #include <QVBoxLayout>
@@ -18,6 +19,10 @@
 #include <QTimer>
 #include <QMediaDevices>
 #include <QAudioDevice>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QMessageBox>
+#include <QProgressBar>
 
 namespace AetherSDR {
 
@@ -190,6 +195,113 @@ QWidget* RadioSetupDialog::buildRadioTab()
         });
         connect(m_callsignEdit, &QLineEdit::editingFinished, this, [this] {
             m_model->connection()->sendCommand("radio callsign " + m_callsignEdit->text());
+        });
+
+        for (auto* lbl : group->findChildren<QLabel*>()) {
+            if (lbl->styleSheet().isEmpty())
+                lbl->setStyleSheet(kLabelStyle);
+        }
+
+        vbox->addWidget(group);
+    }
+
+    // Firmware Update group
+    {
+        auto* group = new QGroupBox("Firmware Update");
+        group->setStyleSheet(kGroupStyle);
+        auto* grid = new QGridLayout(group);
+        grid->setSpacing(6);
+
+        grid->addWidget(new QLabel("Current:"), 0, 0);
+        auto* curFw = new QLabel(m_model->softwareVersion());
+        curFw->setStyleSheet(kValueStyle);
+        grid->addWidget(curFw, 0, 1);
+
+        grid->addWidget(new QLabel("File:"), 1, 0);
+        m_fwFileLabel = new QLabel("No file selected");
+        m_fwFileLabel->setStyleSheet("QLabel { color: #506070; font-style: italic; }");
+        grid->addWidget(m_fwFileLabel, 1, 1);
+
+        auto* browseBtn = new QPushButton("Browse...");
+        browseBtn->setFixedWidth(80);
+        browseBtn->setStyleSheet(
+            "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #2e4e6e;"
+            " border-radius: 3px; padding: 4px 8px; }"
+            "QPushButton:hover { background: #2a3a4a; }");
+        grid->addWidget(browseBtn, 1, 2);
+
+        m_fwProgress = new QProgressBar;
+        m_fwProgress->setRange(0, 100);
+        m_fwProgress->setValue(0);
+        m_fwProgress->setTextVisible(true);
+        m_fwProgress->setFixedHeight(20);
+        m_fwProgress->hide();
+        grid->addWidget(m_fwProgress, 2, 0, 1, 2);
+
+        m_fwUploadBtn = new QPushButton("Upload");
+        m_fwUploadBtn->setFixedWidth(80);
+        m_fwUploadBtn->setEnabled(false);
+        m_fwUploadBtn->setStyleSheet(
+            "QPushButton { background: #1a3a1a; color: #80e080; border: 1px solid #2e6e2e;"
+            " border-radius: 3px; padding: 4px 8px; }"
+            "QPushButton:hover { background: #2a4a2a; }"
+            "QPushButton:disabled { background: #1a1a2a; color: #405060; border-color: #203040; }");
+        grid->addWidget(m_fwUploadBtn, 2, 2);
+
+        m_fwStatusLabel = new QLabel("");
+        m_fwStatusLabel->setStyleSheet("QLabel { color: #6888a0; font-size: 10px; }");
+        grid->addWidget(m_fwStatusLabel, 3, 0, 1, 3);
+
+        connect(browseBtn, &QPushButton::clicked, this, [this] {
+            const QString path = QFileDialog::getOpenFileName(
+                this, "Select Firmware File", QString(),
+                "SmartSDR Firmware (*.ssdr);;All Files (*)");
+            if (path.isEmpty()) return;
+            m_fwFilePath = path;
+            m_fwFileLabel->setText(QFileInfo(path).fileName());
+            m_fwFileLabel->setStyleSheet("QLabel { color: #00e5ff; }");
+            m_fwUploadBtn->setEnabled(true);
+            m_fwStatusLabel->setText(
+                QString("File size: %1 KB").arg(QFileInfo(path).size() / 1024));
+        });
+
+        connect(m_fwUploadBtn, &QPushButton::clicked, this, [this] {
+            if (m_fwFilePath.isEmpty()) return;
+
+            const auto reply = QMessageBox::warning(this, "Firmware Update",
+                QString("Upload %1 to %2?\n\n"
+                        "The radio will reboot after the update.\n"
+                        "Do not disconnect during the upload.")
+                    .arg(QFileInfo(m_fwFilePath).fileName(), m_model->model()),
+                QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Cancel);
+            if (reply != QMessageBox::Ok) return;
+
+            if (!m_uploader)
+                m_uploader = new FirmwareUploader(m_model, this);
+
+            m_fwProgress->show();
+            m_fwProgress->setValue(0);
+            m_fwUploadBtn->setEnabled(false);
+
+            connect(m_uploader, &FirmwareUploader::progressChanged, this,
+                [this](int pct, const QString& status) {
+                    m_fwProgress->setValue(pct);
+                    m_fwStatusLabel->setText(status);
+                });
+            connect(m_uploader, &FirmwareUploader::finished, this,
+                [this](bool ok, const QString& msg) {
+                    m_fwStatusLabel->setText(msg);
+                    m_fwUploadBtn->setEnabled(!ok);
+                    if (ok) {
+                        m_fwProgress->setValue(100);
+                        m_fwStatusLabel->setStyleSheet("QLabel { color: #80e080; font-size: 10px; }");
+                    } else {
+                        m_fwProgress->hide();
+                        m_fwStatusLabel->setStyleSheet("QLabel { color: #e08080; font-size: 10px; }");
+                    }
+                });
+
+            m_uploader->upload(m_fwFilePath);
         });
 
         for (auto* lbl : group->findChildren<QLabel*>()) {

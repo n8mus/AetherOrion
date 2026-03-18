@@ -69,6 +69,7 @@ set(CORE_SOURCES
     src/core/SmartLinkClient.cpp
     src/core/WanConnection.cpp
     src/core/RigctlServer.cpp
+    src/core/FirmwareUploader.cpp
 )
 
 set(MODEL_SOURCES

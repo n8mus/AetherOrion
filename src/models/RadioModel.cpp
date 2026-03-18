@@ -716,6 +716,11 @@ void RadioModel::sendCommand(const QString& cmd)
     this->sendCmd(cmd);
 }
 
+void RadioModel::sendCmdPublic(const QString& cmd, ResponseCallback cb)
+{
+    sendCmd(cmd, cb);
+}
+
 quint32 RadioModel::sendCmd(const QString& command, ResponseCallback cb)
 {
     if (m_wanConn)

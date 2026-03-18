@@ -5,11 +5,14 @@
 class QTabWidget;
 class QLabel;
 class QLineEdit;
+class QProgressBar;
+class QPushButton;
 
 namespace AetherSDR {
 
 class RadioModel;
 class AudioEngine;
+class FirmwareUploader;
 
 // Radio Setup dialog — tabbed configuration window matching SmartSDR's
 // Settings → Radio Setup. Shows radio info, GPS, TX, RX, filters, etc.
@@ -44,6 +47,14 @@ private:
     QLineEdit* m_nicknameEdit{nullptr};
     QLineEdit* m_callsignEdit{nullptr};
     QPushButton* m_remoteOnBtn{nullptr};
+
+    // Firmware update
+    QLabel*       m_fwFileLabel{nullptr};
+    QLabel*       m_fwStatusLabel{nullptr};
+    QProgressBar* m_fwProgress{nullptr};
+    QPushButton*  m_fwUploadBtn{nullptr};
+    QString       m_fwFilePath;
+    FirmwareUploader* m_uploader{nullptr};
 };
 
 } // namespace AetherSDR

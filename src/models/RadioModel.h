@@ -129,6 +129,8 @@ public:
     void setHeadphoneGain(int v);
     void setHeadphoneMute(bool m);
     void setFrontSpeakerMute(bool m);
+    QHostAddress radioAddress() const { return m_lastInfo.address; }
+
     int     filterSharpnessVoice()     const { return m_filterVoice; }
     bool    filterSharpnessVoiceAuto() const { return m_filterVoiceAuto; }
     int     filterSharpnessCw()        const { return m_filterCw; }
@@ -225,6 +227,12 @@ signals:
 public:
     // Send a raw command to the radio (for dialogs that need direct protocol access).
     void sendCommand(const QString& cmd);
+
+    // Send a command with a response callback (for firmware uploader, etc.)
+    void sendCmdPublic(const QString& cmd, std::function<void(int code, const QString& body)> cb);
+
+    // Radio software version string
+    QString softwareVersion() const { return m_version; }
 
 private slots:
     void onStatusReceived(const QString& object, const QMap<QString, QString>& kvs);
