@@ -37,6 +37,7 @@ public:
     void setSlice(SliceModel* slice);
     void setWnbState(bool on, int level);
     void setRfGain(int gain);
+    QPushButton* dspNr2Button() const;
 
 protected:
     bool eventFilter(QObject* obj, QEvent* event) override;
@@ -48,6 +49,7 @@ signals:
     void addRxClicked();
     void addTnfClicked();
     void daxClicked();
+    void nr2Toggled(bool on);
     // Display sub-panel signals
     void fftAverageChanged(int frames);
     void fftFpsChanged(int fps);

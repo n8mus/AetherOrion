@@ -27,6 +27,7 @@
 #include <QApplication>
 #include <QTimer>
 #include <QDateTime>
+#include <QPropertyAnimation>
 #include <QIcon>
 #include <QPixmap>
 #include <QVBoxLayout>
@@ -463,33 +464,62 @@ MainWindow::MainWindow(QWidget* parent)
         // Check if wisdom exists; if not, generate with progress dialog
         if (AudioEngine::needsWisdomGeneration()) {
             auto* dlg = new QProgressDialog(
-                "Optimizing FFT plans for NR2...\n"
-                "Please do not close this window until wisdom plans are completed.",
+                "Optimizing FFT plans for NR2...\n\n"
+                "This window will automatically close when wisdom generation is complete.",
                 QString(), 0, 100, this);
             dlg->setWindowTitle("AetherSDR — FFTW Wisdom");
             dlg->setWindowModality(Qt::ApplicationModal);
             dlg->setMinimumDuration(0);
-            dlg->setAutoClose(true);
+            dlg->setAutoClose(false);
             dlg->setAutoReset(false);
-            dlg->setCancelButton(nullptr);  // no cancel — must complete
+            dlg->setCancelButton(nullptr);
             dlg->setMinimumWidth(500);
+            dlg->setStyleSheet(
+                "QProgressBar { text-align: center; font-size: 13px;"
+                " font-weight: bold; color: #c8d8e8;"
+                " background: #1a2a3a; border: 1px solid #2e4e6e; border-radius: 3px; }"
+                "QProgressBar::chunk { background: #00b4d8; }");
             dlg->show();
 
-            auto* thread = QThread::create([this, dlg]() {
-                AudioEngine::generateWisdom([dlg](int step, int total, const std::string& desc) {
+            // Breathing animation (started later during save phase)
+            auto* breathe = new QPropertyAnimation(dlg, "windowOpacity", dlg);
+            breathe->setDuration(1500);
+            breathe->setStartValue(1.0);
+            breathe->setKeyValueAt(0.5, 0.55);
+            breathe->setEndValue(1.0);
+            breathe->setLoopCount(-1);
+
+            auto* thread = QThread::create([this, dlg, breathe]() {
+                AudioEngine::generateWisdom([dlg, breathe](int step, int total, const std::string& desc) {
                     int pct = total > 0 ? (step * 100 / total) : 0;
-                    QMetaObject::invokeMethod(dlg, [dlg, pct, d = QString::fromStdString(desc)]() {
-                        dlg->setLabelText(d + "\n\nPlease do not close this window until wisdom plans are completed.");
-                        dlg->setValue(pct);
+                    QString d = QString::fromStdString(desc);
+                    QMetaObject::invokeMethod(dlg, [dlg, breathe, pct, d]() {
+                        if (!d.isEmpty()) {
+                            // "Before" callback: update description, keep current %
+                            dlg->setLabelText(d + "\n\n"
+                                "This window will automatically close when wisdom generation is complete.");
+                            // Start breathing on the last few slow plans
+                            if (dlg->value() >= 90 && breathe->state() != QAbstractAnimation::Running)
+                                breathe->start();
+                        } else {
+                            // "After" callback: update progress bar
+                            dlg->setValue(pct);
+                        }
                     });
                 });
             });
-            connect(thread, &QThread::finished, this, [this, dlg, thread]() {
+            connect(thread, &QThread::finished, this, [this, dlg, breathe, thread]() {
+                // All plans computed + wisdom saved — show brief "done" then close
+                breathe->stop();
+                dlg->setWindowOpacity(1.0);
                 dlg->setValue(100);
-                dlg->deleteLater();
-                thread->deleteLater();
-                // Now enable NR2
-                m_audio.setNr2Enabled(true);
+                dlg->setLabelText("Wisdom generation complete!");
+                QTimer::singleShot(800, this, [this, dlg, thread]() {
+                    dlg->close();
+                    dlg->deleteLater();
+                    thread->deleteLater();
+                    m_audio.setNr2Enabled(true);
+                });
             });
             thread->start();
         } else {
@@ -500,6 +530,38 @@ MainWindow::MainWindow(QWidget* parent)
             this, [this](bool on) {
         QSignalBlocker sb(spectrum()->vfoWidget()->nr2Button());
         spectrum()->vfoWidget()->nr2Button()->setChecked(on);
+    });
+    // Overlay DSP panel NR2 → forward to VfoWidget NR2 button (same signal chain)
+    connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::nr2Toggled,
+            this, [this](bool on) {
+        spectrum()->vfoWidget()->nr2Button()->setChecked(on);  // triggers nr2Toggled
+    });
+    // Sync overlay NR2 button when state changes
+    connect(&m_audio, &AudioEngine::nr2EnabledChanged,
+            this, [this](bool on) {
+        if (auto* btn = spectrum()->overlayMenu()->dspNr2Button())
+            { QSignalBlocker sb(btn); btn->setChecked(on); }
+    });
+
+    // RxApplet NR button 3-state cycle → NR2 enable/disable
+    connect(m_appletPanel->rxApplet(), &RxApplet::nr2CycleToggled,
+            this, [this](bool on) {
+        // Forward to VfoWidget NR2 button which triggers wisdom + enable
+        spectrum()->vfoWidget()->nr2Button()->setChecked(on);
+    });
+    // Sync RxApplet NR button visual when NR2 state changes
+    connect(&m_audio, &AudioEngine::nr2EnabledChanged,
+            this, [this](bool on) {
+        auto* rx = m_appletPanel->rxApplet();
+        if (on) {
+            // NR2 active — disable radio NR if on, show "NR2" green
+            if (auto* s = activeSlice(); s && s->nrOn())
+                s->setNr(false);
+            rx->setNrState(2);
+        } else if (rx->nrState() == 2) {
+            // NR2 turned off — button goes to off state
+            rx->setNrState(0);
+        }
     });
 
     // ── Tuning step size → spectrum widget ─────────────────────────────────

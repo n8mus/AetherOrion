@@ -595,11 +595,36 @@ void RxApplet::buildUI()
             for (auto* b : {m_nbBtn, m_nrBtn, m_anfBtn})
                 b->setStyleSheet(QString(kButtonBase) + kGreenActive);
 
+            // NR button: 3-state cycle (Off → NR → NR2 → Off)
+            // Make it non-checkable so we control the visual state manually
+            m_nrBtn->setCheckable(false);
+            connect(m_nrBtn, &QPushButton::clicked, this, [this]() {
+                if (!m_slice) return;
+                if (m_nrState == 0) {
+                    // Off → NR on
+                    m_nrState = 1;
+                    m_slice->setNr(true);
+                    m_nrBtn->setText("NR");
+                    m_nrBtn->setStyleSheet(QString(kButtonBase) + kGreenActive
+                        + "QPushButton { background: #1a6030; color: #ffffff;"
+                        " border: 1px solid #20a040; }");
+                } else if (m_nrState == 1) {
+                    // NR on → disable NR, enable NR2
+                    m_nrState = 2;
+                    m_slice->setNr(false);
+                    m_nrBtn->setText("NR2");
+                    emit nr2CycleToggled(true);
+                } else {
+                    // NR2 on → Off
+                    m_nrState = 0;
+                    m_nrBtn->setText("NR");
+                    m_nrBtn->setStyleSheet(QString(kButtonBase) + kGreenActive);
+                    emit nr2CycleToggled(false);
+                }
+            });
+
             connect(m_nbBtn,  &QPushButton::toggled, this, [this](bool on) {
                 if (m_slice) m_slice->setNb(on);
-            });
-            connect(m_nrBtn,  &QPushButton::toggled, this, [this](bool on) {
-                if (m_slice) m_slice->setNr(on);
             });
             connect(m_anfBtn, &QPushButton::toggled, this, [this](bool on) {
                 if (m_slice) m_slice->setAnf(on);
@@ -912,6 +937,50 @@ void RxApplet::buildUI()
     root->addStretch();
 }
 
+// ─── NR button 3-state sync ──────────────────────────────────────────────────
+
+void RxApplet::syncNrButton(bool nrOn)
+{
+    static const QString kOn =
+        "QPushButton { background: #1a6030; color: #ffffff;"
+        " border: 1px solid #20a040; border-radius: 2px;"
+        " font-size: 10px; font-weight: bold; padding: 1px 4px; }";
+    static const QString kOff = QString(kButtonBase) + kGreenActive;
+
+    if (nrOn) {
+        m_nrState = 1;
+        m_nrBtn->setText("NR");
+        m_nrBtn->setStyleSheet(kOn);
+    } else if (m_nrState == 1) {
+        // NR turned off externally (not via our cycle) — go to off
+        m_nrState = 0;
+        m_nrBtn->setText("NR");
+        m_nrBtn->setStyleSheet(kOff);
+    }
+    // If m_nrState == 2 (NR2), don't change — NR2 is client-side
+}
+
+void RxApplet::setNrState(int state)
+{
+    static const QString kOn =
+        "QPushButton { background: #1a6030; color: #ffffff;"
+        " border: 1px solid #20a040; border-radius: 2px;"
+        " font-size: 10px; font-weight: bold; padding: 1px 4px; }";
+    static const QString kOff = QString(kButtonBase) + kGreenActive;
+
+    m_nrState = state;
+    if (state == 0) {
+        m_nrBtn->setText("NR");
+        m_nrBtn->setStyleSheet(kOff);
+    } else if (state == 1) {
+        m_nrBtn->setText("NR");
+        m_nrBtn->setStyleSheet(kOn);
+    } else {
+        m_nrBtn->setText("NR2");
+        m_nrBtn->setStyleSheet(kOn);
+    }
+}
+
 // ─── Slice wiring ─────────────────────────────────────────────────────────────
 
 void RxApplet::setSlice(SliceModel* slice)
@@ -1132,16 +1201,17 @@ void RxApplet::connectSlice(SliceModel* s)
 
     // DSP toggles
     {
-        QSignalBlocker b1(m_nbBtn), b2(m_nrBtn), b3(m_anfBtn);
+        QSignalBlocker b1(m_nbBtn), b3(m_anfBtn);
         m_nbBtn->setChecked(s->nbOn());
-        m_nrBtn->setChecked(s->nrOn());
         m_anfBtn->setChecked(s->anfOn());
+        // Sync NR button visual state
+        syncNrButton(s->nrOn());
     }
     connect(s, &SliceModel::nbChanged,  this, [this](bool on) {
         QSignalBlocker b(m_nbBtn);  m_nbBtn->setChecked(on);
     });
     connect(s, &SliceModel::nrChanged,  this, [this](bool on) {
-        QSignalBlocker b(m_nrBtn);  m_nrBtn->setChecked(on);
+        syncNrButton(on);
     });
     connect(s, &SliceModel::anfChanged, this, [this](bool on) {
         QSignalBlocker b(m_anfBtn); m_anfBtn->setChecked(on);

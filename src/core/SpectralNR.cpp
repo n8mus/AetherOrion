@@ -202,39 +202,38 @@ bool SpectralNR::generateWisdom(const std::string& directory,
 
     for (int psize = 64; psize <= maxSize; psize *= 2) {
         // 1. Complex forward
-        if (progress) {
-            std::string desc = "Planning COMPLEX FORWARD  FFT size " + std::to_string(psize);
-            progress(++step, totalSteps, desc);
+        if (progress) progress(step, totalSteps,
+            "Computing COMPLEX FORWARD FFT size " + std::to_string(psize) + "...");
+        {   fftw_plan p = fftw_plan_dft_1d(psize, cbuf, cbuf,
+                                            FFTW_FORWARD, FFTW_PATIENT);
+            if (p) fftw_destroy_plan(p);
         }
-        fftw_plan p = fftw_plan_dft_1d(psize, cbuf, cbuf,
-                                        FFTW_FORWARD, FFTW_PATIENT);
-        if (p) fftw_destroy_plan(p);
+        if (progress) progress(++step, totalSteps, "");
 
         // 2. Complex backward (same size)
-        if (progress) {
-            std::string desc = "Planning COMPLEX BACKWARD FFT size " + std::to_string(psize);
-            progress(++step, totalSteps, desc);
+        if (progress) progress(step, totalSteps,
+            "Computing COMPLEX BACKWARD FFT size " + std::to_string(psize) + "...");
+        {   fftw_plan p = fftw_plan_dft_1d(psize, cbuf, cbuf,
+                                            FFTW_BACKWARD, FFTW_PATIENT);
+            if (p) fftw_destroy_plan(p);
         }
-        p = fftw_plan_dft_1d(psize, cbuf, cbuf,
-                              FFTW_BACKWARD, FFTW_PATIENT);
-        if (p) fftw_destroy_plan(p);
+        if (progress) progress(++step, totalSteps, "");
 
-        // 3. Real-to-complex forward (output size = psize/2 + 1)
-        int r2cSize = psize / 2 + 1;
-        if (progress) {
-            std::string desc = "Planning COMPLEX BACKWARD FFT size " + std::to_string(r2cSize);
-            progress(++step, totalSteps, desc);
+        // 3. Real-to-complex forward
+        if (progress) progress(step, totalSteps,
+            "Computing REAL-TO-COMPLEX FFT size " + std::to_string(psize) + "...");
+        {   fftw_plan p = fftw_plan_dft_r2c_1d(psize, rbuf, cbuf, FFTW_PATIENT);
+            if (p) fftw_destroy_plan(p);
         }
-        p = fftw_plan_dft_r2c_1d(psize, rbuf, cbuf, FFTW_PATIENT);
-        if (p) fftw_destroy_plan(p);
+        if (progress) progress(++step, totalSteps, "");
 
-        // 4. Complex-to-real inverse (input size = psize/2 + 1)
-        if (progress) {
-            std::string desc = "Planning COMPLEX BACKWARD FFT size " + std::to_string(psize);
-            progress(++step, totalSteps, desc);
+        // 4. Complex-to-real inverse
+        if (progress) progress(step, totalSteps,
+            "Computing COMPLEX-TO-REAL FFT size " + std::to_string(psize) + "...");
+        {   fftw_plan p = fftw_plan_dft_c2r_1d(psize, cbuf, rbuf, FFTW_PATIENT);
+            if (p) fftw_destroy_plan(p);
         }
-        p = fftw_plan_dft_c2r_1d(psize, cbuf, rbuf, FFTW_PATIENT);
-        if (p) fftw_destroy_plan(p);
+        if (progress) progress(++step, totalSteps, "");
     }
 
     fftw_export_wisdom_to_filename(wisdomFile.c_str());

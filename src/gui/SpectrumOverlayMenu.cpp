@@ -337,16 +337,18 @@ void SpectrumOverlayMenu::setSlice(SliceModel* slice)
     const DspToggleDef toggleDefs[] = {
         {&S::setNb,   &S::nbChanged},    // 0
         {&S::setNr,   &S::nrChanged},    // 1
-        {&S::setAnf,  &S::anfChanged},   // 2
-        {&S::setNrl,  &S::nrlChanged},   // 3
-        {&S::setNrs,  &S::nrsChanged},   // 4
-        {&S::setRnn,  &S::rnnChanged},   // 5
-        {&S::setNrf,  &S::nrfChanged},   // 6
-        {&S::setAnfl, &S::anflChanged},  // 7
-        {&S::setAnft, &S::anftChanged},  // 8
+        {nullptr,     nullptr},           // 2 — NR2 (client-side, wired separately)
+        {&S::setAnf,  &S::anfChanged},   // 3
+        {&S::setNrl,  &S::nrlChanged},   // 4
+        {&S::setNrs,  &S::nrsChanged},   // 5
+        {&S::setRnn,  &S::rnnChanged},   // 6
+        {&S::setNrf,  &S::nrfChanged},   // 7
+        {&S::setAnfl, &S::anflChanged},  // 8
+        {&S::setAnft, &S::anftChanged},  // 9
     };
 
-    for (int i = 0; i < 9; ++i) {
+    for (int i = 0; i < 10; ++i) {
+        if (!toggleDefs[i].setter) continue;  // skip NR2
         auto* btn = m_dspRows[i].btn;
         auto setter = toggleDefs[i].setter;
         auto signal = toggleDefs[i].signal;
@@ -372,11 +374,12 @@ void SpectrumOverlayMenu::setSlice(SliceModel* slice)
     const DspLevelDef levelDefs[] = {
         {0, &S::setNbLevel,   &S::nbLevelChanged},
         {1, &S::setNrLevel,   &S::nrLevelChanged},
-        {2, &S::setAnfLevel,  &S::anfLevelChanged},
-        {3, &S::setNrlLevel,  &S::nrlLevelChanged},
-        {4, &S::setNrsLevel,  &S::nrsLevelChanged},
-        {6, &S::setNrfLevel,  &S::nrfLevelChanged},
-        {7, &S::setAnflLevel, &S::anflLevelChanged},
+        // NR2 (index 2) has no level slider
+        {3, &S::setAnfLevel,  &S::anfLevelChanged},
+        {4, &S::setNrlLevel,  &S::nrlLevelChanged},
+        {5, &S::setNrsLevel,  &S::nrsLevelChanged},
+        {7, &S::setNrfLevel,  &S::nrfLevelChanged},
+        {8, &S::setAnflLevel, &S::anflLevelChanged},
     };
 
     for (const auto& ld : levelDefs) {
@@ -398,6 +401,12 @@ void SpectrumOverlayMenu::setSlice(SliceModel* slice)
             m_updatingFromModel = false;
         });
     }
+
+    // NR2 (client-side, index 2) — emit signal for MainWindow to handle
+    connect(m_dspRows[2].btn, &QPushButton::toggled, this, [this](bool on) {
+        if (!m_updatingFromModel)
+            emit nr2Toggled(on);
+    });
 
     // DAX
     connect(m_slice, &SliceModel::daxChannelChanged, this, [this](int ch) {
@@ -448,13 +457,14 @@ void SpectrumOverlayMenu::buildDspPanel()
     const DspDef defs[] = {
         {"NB",   true},   // 0
         {"NR",   true},   // 1
-        {"ANF",  true},   // 2
-        {"NRL",  true},   // 3
-        {"NRS",  true},   // 4
-        {"RNN",  false},  // 5
-        {"NRF",  true},   // 6
-        {"ANFL", true},   // 7
-        {"ANFT", false},  // 8
+        {"NR2",  false},  // 2  — client-side spectral NR
+        {"ANF",  true},   // 3
+        {"NRL",  true},   // 4
+        {"NRS",  true},   // 5
+        {"RNN",  false},  // 6
+        {"NRF",  true},   // 7
+        {"ANFL", true},   // 8
+        {"ANFT", false},  // 9
     };
 
     for (const auto& def : defs) {
@@ -508,13 +518,14 @@ void SpectrumOverlayMenu::syncDspPanel()
     // Toggle states
     m_dspRows[0].btn->setChecked(m_slice->nbOn());
     m_dspRows[1].btn->setChecked(m_slice->nrOn());
-    m_dspRows[2].btn->setChecked(m_slice->anfOn());
-    m_dspRows[3].btn->setChecked(m_slice->nrlOn());
-    m_dspRows[4].btn->setChecked(m_slice->nrsOn());
-    m_dspRows[5].btn->setChecked(m_slice->rnnOn());
-    m_dspRows[6].btn->setChecked(m_slice->nrfOn());
-    m_dspRows[7].btn->setChecked(m_slice->anflOn());
-    m_dspRows[8].btn->setChecked(m_slice->anftOn());
+    // NR2 (index 2) is client-side — synced via AudioEngine, not slice
+    m_dspRows[3].btn->setChecked(m_slice->anfOn());
+    m_dspRows[4].btn->setChecked(m_slice->nrlOn());
+    m_dspRows[5].btn->setChecked(m_slice->nrsOn());
+    m_dspRows[6].btn->setChecked(m_slice->rnnOn());
+    m_dspRows[7].btn->setChecked(m_slice->nrfOn());
+    m_dspRows[8].btn->setChecked(m_slice->anflOn());
+    m_dspRows[9].btn->setChecked(m_slice->anftOn());
 
     // Level values (only for features that have sliders)
     auto syncSlider = [](DspRow& r, int v) {
@@ -522,11 +533,11 @@ void SpectrumOverlayMenu::syncDspPanel()
     };
     syncSlider(m_dspRows[0], m_slice->nbLevel());
     syncSlider(m_dspRows[1], m_slice->nrLevel());
-    syncSlider(m_dspRows[2], m_slice->anfLevel());
-    syncSlider(m_dspRows[3], m_slice->nrlLevel());
-    syncSlider(m_dspRows[4], m_slice->nrsLevel());
-    syncSlider(m_dspRows[6], m_slice->nrfLevel());
-    syncSlider(m_dspRows[7], m_slice->anflLevel());
+    syncSlider(m_dspRows[3], m_slice->anfLevel());
+    syncSlider(m_dspRows[4], m_slice->nrlLevel());
+    syncSlider(m_dspRows[5], m_slice->nrsLevel());
+    syncSlider(m_dspRows[7], m_slice->nrfLevel());
+    syncSlider(m_dspRows[8], m_slice->anflLevel());
 
     m_updatingFromModel = false;
 }
@@ -540,7 +551,8 @@ void SpectrumOverlayMenu::toggleDspPanel()
         m_dspPanelVisible = true;
         // Center vertically on the DSP button (index 4)
         int btnCenterY = m_menuBtns[4]->y() + m_menuBtns[4]->height() / 2;
-        int panelY = y() + btnCenterY - m_dspPanel->sizeHint().height() / 2;
+        // Top-align DSP panel with the button menu
+        int panelY = y();
         m_dspPanel->move(x() + width(), std::max(0, panelY));
         m_dspPanel->raise();
         m_dspPanel->show();
@@ -949,6 +961,11 @@ void SpectrumOverlayMenu::setRfGain(int gain)
     QSignalBlocker b(m_rfGainSlider);
     m_rfGainSlider->setValue(gain);
     m_rfGainLabel->setText(QString::number(gain));
+}
+
+QPushButton* SpectrumOverlayMenu::dspNr2Button() const
+{
+    return m_dspRows.size() > 2 ? m_dspRows[2].btn : nullptr;
 }
 
 bool SpectrumOverlayMenu::eventFilter(QObject* obj, QEvent* event)
