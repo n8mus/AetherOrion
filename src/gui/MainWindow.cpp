@@ -916,8 +916,9 @@ void MainWindow::onConnectionError(const QString& msg)
 void MainWindow::onSliceAdded(SliceModel* s)
 {
     qDebug() << "MainWindow: slice added" << s->sliceId();
-    // Wire up first slice: applet panel, VFO widget, band detection
-    if (m_radioModel.slices().size() == 1) {
+
+    // First slice — wire everything up
+    if (m_activeSliceId < 0) {
         setActiveSlice(s->sliceId());
 
         // Detect initial band from radio's frequency
@@ -964,10 +965,6 @@ void MainWindow::onSliceAdded(SliceModel* s)
         if (s->sliceId() == m_activeSliceId)
             updateFilterLimitsForMode(mode);
     });
-
-    // If this is the first slice, or the radio says it's active, make it active
-    if (m_activeSliceId < 0 || s->isActive())
-        setActiveSlice(s->sliceId());
 }
 
 void MainWindow::onSliceRemoved(int id)
