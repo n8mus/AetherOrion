@@ -1287,6 +1287,8 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             p.setBrush(Qt::NoBrush);
             p.setPen(QPen(col, 1));
             p.drawRoundedRect(flagRect, radius, radius);
+            // Use bright slice color for the letter so it's visible
+            p.setPen(sliceColor(so.sliceId, true));
         }
         p.drawText(flagRect, Qt::AlignCenter, QString(letter));
 
