@@ -1277,12 +1277,16 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
         const int flagY = specRect.top();
         const QRect flagRect(flagX, flagY, flagW, flagH);
 
+        const int radius = 3;
         if (so.isActive) {
-            p.fillRect(flagRect, col);
+            p.setBrush(col);
+            p.setPen(Qt::NoPen);
+            p.drawRoundedRect(flagRect, radius, radius);
             p.setPen(QColor(0x0f, 0x0f, 0x1a));  // dark text on bright bg
         } else {
+            p.setBrush(Qt::NoBrush);
             p.setPen(QPen(col, 1));
-            p.drawRect(flagRect);
+            p.drawRoundedRect(flagRect, radius, radius);
         }
         p.drawText(flagRect, Qt::AlignCenter, QString(letter));
 
@@ -1293,7 +1297,9 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             const int txW = txFm.horizontalAdvance("TX") + 4;
             const int txX = flagX + flagW + 2;
             const QRect txRect(txX, flagY, txW, flagH);
-            p.fillRect(txRect, QColor(0xcc, 0x20, 0x20));
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(0xcc, 0x20, 0x20));
+            p.drawRoundedRect(txRect, radius, radius);
             p.setPen(Qt::white);
             p.drawText(txRect, Qt::AlignCenter, "TX");
         }
