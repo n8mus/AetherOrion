@@ -272,6 +272,15 @@ MainWindow::MainWindow(QWidget* parent)
     // ── +RX button: add a new slice on the current panadapter ──────────────
     connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::addRxClicked,
             this, [this]() { m_radioModel.addSlice(); });
+    connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::addTnfClicked,
+            this, [this]() {
+        auto* s = activeSlice();
+        if (!s) return;
+        // Place TNF at the center of the filter passband
+        double tnfFreq = s->frequency()
+            + (s->filterLow() + s->filterHigh()) / 2.0 / 1.0e6;
+        m_radioModel.tnfModel()->createTnf(tnfFreq);
+    });
 
     // ── Slice marker click → switch active slice ────────────────────────────
     connect(spectrum(), &SpectrumWidget::sliceClicked,
