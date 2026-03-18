@@ -1173,30 +1173,40 @@ void SpectrumWidget::drawBandPlan(QPainter& p, const QRect& specRect)
 {
     const double startMhz = m_centerMhz - m_bandwidthMhz / 2.0;
     const double endMhz   = m_centerMhz + m_bandwidthMhz / 2.0;
-    const int bandH = 8;
+    const int bandH = 6;
     const int bandY = specRect.bottom() - bandH + 1;
 
     for (int i = 0; i < kBandPlanCount; ++i) {
         const auto& seg = kBandPlan[i];
 
-        // Skip segments fully outside the view
         if (seg.highMhz <= startMhz || seg.lowMhz >= endMhz) continue;
 
         const int x1 = mhzToX(std::max(seg.lowMhz, startMhz));
         const int x2 = mhzToX(std::min(seg.highMhz, endMhz));
         if (x2 <= x1) continue;
 
-        p.fillRect(x1, bandY, x2 - x1, bandH,
-                   QColor(seg.r, seg.g, seg.b, 100));
+        // License class affects brightness: E=dim, G=medium, T/all=bright
+        int alpha = 120;
+        if (seg.license[0] == 'E')      alpha = 70;
+        else if (seg.license[0] == 'G') alpha = 100;
 
-        // Draw segment label if wide enough
-        if (x2 - x1 > 30) {
+        p.fillRect(x1, bandY, x2 - x1, bandH,
+                   QColor(seg.r, seg.g, seg.b, alpha));
+
+        // Label: mode + license class (e.g. "CW E", "SSB G")
+        if (x2 - x1 > 25) {
             QFont f = p.font();
             f.setPointSize(6);
+            f.setBold(true);
             p.setFont(f);
-            p.setPen(QColor(seg.r, seg.g, seg.b, 200));
+
+            QString label = seg.label;
+            if (seg.license[0] != '\0' && x2 - x1 > 40)
+                label = QString("%1 %2").arg(seg.label, seg.license);
+
+            p.setPen(QColor(seg.r, seg.g, seg.b, 255));
             p.drawText(QRect(x1, bandY, x2 - x1, bandH),
-                       Qt::AlignCenter, seg.label);
+                       Qt::AlignCenter, label);
         }
     }
 }
