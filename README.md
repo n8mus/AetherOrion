@@ -161,8 +161,9 @@ will be low priority until after v1.0.
 # Arch / CachyOS / Manjaro
 sudo pacman -S qt6-base qt6-multimedia cmake ninja pkgconf
 
-# Ubuntu 24.04+ / Debian
-sudo apt install qt6-base-dev qt6-multimedia-dev cmake ninja-build pkg-config
+# Ubuntu 24.04+ / Debian / Linux Mint
+sudo apt install qt6-base-dev qt6-multimedia-dev cmake ninja-build pkg-config \
+  gstreamer1.0-pulseaudio gstreamer1.0-plugins-base
 
 # Fedora
 sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel cmake ninja-build
@@ -170,6 +171,10 @@ sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel cmake ninja-build
 # macOS (Homebrew)
 brew install qt@6 ninja cmake
 ```
+
+> **Linux Mint / Ubuntu note:** If PC audio devices show as "Dummy Output" or empty,
+> install the GStreamer PulseAudio plugin: `sudo apt install gstreamer1.0-pulseaudio`.
+> For PipeWire-based systems (Mint 22+, Ubuntu 24.04+), also install `gstreamer1.0-pipewire`.
 
 ### Build & Run
 

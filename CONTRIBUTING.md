@@ -249,10 +249,10 @@ widgets for consistency.
 sudo pacman -S qt6-base qt6-multimedia cmake ninja pkgconf portaudio
 ```
 
-**Ubuntu/Debian:**
+**Ubuntu/Debian/Linux Mint:**
 ```bash
 sudo apt install qt6-base-dev qt6-multimedia-dev cmake ninja-build \
-  pkg-config libportaudio2 portaudio19-dev
+  pkg-config gstreamer1.0-pulseaudio gstreamer1.0-plugins-base
 ```
 
 **macOS (Homebrew):**
