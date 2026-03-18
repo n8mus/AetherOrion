@@ -276,6 +276,11 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Slice marker click → switch active slice ────────────────────────────
     connect(spectrum(), &SpectrumWidget::sliceClicked,
             this, &MainWindow::setActiveSlice);
+    connect(spectrum(), &SpectrumWidget::sliceCloseRequested,
+            this, [this](int sliceId) {
+        if (m_radioModel.slices().size() <= 1) return;  // don't close last slice
+        m_radioModel.sendCommand(QString("slice remove %1").arg(sliceId));
+    });
 
     // ── Band selection from overlay menu ───────────────────────────────────
     connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::bandSelected,

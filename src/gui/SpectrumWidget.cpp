@@ -490,6 +490,24 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
             menu.addAction(QString("Add TNF at %1 MHz").arg(freqStr), this,
                 [this, freqMhz]{ emit tnfCreateRequested(freqMhz); });
         }
+
+        // Close Slice option (only when multiple slices exist)
+        if (m_sliceOverlays.size() > 1) {
+            menu.addSeparator();
+            // Find which slice the click is nearest to
+            int closestSlice = -1;
+            int closestDist = INT_MAX;
+            for (const auto& so : m_sliceOverlays) {
+                int dist = std::abs(mx - mhzToX(so.freqMhz));
+                if (dist < closestDist) { closestDist = dist; closestSlice = so.sliceId; }
+            }
+            if (closestSlice >= 0) {
+                const QChar letter = QChar('A' + (closestSlice & 3));
+                menu.addAction(QString("Close Slice %1").arg(letter), this,
+                    [this, closestSlice]{ emit sliceCloseRequested(closestSlice); });
+            }
+        }
+
         menu.exec(ev->globalPosition().toPoint());
         ev->accept();
         return;

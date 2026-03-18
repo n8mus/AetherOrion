@@ -161,6 +161,7 @@ signals:
     void tnfWidthRequested(int id, int widthHz);
     void tnfDepthRequested(int id, int depthDb);
     void tnfPermanentRequested(int id, bool permanent);
+    void sliceCloseRequested(int sliceId);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
