@@ -302,11 +302,25 @@ void VfoWidget::buildUI()
                 (m_slice->rxAntenna().startsWith("XVT") || m_slice->frequency() > 54.0);
             const double maxMhz = onXvtr ? 450.0 : 54.0;
 
-            if (ok && freqMhz > maxMhz * 1000.0)
-                freqMhz /= 1e6;  // treat as Hz (e.g. 144600000)
-            else if (ok && freqMhz > maxMhz && freqMhz <= maxMhz * 1000.0)
-                freqMhz /= 1e3;  // treat as kHz (e.g. 144600)
-            // Values <= maxMhz are already MHz (e.g. 144.6 or 14.225)
+            if (onXvtr) {
+                // XVTR freqs always start with 3 digits (100-450 MHz).
+                // Insert decimal after 3rd digit for bare integers:
+                //   1446 → 144.6, 14696 → 146.96, 144600 → 144.600
+                if (ok && freqMhz > 450.0 && !clean.contains('.')) {
+                    // Bare integer — insert decimal after 3rd digit
+                    int digits = clean.length();
+                    if (digits >= 4) {
+                        clean.insert(3, '.');
+                        freqMhz = clean.toDouble(&ok);
+                    }
+                }
+            } else {
+                // HF: 14225 = kHz, 14225000 = Hz
+                if (ok && freqMhz > 54000.0)
+                    freqMhz /= 1e6;
+                else if (ok && freqMhz > 54.0)
+                    freqMhz /= 1e3;
+            }
 
             if (ok && freqMhz >= 0.001 && freqMhz <= maxMhz && m_slice)
                 m_slice->setFrequency(freqMhz);

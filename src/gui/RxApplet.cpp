@@ -412,8 +412,18 @@ void RxApplet::buildUI()
                 const bool onXvtr = m_slice &&
                     (m_slice->rxAntenna().startsWith("XVT") || m_slice->frequency() > 54.0);
                 const double maxMhz = onXvtr ? 450.0 : 54.0;
-                if (ok && freqMhz > maxMhz * 1000.0) freqMhz /= 1e6;
-                else if (ok && freqMhz > maxMhz && freqMhz <= maxMhz * 1000.0) freqMhz /= 1e3;
+                if (onXvtr) {
+                    if (ok && freqMhz > 450.0 && !clean.contains('.')) {
+                        int digits = clean.length();
+                        if (digits >= 4) {
+                            clean.insert(3, '.');
+                            freqMhz = clean.toDouble(&ok);
+                        }
+                    }
+                } else {
+                    if (ok && freqMhz > 54000.0) freqMhz /= 1e6;
+                    else if (ok && freqMhz > 54.0) freqMhz /= 1e3;
+                }
                 if (ok && freqMhz >= 0.001 && freqMhz <= maxMhz)
                     m_slice->setFrequency(freqMhz);
             }
