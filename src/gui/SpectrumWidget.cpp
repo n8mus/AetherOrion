@@ -1285,43 +1285,36 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             << QPoint(vfoX, specRect.top() + triH);
         p.drawPolygon(tri);
 
-        // ── Slice letter flag ────────────────────────────────────────────
-        const QChar letter = QChar('A' + (so.sliceId & 3));
-        QFont f = p.font(); f.setPointSize(8); f.setBold(true); p.setFont(f);
-        const QFontMetrics fm(f);
-        const int flagW = fm.horizontalAdvance(letter) + 8;
-        const int flagH = fm.height() + 2;
-        const int flagX = vfoX + triHalf + 2;
-        const int flagY = specRect.top();
-        const QRect flagRect(flagX, flagY, flagW, flagH);
+        // ── Slice letter flag + TX badge (inactive slices only) ─────────
+        if (!so.isActive) {
+            const QChar letter = QChar('A' + (so.sliceId & 3));
+            QFont f = p.font(); f.setPointSize(8); f.setBold(true); p.setFont(f);
+            const QFontMetrics fm(f);
+            const int flagW = fm.horizontalAdvance(letter) + 8;
+            const int flagH = fm.height() + 2;
+            const int flagX = vfoX + triHalf + 2;
+            const int flagY = specRect.top();
+            const QRect flagRect(flagX, flagY, flagW, flagH);
 
-        const int radius = 3;
-        if (so.isActive) {
-            p.setBrush(col);
-            p.setPen(Qt::NoPen);
-            p.drawRoundedRect(flagRect, radius, radius);
-            p.setPen(QColor(0x0f, 0x0f, 0x1a));  // dark text on bright bg
-        } else {
+            const int radius = 3;
             p.setBrush(Qt::NoBrush);
             p.setPen(QPen(col, 1));
             p.drawRoundedRect(flagRect, radius, radius);
-            // Use bright slice color for the letter so it's visible
             p.setPen(sliceColor(so.sliceId, true));
-        }
-        p.drawText(flagRect, Qt::AlignCenter, QString(letter));
+            p.drawText(flagRect, Qt::AlignCenter, QString(letter));
 
-        // TX badge
-        if (so.isTxSlice) {
-            QFont txFont = p.font(); txFont.setPointSize(7); p.setFont(txFont);
-            const QFontMetrics txFm(txFont);
-            const int txW = txFm.horizontalAdvance("TX") + 4;
-            const int txX = flagX + flagW + 2;
-            const QRect txRect(txX, flagY, txW, flagH);
-            p.setPen(Qt::NoPen);
-            p.setBrush(QColor(0xcc, 0x20, 0x20));
-            p.drawRoundedRect(txRect, radius, radius);
-            p.setPen(Qt::white);
-            p.drawText(txRect, Qt::AlignCenter, "TX");
+            if (so.isTxSlice) {
+                QFont txFont = p.font(); txFont.setPointSize(7); p.setFont(txFont);
+                const QFontMetrics txFm(txFont);
+                const int txW = txFm.horizontalAdvance("TX") + 4;
+                const int txX = flagX + flagW + 2;
+                const QRect txRect(txX, flagY, txW, flagH);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(0xcc, 0x20, 0x20));
+                p.drawRoundedRect(txRect, radius, radius);
+                p.setPen(Qt::white);
+                p.drawText(txRect, Qt::AlignCenter, "TX");
+            }
         }
     };
 
