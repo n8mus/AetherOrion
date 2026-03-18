@@ -918,8 +918,9 @@ QRgb SpectrumWidget::intensityToRgb(float intensity) const
 {
     // Map black_level (0-100) to an intensity threshold.
     // 0 = darkest (max noise suppression), 100 = brightest (everything visible).
-    // Inverted: slider 0 → thresh ~140, slider 100 → thresh ~85.
-    const float blackThresh = 140.0f - m_wfBlackLevel * 0.55f;
+    // Observed noise floor: ~141-148 on HF. Threshold must exceed that at slider 0.
+    // Slider 0 → thresh 160 (well above noise), slider 100 → thresh 85.
+    const float blackThresh = 160.0f - m_wfBlackLevel * 0.75f;
 
     // Map color_gain (0-100) to the visible range width.
     // Higher gain = narrower range = more color contrast.
