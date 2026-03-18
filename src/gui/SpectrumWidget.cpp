@@ -528,20 +528,14 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         }
     }
 
-    // Check for click near an inactive slice marker or its badges
+    // Check for click near an inactive slice marker or its badge — switch active
     if (y < specH) {
         const int mx = static_cast<int>(ev->position().x());
         for (const auto& so : m_sliceOverlays) {
             if (so.isActive) continue;
             int sliceX = mhzToX(so.freqMhz);
-            // TX badge area (~sliceX+26 to ~sliceX+48) in top 25px
-            if (mx >= sliceX + 26 && mx <= sliceX + 48 && y <= 25) {
-                emit sliceTxRequested(so.sliceId);
-                ev->accept();
-                return;
-            }
-            // Slice badge + center line area — switch active slice
-            if (mx >= sliceX - 8 && mx <= sliceX + 25 && y <= 25) {
+            // Slice badge area in top 25px
+            if (mx >= sliceX - 8 && mx <= sliceX + 35 && y <= 25) {
                 emit sliceClicked(so.sliceId);
                 ev->accept();
                 return;
@@ -1308,24 +1302,6 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             p.drawRoundedRect(flagRect, radius, radius);
             p.setPen(sliceColor(so.sliceId, true));
             p.drawText(flagRect, Qt::AlignCenter, QString(letter));
-
-            // TX badge — always shown: red if TX slice, greyed if not
-            QFont txFont = p.font(); txFont.setPointSize(7); p.setFont(txFont);
-            const QFontMetrics txFm(txFont);
-            const int txW = txFm.horizontalAdvance("TX") + 4;
-            const int txX = flagX + flagW + 2;
-            const QRect txRect(txX, flagY, txW, flagH);
-            p.setPen(Qt::NoPen);
-            if (so.isTxSlice) {
-                p.setBrush(QColor(0xcc, 0x20, 0x20));
-                p.drawRoundedRect(txRect, radius, radius);
-                p.setPen(Qt::white);
-            } else {
-                p.setBrush(QColor(0x40, 0x40, 0x40));
-                p.drawRoundedRect(txRect, radius, radius);
-                p.setPen(QColor(0x80, 0x80, 0x80));
-            }
-            p.drawText(txRect, Qt::AlignCenter, "TX");
         }
     };
 
