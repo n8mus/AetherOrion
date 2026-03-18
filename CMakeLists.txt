@@ -70,6 +70,7 @@ set(CORE_SOURCES
     src/core/WanConnection.cpp
     src/core/RigctlServer.cpp
     src/core/FirmwareUploader.cpp
+    src/core/FirmwareStager.cpp
 )
 
 set(MODEL_SOURCES
