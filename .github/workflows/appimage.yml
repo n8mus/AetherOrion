@@ -10,7 +10,15 @@ permissions:
 
 jobs:
   build-appimage:
-    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64
+          - runner: ubuntu-22.04-arm
+            arch: aarch64
+
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
@@ -40,17 +48,17 @@ jobs:
 
       - name: Download linuxdeploy + Qt plugin
         run: |
-          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.arch }}.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${{ matrix.arch }}.AppImage
+          chmod +x linuxdeploy-${{ matrix.arch }}.AppImage linuxdeploy-plugin-qt-${{ matrix.arch }}.AppImage
 
       - name: Build AppImage
         env:
-          LDAI_OUTPUT: AetherSDR-${{ github.ref_name }}-x86_64.AppImage
+          LDAI_OUTPUT: AetherSDR-${{ github.ref_name }}-${{ matrix.arch }}.AppImage
           QT_SELECT: qt6
         run: |
           export QMAKE=$(which qmake6 2>/dev/null || which qmake)
-          ./linuxdeploy-x86_64.AppImage \
+          ./linuxdeploy-${{ matrix.arch }}.AppImage \
             --appdir AppDir \
             --plugin qt \
             --desktop-file AppDir/usr/share/applications/AetherSDR.desktop \
@@ -60,7 +68,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AppImage
+          name: AppImage-${{ matrix.arch }}
           path: AetherSDR-*.AppImage
 
       - name: Attach to release
