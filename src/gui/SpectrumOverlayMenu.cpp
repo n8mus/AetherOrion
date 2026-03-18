@@ -138,6 +138,11 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
     buildDspPanel();
     buildDaxPanel();
     buildDisplayPanel();
+
+    // Prevent mouse/wheel events from falling through panels to the spectrum
+    for (auto* panel : {m_bandPanel, m_antPanel, m_dspPanel, m_daxPanel, m_displayPanel})
+        if (panel) panel->installEventFilter(this);
+
     updateLayout();
 }
 
@@ -937,6 +942,15 @@ bool SpectrumOverlayMenu::eventFilter(QObject* obj, QEvent* event)
         if (auto* slider = qobject_cast<QSlider*>(obj)) {
             slider->setValue(50);
             return true;
+        }
+    }
+    // Consume mouse/wheel events on sub-panels so they don't reach the spectrum
+    if (obj == m_bandPanel || obj == m_antPanel || obj == m_dspPanel
+        || obj == m_daxPanel || obj == m_displayPanel) {
+        if (event->type() == QEvent::Wheel
+            || event->type() == QEvent::MouseButtonPress
+            || event->type() == QEvent::MouseButtonRelease) {
+            return true;  // consumed
         }
     }
     return QWidget::eventFilter(obj, event);
