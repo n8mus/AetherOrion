@@ -1302,6 +1302,20 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             p.drawRoundedRect(flagRect, radius, radius);
             p.setPen(sliceColor(so.sliceId, true));
             p.drawText(flagRect, Qt::AlignCenter, QString(letter));
+
+            // Red TX badge — only on the TX slice when it's out of focus
+            if (so.isTxSlice) {
+                QFont txFont = p.font(); txFont.setPointSize(7); p.setFont(txFont);
+                const QFontMetrics txFm(txFont);
+                const int txW = txFm.horizontalAdvance("TX") + 4;
+                const int txX = flagX + flagW + 2;
+                const QRect txRect(txX, flagY, txW, flagH);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(0xcc, 0x20, 0x20));
+                p.drawRoundedRect(txRect, radius, radius);
+                p.setPen(Qt::white);
+                p.drawText(txRect, Qt::AlignCenter, "TX");
+            }
         }
     };
 
