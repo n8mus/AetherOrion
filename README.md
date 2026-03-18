@@ -4,8 +4,6 @@
 
 # AetherSDR
 
-<sub><i>Native. Open. Yours.</i></sub>
-
 **A Linux-native client for FlexRadio Systems transceivers**
 
 [![CI](https://github.com/ten9876/AetherSDR/actions/workflows/ci.yml/badge.svg)](https://github.com/ten9876/AetherSDR/actions/workflows/ci.yml)
@@ -22,6 +20,8 @@ AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. 
 > but are unsupported and low priority until post-v1.0.
 
 ![AetherSDR Screenshot](docs/screenshot-v4.png)
+
+<p><i>Native. Open. Yours.</i></p>
 
 ---
 
