@@ -13,7 +13,7 @@
 
 AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
 
-**Current version: 0.4.5** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+**Current version: 0.4.6** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
 
 > **Cross-platform downloads available:** Linux AppImage, macOS universal DMG, and Windows ZIP.
 > Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
@@ -45,13 +45,16 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - Real-time FFT spectrum and scrolling waterfall display
 - Draggable FFT/waterfall split, bandwidth zoom, pan
 - Draggable filter passband edges
-- dBm scale with drag-to-adjust
+- dBm scale with drag-to-adjust, time scale on waterfall
+- ARRL band plan overlay on FFT display (color-coded CW/DATA/PHONE segments with license classes)
+- Spot frequency markers with hover tooltips (QRP calling, beacons, SSTV, etc.)
 - Floating VFO widget with S-meter, frequency, and quick controls
 - Band selector with ARRL band plan defaults
 - Display sub-menu: AVG, FPS, FFT fill (opacity + color), weighted average
 - Waterfall controls: gain, black level (+ auto), scroll rate
-- Native VITA-49 waterfall tiles (PCC 0x8004) with full frame assembly
+- Native VITA-49 waterfall tiles with automatic FFT fallback during TX
 - FFT and waterfall rendering fully decoupled
+- All overlays consume mouse/wheel events (no accidental VFO tuning)
 
 ### Receiver Controls
 - Full RX controls: antenna, filter presets, AGC, AF gain, pan, squelch
@@ -67,7 +70,9 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - TX/mic profile management
 - TUNE, MOX, ATU, and MEM buttons
 - ATU status indicators and APD control
-- P/CW applet: mic level/compression gauges, mic source, processor, monitor
+- P/CW applet: mic level/compression gauges, mic source selector, processor, monitor
+- PC audio TX via DAX stream — auto-starts when mic source = PC
+- Mic metering with RX monitoring (met_in_rx)
 - PHONE applet: VOX, AM carrier, TX filter
 - 8-band graphic equalizer (RX and TX)
 
@@ -126,6 +131,7 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 ### General
 - Click-to-tune and scroll-wheel tuning on spectrum
 - Right-click context menu on spectrum and waterfall
+- Persistent display settings: WNB, RF gain, black level saved across sessions
 - Multi-Flex support (independent operation alongside SmartSDR/Maestro)
 - XML settings persistence (SSDR-compatible format)
 - Persistent window layout and display preferences
@@ -142,7 +148,8 @@ Pre-built binaries are available from [Releases](https://github.com/ten9876/Aeth
 
 | Platform | Download | Notes |
 |----------|----------|-------|
-| **Linux** | `AetherSDR-*-x86_64.AppImage` | Single file, no install needed. `chmod +x` and run. |
+| **Linux x86_64** | `AetherSDR-*-x86_64.AppImage` | Single file, no install needed. `chmod +x` and run. |
+| **Linux ARM** | `AetherSDR-*-aarch64.AppImage` | Raspberry Pi, ARM laptops. `chmod +x` and run. |
 | **macOS** | `AetherSDR-*-macOS-universal.dmg` | Intel + Apple Silicon. Drag to Applications. |
 | **Windows** | `AetherSDR-*-Windows-x64.zip` | Extract and run `AetherSDR.exe`. |
 
