@@ -528,19 +528,25 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         }
     }
 
-    // Check for click near an inactive slice marker or its badge — switch active
+    // Check for click near an inactive slice marker or its badges
     if (y < specH) {
         const int mx = static_cast<int>(ev->position().x());
         for (const auto& so : m_sliceOverlays) {
             if (so.isActive) continue;
             int sliceX = mhzToX(so.freqMhz);
-            // Hit zone covers center line (±8px) plus badge area to the right (~30px)
-            if (mx >= sliceX - 8 && mx <= sliceX + 35 && y <= 25) {
+            // TX badge area (~sliceX+26 to ~sliceX+48) in top 25px
+            if (mx >= sliceX + 26 && mx <= sliceX + 48 && y <= 25) {
+                emit sliceTxRequested(so.sliceId);
+                ev->accept();
+                return;
+            }
+            // Slice badge + center line area — switch active slice
+            if (mx >= sliceX - 8 && mx <= sliceX + 25 && y <= 25) {
                 emit sliceClicked(so.sliceId);
                 ev->accept();
                 return;
             }
-            // Also allow clicking the center line anywhere vertically
+            // Center line anywhere vertically
             if (std::abs(mx - sliceX) <= 8) {
                 emit sliceClicked(so.sliceId);
                 ev->accept();
@@ -1303,18 +1309,23 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             p.setPen(sliceColor(so.sliceId, true));
             p.drawText(flagRect, Qt::AlignCenter, QString(letter));
 
+            // TX badge — always shown: red if TX slice, greyed if not
+            QFont txFont = p.font(); txFont.setPointSize(7); p.setFont(txFont);
+            const QFontMetrics txFm(txFont);
+            const int txW = txFm.horizontalAdvance("TX") + 4;
+            const int txX = flagX + flagW + 2;
+            const QRect txRect(txX, flagY, txW, flagH);
+            p.setPen(Qt::NoPen);
             if (so.isTxSlice) {
-                QFont txFont = p.font(); txFont.setPointSize(7); p.setFont(txFont);
-                const QFontMetrics txFm(txFont);
-                const int txW = txFm.horizontalAdvance("TX") + 4;
-                const int txX = flagX + flagW + 2;
-                const QRect txRect(txX, flagY, txW, flagH);
-                p.setPen(Qt::NoPen);
                 p.setBrush(QColor(0xcc, 0x20, 0x20));
                 p.drawRoundedRect(txRect, radius, radius);
                 p.setPen(Qt::white);
-                p.drawText(txRect, Qt::AlignCenter, "TX");
+            } else {
+                p.setBrush(QColor(0x40, 0x40, 0x40));
+                p.drawRoundedRect(txRect, radius, radius);
+                p.setPen(QColor(0x80, 0x80, 0x80));
             }
+            p.drawText(txRect, Qt::AlignCenter, "TX");
         }
     };
 

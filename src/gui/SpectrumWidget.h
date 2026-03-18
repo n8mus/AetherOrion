@@ -162,6 +162,7 @@ signals:
     void tnfDepthRequested(int id, int depthDb);
     void tnfPermanentRequested(int id, bool permanent);
     void sliceCloseRequested(int sliceId);
+    void sliceTxRequested(int sliceId);
 
 protected:
     void paintEvent(QPaintEvent* event) override;

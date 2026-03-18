@@ -276,6 +276,11 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Slice marker click → switch active slice ────────────────────────────
     connect(spectrum(), &SpectrumWidget::sliceClicked,
             this, &MainWindow::setActiveSlice);
+    connect(spectrum(), &SpectrumWidget::sliceTxRequested,
+            this, [this](int sliceId) {
+        if (auto* s = m_radioModel.slice(sliceId))
+            s->setTxSlice(true);
+    });
     connect(spectrum(), &SpectrumWidget::sliceCloseRequested,
             this, [this](int sliceId) {
         if (m_radioModel.slices().size() <= 1) return;
@@ -1022,15 +1027,9 @@ void MainWindow::setActiveSlice(int sliceId)
     const int prevId = m_activeSliceId;
     m_activeSliceId = sliceId;
 
-    // Tell the radio this slice is now active
-    if (sliceId != prevId) {
+    // Tell the radio this slice is now active (don't move TX — user controls that)
+    if (sliceId != prevId)
         s->setActive(true);
-        // Auto TX-switch: move TX when user explicitly switches slices
-        // (skip on initial connection where prevId is -1 to avoid
-        //  interfering with the radio's TX initialization)
-        if (prevId >= 0 && !s->isTxSlice())
-            s->setTxSlice(true);
-    }
 
     // Update all overlay isActive flags
     for (auto* sl : m_radioModel.slices()) {
