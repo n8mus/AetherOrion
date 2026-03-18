@@ -13,7 +13,7 @@
 
 AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
 
-**Current version: 0.4.6** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+**Current version: 0.4.7** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
 
 > **Cross-platform downloads available:** Linux AppImage, macOS universal DMG, and Windows ZIP.
 > Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
@@ -58,7 +58,9 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 
 ### Receiver Controls
 - Full RX controls: antenna, filter presets, AGC, AF gain, pan, squelch
-- All DSP modes: NB, NR, ANF, NRL, NRS, RNN, NRF, ANFL, ANFT, APF
+- All DSP modes: NB, NR, NR2 (spectral), ANF, NRL, NRS, RNN, NRF, ANFL, ANFT, APF
+- **NR2 spectral noise reduction** — Ephraim-Malah MMSE-LSA with OSMS floor tracking (contributed by @EI6JGB)
+- FFTW3 optimized FFTs with automatic radix-2 fallback and background wisdom generation
 - DSP level sliders (0-100) for all supported features
 - Mode-specific controls (CW pitch-centered filters, RTTY mark/shift, DIG offset, FM duplex)
 - RIT / XIT with step buttons
@@ -126,6 +128,7 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - Per-band TX settings: RF power, tune power, PTT inhibit, interlock routing
 - TX profile management
 - XVTR transverter configuration
+- **Firmware update** — upload .ssdr files directly from Linux (no Windows required)
 - Network diagnostics, memory channels, spot settings
 
 ### General
