@@ -510,12 +510,19 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         }
     }
 
-    // Check for click near an inactive slice marker (8px grab zone) — switch active
+    // Check for click near an inactive slice marker or its badge — switch active
     if (y < specH) {
         const int mx = static_cast<int>(ev->position().x());
         for (const auto& so : m_sliceOverlays) {
             if (so.isActive) continue;
             int sliceX = mhzToX(so.freqMhz);
+            // Hit zone covers center line (±8px) plus badge area to the right (~30px)
+            if (mx >= sliceX - 8 && mx <= sliceX + 35 && y <= 25) {
+                emit sliceClicked(so.sliceId);
+                ev->accept();
+                return;
+            }
+            // Also allow clicking the center line anywhere vertically
             if (std::abs(mx - sliceX) <= 8) {
                 emit sliceClicked(so.sliceId);
                 ev->accept();
@@ -705,11 +712,12 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
                     }
                 }
                 if (!foundCursor) {
-                    // Check inactive slice markers
+                    // Check inactive slice markers + badges
                     for (const auto& so : m_sliceOverlays) {
                         if (so.isActive) continue;
                         int sliceX = mhzToX(so.freqMhz);
-                        if (std::abs(mx - sliceX) <= 8) {
+                        if ((mx >= sliceX - 8 && mx <= sliceX + 35 && y <= 25)
+                            || std::abs(mx - sliceX) <= 8) {
                             setCursor(Qt::PointingHandCursor);
                             foundCursor = true;
                             break;
