@@ -871,10 +871,10 @@ void SpectrumOverlayMenu::buildDisplayPanel()
             emit wfBlackLevelChanged(m_blackSlider->value());
     });
 
-    makeRow("Rate:", 50, 500, 100, m_rateSlider, m_rateLabel);
+    makeRow("Rate:", 1, 30, 15, m_rateSlider, m_rateLabel);
     connect(m_rateSlider, &QSlider::valueChanged, this, [this](int v) {
         m_rateLabel->setText(QString::number(v));
-        emit wfLineDurationChanged(v);
+        emit wfLineDurationChanged(v + 70);  // map 1-30 → 71-100
     });
 
     m_displayPanel->adjustSize();

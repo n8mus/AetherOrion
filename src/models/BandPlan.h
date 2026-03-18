@@ -53,9 +53,7 @@ inline constexpr BandSegment kBandPlan[] = {
     {3.500,  3.510,  "CW DX",      "E",      0x30, 0x60, 0xff},
     {3.510,  3.570,  "CW",         "E,G",    0x30, 0x60, 0xff},
     {3.570,  3.600,  "DATA",       "E,G",    0xc0, 0x30, 0x30},
-    {3.600,  3.700,  "DATA",       "E",      0xc0, 0x30, 0x30},
-    {3.700,  3.790,  "PHONE",      "E",      0xff, 0x80, 0x00},
-    {3.790,  3.800,  "DX WIN",     "E",      0xff, 0x80, 0x00},
+    {3.600,  3.800,  "PHONE",      "E",      0xff, 0x80, 0x00},
     {3.800,  4.000,  "PHONE",      "E,G",    0xff, 0x80, 0x00},
 
     // 60m (5.330 - 5.405) — channelized, USB/CW/data
@@ -72,8 +70,8 @@ inline constexpr BandSegment kBandPlan[] = {
     {7.040,  7.070,  "DATA DX",    "E,G",    0xc0, 0x30, 0x30},
     {7.070,  7.125,  "DATA",       "E,G",    0xc0, 0x30, 0x30},
     {7.125,  7.175,  "PHONE",      "E,G",    0xff, 0x80, 0x00},
-    {7.175,  7.290,  "PHONE",      "E,G,T",  0xff, 0x80, 0x00},
-    {7.290,  7.300,  "AM",         "E,G,T",  0xff, 0x80, 0x00},
+    {7.175,  7.290,  "PHONE",      "E,G",    0xff, 0x80, 0x00},
+    {7.290,  7.300,  "AM",         "E,G",    0xff, 0x80, 0x00},
 
     // 30m (10.100 - 10.150) — CW/data only, 200W PEP
     {10.100, 10.130, "CW",         "E,G",    0x30, 0x60, 0xff},
@@ -86,22 +84,16 @@ inline constexpr BandSegment kBandPlan[] = {
     {14.070, 14.095, "DATA",       "E,G",    0xc0, 0x30, 0x30},
     {14.095, 14.100, "AUTO",       "E,G",    0xc0, 0x30, 0x30},
     {14.100, 14.101, "BCN",        "",        0x00, 0xd0, 0xd0},
-    {14.101, 14.112, "AUTO",       "E,G",    0xc0, 0x30, 0x30},
-    {14.112, 14.150, "PHONE",      "E,G",    0xff, 0x80, 0x00},
-    {14.150, 14.175, "PHONE",      "E",      0xff, 0x80, 0x00},
-    {14.175, 14.225, "PHONE",      "E",      0xff, 0x80, 0x00},
-    {14.225, 14.230, "PHONE",      "E,G",    0xff, 0x80, 0x00},
-    {14.230, 14.236, "SSTV",       "E,G",    0xff, 0x80, 0x00},
-    {14.236, 14.286, "DIG VOX",    "E,G",    0xff, 0x80, 0x00},
-    {14.286, 14.350, "PHONE",      "E,G",    0xff, 0x80, 0x00},
+    {14.101, 14.150, "CW",         "E,G",    0x30, 0x60, 0xff},
+    {14.150, 14.225, "PHONE",      "E",      0xff, 0x80, 0x00},
+    {14.225, 14.350, "PHONE",      "E,G",    0xff, 0x80, 0x00},
 
     // 17m (18.068 - 18.168)
     {18.068, 18.100, "CW",         "E,G",    0x30, 0x60, 0xff},
     {18.100, 18.105, "DATA",       "E,G",    0xc0, 0x30, 0x30},
     {18.105, 18.110, "AUTO",       "E,G",    0xc0, 0x30, 0x30},
     {18.110, 18.111, "BCN",        "",        0x00, 0xd0, 0xd0},
-    {18.111, 18.163, "PHONE",      "E,G",    0xff, 0x80, 0x00},
-    {18.163, 18.168, "DIG VOX",    "E,G",    0xff, 0x80, 0x00},
+    {18.111, 18.168, "PHONE",      "E,G",    0xff, 0x80, 0x00},
 
     // 15m (21.000 - 21.450)
     {21.000, 21.025, "CW",         "E",      0x30, 0x60, 0xff},
@@ -110,11 +102,8 @@ inline constexpr BandSegment kBandPlan[] = {
     {21.090, 21.100, "AUTO",       "E,G",    0xc0, 0x30, 0x30},
     {21.100, 21.150, "DATA",       "E,G",    0xc0, 0x30, 0x30},
     {21.150, 21.151, "BCN",        "",        0x00, 0xd0, 0xd0},
-    {21.151, 21.200, "PHONE",      "E",      0xff, 0x80, 0x00},
-    {21.200, 21.275, "PHONE",      "E",      0xff, 0x80, 0x00},
-    {21.275, 21.340, "PHONE",      "E,G",    0xff, 0x80, 0x00},
-    {21.340, 21.385, "SSTV",       "E,G",    0xff, 0x80, 0x00},
-    {21.385, 21.450, "PHONE",      "E,G",    0xff, 0x80, 0x00},
+    {21.151, 21.275, "PHONE",      "E",      0xff, 0x80, 0x00},
+    {21.275, 21.450, "PHONE",      "E,G",    0xff, 0x80, 0x00},
 
     // 12m (24.890 - 24.990)
     {24.890, 24.920, "CW",         "E,G",    0x30, 0x60, 0xff},
@@ -124,14 +113,13 @@ inline constexpr BandSegment kBandPlan[] = {
     {24.931, 24.990, "PHONE",      "E,G",    0xff, 0x80, 0x00},
 
     // 10m (28.000 - 29.700)
+    // Tech privileges start at 28.300
     {28.000, 28.070, "CW",         "E,G",    0x30, 0x60, 0xff},
     {28.070, 28.120, "DATA",       "E,G",    0xc0, 0x30, 0x30},
     {28.120, 28.190, "AUTO",       "E,G",    0xc0, 0x30, 0x30},
     {28.190, 28.225, "BCN",        "",        0x00, 0xd0, 0xd0},
     {28.225, 28.300, "BCN",        "E,G",    0x00, 0xd0, 0xd0},
-    {28.300, 28.680, "PHONE",      "E,G,T",  0xff, 0x80, 0x00},
-    {28.680, 28.700, "SSTV",       "E,G,T",  0xff, 0x80, 0x00},
-    {28.700, 29.000, "PHONE",      "E,G,T",  0xff, 0x80, 0x00},
+    {28.300, 29.000, "PHONE",      "E,G,T",  0xff, 0x80, 0x00},
     {29.000, 29.200, "AM",         "E,G,T",  0xff, 0x80, 0x00},
     {29.200, 29.300, "PHONE",      "E,G,T",  0xff, 0x80, 0x00},
     {29.300, 29.510, "SAT",        "E,G,T",  0x90, 0x30, 0xc0},
@@ -139,8 +127,8 @@ inline constexpr BandSegment kBandPlan[] = {
     {29.600, 29.601, "FM CALL",    "E,G,T",  0xff, 0x80, 0x00},
     {29.620, 29.680, "RPT OUT",    "E,G,T",  0xff, 0x80, 0x00},
 
-    // 6m (50.000 - 54.000)
-    {50.000, 50.100, "CW",         "E,G",    0x30, 0x60, 0xff},
+    // 6m (50.000 - 54.000) — Tech has full 6m privileges
+    {50.000, 50.100, "CW",         "E,G,T",  0x30, 0x60, 0xff},
     {50.100, 50.300, "SSB",        "E,G,T",  0x30, 0xb0, 0x30},
     {50.300, 50.600, "DATA",       "E,G,T",  0xc0, 0x30, 0x30},
     {50.600, 51.000, "PHONE",      "E,G,T",  0xff, 0x80, 0x00},
@@ -163,6 +151,7 @@ inline constexpr BandSpot kBandSpots[] = {
     // 80m
     {3.560,   "QRP CW calling frequency"},
     {3.590,   "RTTY/Data DX"},
+    {3.790,   "DX window (3.790-3.800)"},
     {3.845,   "SSTV"},
     {3.885,   "AM calling frequency"},
     {3.985,   "QRP SSB calling frequency"},

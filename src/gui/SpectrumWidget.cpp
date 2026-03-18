@@ -270,21 +270,19 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
                                         double lowFreqMhz, double highFreqMhz)
 {
     // Native waterfall tiles carry intensity values (int16/128.0f, ~96-120 on HF).
-    // The tile's VitaFrequency absolute values have a fixed offset (~131 kHz on fw v4.1.5),
-    // but the tile WIDTH (highFreq - lowFreq) is accurate. We use the tile width relative
-    // to the panadapter bandwidth to determine the correct pixel mapping.
     if (binsIntensity.isEmpty() || m_waterfall.isNull()) return;
 
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
 
-    // Calculate how many pixel rows to fill based on elapsed time since last tile.
-    // This makes the waterfall scroll smoothly regardless of tile arrival rate.
-    int rowsToPush = 1;
-    if (m_hasNativeWaterfall && m_lastNativeTileMs > 0) {
-        const qint64 elapsed = now - m_lastNativeTileMs;
-        // At 25 FPS equivalent, each ms ≈ 0.025 pixel rows
-        rowsToPush = std::max(1, static_cast<int>(elapsed * m_fftFps / 1000));
+    // Measure actual row interval for time scale
+    if (m_wfLastRowMs > 0) {
+        const float dt = static_cast<float>(now - m_wfLastRowMs);
+        m_wfRowIntervalMs = 0.95f * m_wfRowIntervalMs + 0.05f * dt;
     }
+    m_wfLastRowMs = now;
+
+    // One pixel row per tile — scroll speed determined by tile arrival rate.
+    int rowsToPush = 1;
 
     m_hasNativeWaterfall = true;
     m_lastNativeTileMs = now;
@@ -866,6 +864,13 @@ void SpectrumWidget::wheelEvent(QWheelEvent* ev)
         ev->ignore();
         return;
     }
+    // Consume wheel events on the dBm / time scale strips
+    const int mx = static_cast<int>(ev->position().x());
+    if (mx >= width() - DBM_STRIP_W) {
+        ev->accept();
+        return;
+    }
+
     const int ticks = ev->angleDelta().y() / 120;   // +1 per notch up, -1 per notch down
     if (ticks == 0) { ev->ignore(); return; }
 
@@ -940,8 +945,8 @@ QRgb SpectrumWidget::intensityToRgb(float intensity) const
     // Map black_level (0-100) to an intensity threshold.
     // 0 = darkest (max noise suppression), 100 = brightest (everything visible).
     // Observed noise floor: ~141-148 on HF. Threshold must exceed that at slider 0.
-    // Slider 0 → thresh 160 (well above noise), slider 100 → thresh 85.
-    const float blackThresh = 160.0f - m_wfBlackLevel * 0.75f;
+    // Slider 0 → thresh 160 (well above noise), slider 100 → thresh 60.
+    const float blackThresh = 160.0f - m_wfBlackLevel * 1.0f;
 
     // Map color_gain (0-100) to the visible range width.
     // Higher gain = narrower range = more color contrast.
@@ -977,6 +982,15 @@ QRgb SpectrumWidget::intensityToRgb(float intensity) const
 void SpectrumWidget::pushWaterfallRow(const QVector<float>& bins, int destWidth,
                                       double tileLowMhz, double tileHighMhz)
 {
+    // Measure actual row interval for time scale
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (m_wfLastRowMs > 0) {
+        const float dt = static_cast<float>(now - m_wfLastRowMs);
+        // Exponential smoothing — fast convergence
+        m_wfRowIntervalMs = 0.7f * m_wfRowIntervalMs + 0.3f * dt;
+    }
+    m_wfLastRowMs = now;
+
     if (m_waterfall.isNull() || destWidth <= 0) return;
 
     const int h = m_waterfall.height();
@@ -1035,6 +1049,7 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
 
     drawFreqScale(p, scaleRect);
     drawWaterfall(p, wfRect);
+    drawTimeScale(p, wfRect);
     drawTnfMarkers(p, specRect, wfRect);
     drawSliceMarkers(p, specRect, wfRect);
     drawOffScreenSlices(p, specRect);
@@ -1243,16 +1258,17 @@ void SpectrumWidget::drawBandPlan(QPainter& p, const QRect& specRect)
         }
     }
 
-    // Draw single-frequency spot markers (white dots)
+    // Draw single-frequency spot markers (white circles)
+    p.setRenderHint(QPainter::Antialiasing, true);
     p.setPen(Qt::NoPen);
     p.setBrush(Qt::white);
     for (int i = 0; i < kBandSpotCount; ++i) {
         const auto& spot = kBandSpots[i];
         if (spot.freqMhz < startMhz || spot.freqMhz > endMhz) continue;
         const int sx = mhzToX(spot.freqMhz);
-        const int dotR = 2;
-        p.drawEllipse(QPoint(sx, bandY + bandH / 2), dotR, dotR);
+        p.drawEllipse(QPoint(sx, bandY + bandH / 2), 4, 4);
     }
+    p.setRenderHint(QPainter::Antialiasing, false);
 }
 
 // ─── TNF markers ────────────────────────────────────────────────────────────
@@ -1534,6 +1550,63 @@ void SpectrumWidget::drawDbmScale(QPainter& p, const QRect& specRect)
 
         // Label
         const QString label = QString::number(static_cast<int>(dbm));
+        p.setPen(QColor(0x80, 0xa0, 0xb0));
+        p.drawText(stripX + 6, y + fm.ascent() / 2, label);
+    }
+}
+
+// ─── Time scale (right edge of waterfall) ─────────────────────────────────────
+
+void SpectrumWidget::drawTimeScale(QPainter& p, const QRect& wfRect)
+{
+    const int stripX = wfRect.right() - DBM_STRIP_W + 1;
+    const QRect strip(stripX, wfRect.top(), DBM_STRIP_W, wfRect.height());
+
+    // Semi-opaque background
+    p.fillRect(strip, QColor(0x0a, 0x0a, 0x18, 220));
+
+    // Left border line
+    p.setPen(QColor(0x30, 0x40, 0x50));
+    p.drawLine(stripX, wfRect.top(), stripX, wfRect.bottom());
+
+    // Total time depth: use measured row rate
+    const float msPerRow = m_wfRowIntervalMs > 0 ? m_wfRowIntervalMs : 40.0f;
+    // Round to nearest second to prevent label jitter
+    const float rawTotalSec = wfRect.height() * msPerRow / 1000.0f;
+    const float totalSec = std::max(1.0f, std::round(rawTotalSec));
+    if (totalSec <= 0) return;
+
+    QFont f = p.font();
+    f.setPointSize(7);
+    p.setFont(f);
+    const QFontMetrics fm(f);
+
+    // Adaptive step: aim for ~4-6 labels
+    float rawStep = totalSec / 5.0f;
+    float stepSec;
+    if      (rawStep >= 60.0f) stepSec = 60.0f;
+    else if (rawStep >= 30.0f) stepSec = 30.0f;
+    else if (rawStep >= 10.0f) stepSec = 10.0f;
+    else if (rawStep >= 5.0f)  stepSec = 5.0f;
+    else if (rawStep >= 2.0f)  stepSec = 2.0f;
+    else                        stepSec = 1.0f;
+
+    for (float sec = 0; sec <= totalSec; sec += stepSec) {
+        const float frac = sec / totalSec;
+        const int y = wfRect.top() + static_cast<int>(frac * wfRect.height());
+        if (y > wfRect.bottom() - 5) continue;
+
+        // Tick mark
+        p.setPen(QColor(0x50, 0x70, 0x80));
+        p.drawLine(stripX, y, stripX + 4, y);
+
+        // Label
+        QString label;
+        if (sec < 60.0f)
+            label = QString("%1s").arg(static_cast<int>(sec));
+        else
+            label = QString("%1m").arg(static_cast<int>(sec / 60.0f));
+
         p.setPen(QColor(0x80, 0xa0, 0xb0));
         p.drawText(stripX + 6, y + fm.ascent() / 2, label);
     }

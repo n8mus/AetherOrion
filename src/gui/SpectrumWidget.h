@@ -184,6 +184,7 @@ private:
     void drawWaterfall(QPainter& p, const QRect& r);
     void drawFreqScale(QPainter& p, const QRect& r);
     void drawDbmScale(QPainter& p, const QRect& specRect);
+    void drawTimeScale(QPainter& p, const QRect& wfRect);
 
     // Helper: find overlay index for a sliceId, or -1.
     int overlayIndex(int sliceId) const;
@@ -284,6 +285,15 @@ private:
     // On-screen indicators (WNB, RF Gain)
     bool m_wnbActive{false};
     int  m_rfGainValue{0};
+
+    // Measured waterfall row interval (for time scale)
+    float    m_wfRowIntervalMs{40.0f};
+    qint64   m_wfLastRowMs{0};
+
+    // Client-side row averaging (Rate slider)
+    int      m_wfAvgTarget{1};   // how many tiles to average into one row
+    int      m_wfAvgCount{0};    // tiles accumulated so far
+    QVector<float> m_wfAvgBins;  // accumulated intensity values
 
     // ── TNF markers ────────────────────────────────────────────────────
     QVector<TnfMarker> m_tnfMarkers;
