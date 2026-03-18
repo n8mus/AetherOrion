@@ -37,6 +37,8 @@ public:
 
 Q_SIGNALS:
     void afGainChanged(int value);
+    void closeSliceRequested();
+    void lockToggled(bool locked);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -68,6 +70,8 @@ private:
     QLabel*      m_splitBadge{nullptr};
     QPushButton* m_txBadge{nullptr};
     QLabel*      m_sliceBadge{nullptr};
+    QPushButton* m_lockVfoBtn{nullptr};
+    QPushButton* m_closeSliceBtn{nullptr};
 
     // Frequency / meter
     QLabel* m_freqLabel{nullptr};

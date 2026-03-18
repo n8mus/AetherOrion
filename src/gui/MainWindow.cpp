@@ -278,8 +278,21 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::setActiveSlice);
     connect(spectrum(), &SpectrumWidget::sliceCloseRequested,
             this, [this](int sliceId) {
-        if (m_radioModel.slices().size() <= 1) return;  // don't close last slice
+        if (m_radioModel.slices().size() <= 1) return;
         m_radioModel.sendCommand(QString("slice remove %1").arg(sliceId));
+    });
+
+    // VFO widget close/lock buttons
+    connect(spectrum()->vfoWidget(), &VfoWidget::closeSliceRequested,
+            this, [this] {
+        if (m_radioModel.slices().size() <= 1) return;
+        if (m_activeSliceId >= 0)
+            m_radioModel.sendCommand(QString("slice remove %1").arg(m_activeSliceId));
+    });
+    connect(spectrum()->vfoWidget(), &VfoWidget::lockToggled,
+            this, [this](bool locked) {
+        if (auto* s = activeSlice())
+            s->setLocked(locked);
     });
 
     // ── Band selection from overlay menu ───────────────────────────────────

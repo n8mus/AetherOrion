@@ -217,6 +217,33 @@ void VfoWidget::buildUI()
         "border-radius: 3px; font-weight: bold; font-size: 11px; }");
     hdr->addWidget(m_sliceBadge);
 
+    // Lock button (prevents tuning changes)
+    m_lockVfoBtn = new QPushButton("\xF0\x9F\x94\x93");  // 🔓
+    m_lockVfoBtn->setFixedSize(20, 20);
+    m_lockVfoBtn->setCheckable(true);
+    m_lockVfoBtn->setStyleSheet(
+        "QPushButton { background: rgba(255,255,255,15); border: none; "
+        "border-radius: 10px; font-size: 12px; padding: 0; }"
+        "QPushButton:checked { background: rgba(255,100,100,80); }"
+        "QPushButton:hover { background: rgba(255,255,255,40); }");
+    connect(m_lockVfoBtn, &QPushButton::toggled, this, [this](bool locked) {
+        m_lockVfoBtn->setText(locked ? "\xF0\x9F\x94\x92" : "\xF0\x9F\x94\x93");  // 🔒 / 🔓
+        emit lockToggled(locked);
+    });
+    hdr->addWidget(m_lockVfoBtn);
+
+    // Close slice button (circle with X)
+    m_closeSliceBtn = new QPushButton("\xE2\x9C\x95");  // ✕
+    m_closeSliceBtn->setFixedSize(20, 20);
+    m_closeSliceBtn->setStyleSheet(
+        "QPushButton { background: rgba(255,255,255,15); border: none; "
+        "border-radius: 10px; color: #c8d8e8; font-size: 11px; padding: 0; }"
+        "QPushButton:hover { background: rgba(204,32,32,180); color: #ffffff; }");
+    connect(m_closeSliceBtn, &QPushButton::clicked, this, [this] {
+        emit closeSliceRequested();
+    });
+    hdr->addWidget(m_closeSliceBtn);
+
     root->addLayout(hdr);
 
     // ── Frequency row (right-aligned) ─────────────────────────────────────
@@ -1345,6 +1372,11 @@ void VfoWidget::syncFromSlice()
     m_rxAntBtn->setText(m_slice->rxAntenna());
     m_txAntBtn->setText(m_slice->txAntenna());
     m_txBadge->setVisible(m_slice->isTxSlice());
+    {
+        QSignalBlocker b(m_lockVfoBtn);
+        m_lockVfoBtn->setChecked(m_slice->isLocked());
+        m_lockVfoBtn->setText(m_slice->isLocked() ? "\xF0\x9F\x94\x92" : "\xF0\x9F\x94\x93");
+    }
     const char letters[] = "ABCD";
     int id = m_slice->sliceId();
     m_sliceBadge->setText(QString(QChar(id >= 0 && id < 4 ? letters[id] : '?')));
