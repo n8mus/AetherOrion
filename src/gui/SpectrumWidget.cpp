@@ -1185,24 +1185,28 @@ void SpectrumWidget::drawBandPlan(QPainter& p, const QRect& specRect)
         const int x2 = mhzToX(std::min(seg.highMhz, endMhz));
         if (x2 <= x1) continue;
 
-        // License class affects brightness: E=dim, G=medium, T/all=bright
-        int alpha = 120;
-        if (seg.license[0] == 'E')      alpha = 70;
-        else if (seg.license[0] == 'G') alpha = 100;
+        // Extra-only segments slightly dimmer, wider access = brighter
+        const QString lic(seg.license);
+        int alpha = 130;
+        if (lic == "E")        alpha = 80;
+        else if (lic == "E,A") alpha = 95;
+        else if (lic == "E,A,G") alpha = 110;
 
         p.fillRect(x1, bandY, x2 - x1, bandH,
                    QColor(seg.r, seg.g, seg.b, alpha));
 
-        // Label: mode + license class (e.g. "CW E", "SSB G")
-        if (x2 - x1 > 25) {
+        // Label with license class when there's room
+        if (x2 - x1 > 20) {
             QFont f = p.font();
             f.setPointSize(6);
             f.setBold(true);
             p.setFont(f);
 
             QString label = seg.label;
-            if (seg.license[0] != '\0' && x2 - x1 > 40)
-                label = QString("%1 %2").arg(seg.label, seg.license);
+            if (!lic.isEmpty() && x2 - x1 > 50)
+                label = QString("%1 (%2)").arg(seg.label, seg.license);
+            else if (!lic.isEmpty() && x2 - x1 > 35)
+                label = QString("%1 %2").arg(seg.label).arg(lic.left(1));
 
             p.setPen(QColor(seg.r, seg.g, seg.b, 255));
             p.drawText(QRect(x1, bandY, x2 - x1, bandH),
