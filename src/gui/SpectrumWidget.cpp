@@ -98,7 +98,7 @@ void SpectrumWidget::setWfColorGain(int gain) {
     update();
 }
 void SpectrumWidget::setWfBlackLevel(int level) {
-    m_wfBlackLevel = std::clamp(level, 0, 250);
+    m_wfBlackLevel = std::clamp(level, 0, 100);
     auto& s = AppSettings::instance();
     s.setValue("DisplayWfBlackLevel", QString::number(m_wfBlackLevel));
     s.save();
@@ -916,11 +916,10 @@ QRgb SpectrumWidget::dbmToRgb(float dbm) const
 // m_wfBlackLevel and m_wfColorGain control the mapping independently from FFT.
 QRgb SpectrumWidget::intensityToRgb(float intensity) const
 {
-    // Map black_level (0-250) to an intensity threshold.
-    // Higher black_level = higher threshold = more noise suppressed.
-    // Range: level 0 → thresh ~90 (everything visible),
-    //        level 250 → thresh ~115 (only strong signals visible)
-    const float blackThresh = 90.0f + m_wfBlackLevel * 0.1f;
+    // Map black_level (0-100) to an intensity threshold.
+    // 0 = darkest (max noise suppression), 100 = brightest (everything visible).
+    // Inverted: slider 0 → thresh ~120, slider 100 → thresh ~90.
+    const float blackThresh = 120.0f - m_wfBlackLevel * 0.3f;
 
     // Map color_gain (0-100) to the visible range width.
     // Higher gain = narrower range = more color contrast.
