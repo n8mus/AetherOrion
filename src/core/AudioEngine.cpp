@@ -227,13 +227,25 @@ bool AudioEngine::startTxStream(const QHostAddress& radioAddress, quint16 radioP
     m_txPacketCount = 0;
     m_txAccumulator.clear();
 
-    const QAudioFormat fmt = makeFormat();
+    QAudioFormat fmt = makeFormat();
     const QAudioDevice dev = m_inputDevice.isNull()
         ? QMediaDevices::defaultAudioInput() : m_inputDevice;
 
     if (dev.isNull()) {
         qWarning() << "AudioEngine: no audio input device available";
         return false;
+    }
+
+    if (!dev.isFormatSupported(fmt)) {
+        qWarning() << "AudioEngine: input device does not support 24kHz, trying 48kHz";
+        fmt.setSampleRate(48000);
+        m_txDownsampleFrom48k = true;
+        if (!dev.isFormatSupported(fmt)) {
+            qWarning() << "AudioEngine: input device does not support 48kHz either";
+            return false;
+        }
+    } else {
+        m_txDownsampleFrom48k = false;
     }
 
     m_audioSource = new QAudioSource(dev, fmt, this);
@@ -270,9 +282,22 @@ void AudioEngine::onTxAudioReady()
 {
     if (!m_micDevice || m_txStreamId == 0) return;
 
-    // Read all available PCM data (int16 stereo, 24 kHz)
-    const QByteArray data = m_micDevice->readAll();
+    // Read all available PCM data (int16 stereo, 24 or 48 kHz)
+    QByteArray data = m_micDevice->readAll();
     if (data.isEmpty()) return;
+
+    // Downsample 48kHz → 24kHz: drop every other stereo sample pair
+    if (m_txDownsampleFrom48k && data.size() >= 8) {
+        const auto* src = reinterpret_cast<const qint16*>(data.constData());
+        const int stereoSamples = data.size() / 4;
+        QByteArray ds(stereoSamples / 2 * 4, Qt::Uninitialized);
+        auto* dst = reinterpret_cast<qint16*>(ds.data());
+        for (int i = 0; i < stereoSamples / 2; ++i) {
+            dst[i * 2 + 0] = src[i * 4 + 0];  // L (take every other pair)
+            dst[i * 2 + 1] = src[i * 4 + 1];  // R
+        }
+        data = ds;
+    }
 
     m_txAccumulator.append(data);
 
