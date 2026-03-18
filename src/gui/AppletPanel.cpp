@@ -12,7 +12,7 @@
 #include "models/SliceModel.h"
 #include <QComboBox>
 #include <QLabel>
-#include <QSettings>
+#include "core/AppSettings.h"
 #include <QPushButton>
 #include <QScrollArea>
 #include <QVBoxLayout>
@@ -134,7 +134,7 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     scrollArea->setWidget(container);
     root->addWidget(scrollArea, 1);
 
-    QSettings settings;
+    auto& settings = AppSettings::instance();
 
     // ── Helper: add one applet with its toggle button (persistent state) ────
     auto addApplet = [&](const QString& label, QWidget* applet, bool defaultOn) {
@@ -146,14 +146,14 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
         m_stack->insertWidget(m_stack->count() - 1, applet);
 
         // Restore saved state (or use default)
-        const QString key = QStringLiteral("applet/%1").arg(label);
-        bool on = settings.value(key, defaultOn).toBool();
+        const QString key = QStringLiteral("Applet_%1").arg(label);
+        bool on = settings.value(key, defaultOn ? "True" : "False").toString() == "True";
         btn->setChecked(on);
         applet->setVisible(on);
 
         connect(btn, &QPushButton::toggled, applet, [applet, key](bool checked) {
             applet->setVisible(checked);
-            QSettings().setValue(key, checked);
+            AppSettings::instance().setValue(key, checked ? "True" : "False");
         });
     };
 
@@ -161,13 +161,13 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     {
         auto* anlgBtn = new QPushButton("VU", btnRow);
         anlgBtn->setCheckable(true);
-        bool anlgOn = settings.value("applet/ANLG", true).toBool();
+        bool anlgOn = settings.value("Applet_ANLG", "True").toString() == "True";
         anlgBtn->setChecked(anlgOn);
         m_sMeterSection->setVisible(anlgOn);
         btnLayout->addWidget(anlgBtn);
         connect(anlgBtn, &QPushButton::toggled, this, [this](bool on) {
             m_sMeterSection->setVisible(on);
-            QSettings().setValue("applet/ANLG", on);
+            AppSettings::instance().setValue("Applet_ANLG", on ? "True" : "False");
         });
     }
 

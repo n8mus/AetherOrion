@@ -158,7 +158,7 @@ private:
     static QMap<QString, QString> parseKeyValues(const QString& text);
     AgPortStatus parsePortStatus(const QString& text) const;
 
-    // Band→antenna memory (persisted in QSettings).
+    // Band→antenna memory (persisted in AppSettings XML).
     void saveBandAntenna(int portId, int bandId, int antennaId);
     int  recallBandAntenna(int portId, int bandId) const;
     void onBandChanged(int portId, int oldBand, int oldAnt, int newBand);

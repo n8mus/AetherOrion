@@ -268,6 +268,23 @@ Step sizes: 10, 50, 100, 250, 500, 1000, 2500, 5000, 10000 Hz.
 
 ## Key Implementation Patterns
 
+### Settings Persistence (AppSettings — NOT QSettings)
+
+**IMPORTANT:** Do NOT use `QSettings` anywhere in AetherSDR. All client-side
+settings are stored via `AppSettings` (`src/core/AppSettings.h`), which writes
+an XML file at `~/.config/AetherSDR/AetherSDR.settings`. Key names use
+PascalCase (e.g. `LastConnectedRadioSerial`, `DisplayFftAverage`). Boolean
+values are stored as `"True"` / `"False"` strings.
+
+```cpp
+auto& s = AppSettings::instance();
+s.setValue("MyFeatureEnabled", "True");
+bool on = s.value("MyFeatureEnabled", "False").toString() == "True";
+```
+
+The only place `QSettings` appears is in `AppSettings.cpp` for one-time
+migration from the old INI format.
+
 ### GUI↔Radio Sync (No Feedback Loops)
 
 - `SliceModel` setters emit `commandReady(cmd)` → `RadioModel` sends to radio

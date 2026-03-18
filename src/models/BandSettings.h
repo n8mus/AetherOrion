@@ -52,7 +52,7 @@ public:
     BandSnapshot loadBandState(const QString& bandName) const;
     bool hasSavedState(const QString& bandName) const;
 
-    // Persist all in-memory state to disk (QSettings).
+    // Persist all in-memory state to disk (deprecated — see issue #9).
     void saveToFile() const;
     // Load from disk into memory.
     void loadFromFile();

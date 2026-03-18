@@ -4,7 +4,7 @@
 #include <QTcpSocket>
 #include <QTimer>
 #include <QNetworkDatagram>
-#include <QSettings>
+#include "core/AppSettings.h"
 #include <QDebug>
 #include <QRegularExpression>
 
@@ -574,23 +574,22 @@ void AntennaGeniusModel::setRadioFrequency(double freqMhz)
     }
 }
 
-// ── Band→Antenna memory (QSettings persistence) ──────────────────────────
+// ── Band→Antenna memory (AppSettings persistence) ────────────────────────
 
 void AntennaGeniusModel::saveBandAntenna(int portId, int bandId, int antennaId)
 {
-    // Key: "AntennaGenius/port1/band5" → antenna ID
-    QSettings settings;
-    QString key = QString("AntennaGenius/port%1/band%2").arg(portId).arg(bandId);
-    settings.setValue(key, antennaId);
+    auto& s = AppSettings::instance();
+    QString key = QString("AG_Port%1_Band%2").arg(portId).arg(bandId);
+    s.setValue(key, QString::number(antennaId));
     qDebug() << "AntennaGenius: saved band" << bandName(bandId)
              << "→" << antennaName(antennaId) << "for port" << portId;
 }
 
 int AntennaGeniusModel::recallBandAntenna(int portId, int bandId) const
 {
-    QSettings settings;
-    QString key = QString("AntennaGenius/port%1/band%2").arg(portId).arg(bandId);
-    return settings.value(key, 0).toInt();
+    auto& s = AppSettings::instance();
+    QString key = QString("AG_Port%1_Band%2").arg(portId).arg(bandId);
+    return s.value(key, "0").toInt();
 }
 
 void AntennaGeniusModel::onBandChanged(int portId, int oldBand, int oldAnt, int newBand)

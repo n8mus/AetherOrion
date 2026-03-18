@@ -3,7 +3,7 @@
 #include "core/AppSettings.h"
 #include <QDebug>
 #include <QRegularExpression>
-#include <QSettings>
+#include "core/AppSettings.h"
 
 namespace AetherSDR {
 
@@ -381,9 +381,9 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                             qDebug() << "RadioModel: creating own slice (total on radio:"
                                      << ids.size() << ", ours:" << m_slices.size() << ")";
                             // Use saved frequency/mode from last session if available
-                            QSettings settings("AetherSDR", "AetherSDR");
-                            double lastFreq = settings.value("lastFrequency", 0.0).toDouble();
-                            QString lastMode = settings.value("lastMode").toString();
+                            auto& settings = AppSettings::instance();
+                            double lastFreq = settings.value("LastFrequency", "0").toDouble();
+                            QString lastMode = settings.value("LastMode", "").toString();
                             if (lastFreq > 0.0) {
                                 createDefaultSlice(
                                     QString::number(lastFreq, 'f', 6),
