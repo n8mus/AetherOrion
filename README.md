@@ -13,7 +13,7 @@
 
 AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
 
-**Current version: 0.4.0** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+**Current version: 0.4.5** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
 
 > **Cross-platform downloads available:** Linux AppImage, macOS universal DMG, and Windows ZIP.
 > Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
@@ -30,6 +30,16 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 ---
 
 ## Features
+
+### Multi-Slice Operation
+- Color-coded slice markers on spectrum and waterfall (A=cyan, B=magenta, C=green, D=yellow)
+- Click inactive slice badge to switch focus
+- Independent TX assignment — TX stays on its slice until explicitly moved
+- Clickable TX badge in VFO overlay (red = active TX, grey = click to assign)
+- Close (✕) and lock (🔒) buttons floating beside the VFO overlay
+- +RX button creates new slices on the current panadapter
+- Right-click context menu to close slices
+- Off-screen slice indicators with frequency display
 
 ### Panadapter & Waterfall
 - Real-time FFT spectrum and scrolling waterfall display
@@ -50,6 +60,7 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - Mode-specific controls (CW pitch-centered filters, RTTY mark/shift, DIG offset, FM duplex)
 - RIT / XIT with step buttons
 - Per-mode filter presets and tuning step sizes
+- Dynamic mode list from radio (supports FDVU, FDVM, and future modes)
 
 ### Transmit Controls
 - TX power and tune power sliders
@@ -72,6 +83,7 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 
 ### Tracking Notch Filters (TNF)
 - Right-click spectrum or waterfall to add TNF at any frequency
+- +TNF button creates a notch at the center of the filter passband
 - Drag TNF markers to reposition
 - Right-click TNF to adjust width (50/100/200/500 Hz) and depth (Normal/Deep/Very Deep)
 - Permanent TNFs (green) survive radio power cycles; temporary (yellow) are session-only
@@ -88,33 +100,39 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 ### SmartLink Remote Operation (beta)
 - Log in with FlexRadio SmartSDR+ account (email/password via Auth0)
 - Radio auto-discovered via SmartLink relay server
-- Full TCP command channel over TLS — tune, change modes, all controls work
+- Full TCP command channel over TLS — tune, change modes, all controls work remotely
 - UDP streaming (FFT, waterfall, audio) in progress
 
 ### Connectivity
 - Auto-discovery of radios on the local network (UDP broadcast)
 - Manual connection for routed networks (cross-subnet, VLANs)
+- Saved routed radios auto-probe and reconnect on launch
 - SmartLink for internet remote access
 - Auto-reconnect on connection loss
 - Auto-connect to last used radio on launch
 
+### Audio
+- Radio audio outputs: line out gain/mute, headphone gain/mute, front speaker mute
+- PC audio input/output device selection with live switching
+- Full settings in Radio Setup → Audio tab
+
 ### Radio Setup
 - Full settings dialog (9 tabs): Radio, Network, GPS, Audio, TX, Phone/CW, RX, Filters, XVTR
-- Audio tab: line out gain/mute, headphone gain/mute, front speaker mute, PC audio device selection
 - Per-band TX settings: RF power, tune power, PTT inhibit, interlock routing
 - TX profile management
 - XVTR transverter configuration
 - Network diagnostics, memory channels, spot settings
 
 ### General
-- Dynamic mode list from radio (supports FDVU, FDVM, and future modes)
 - Click-to-tune and scroll-wheel tuning on spectrum
+- Right-click context menu on spectrum and waterfall
 - Multi-Flex support (independent operation alongside SmartSDR/Maestro)
 - XML settings persistence (SSDR-compatible format)
 - Persistent window layout and display preferences
 - Cross-platform: Linux (primary), macOS, Windows
 - Desktop integration (`.desktop` file, icon, `cmake --install`, AUR package)
 - PC audio TX via DAX stream (mic TX also supported)
+- Security hardened: redacted logs, restricted file permissions
 
 ---
 
