@@ -58,6 +58,7 @@ set_target_properties(opus PROPERTIES
 
 else(APPLE AND BUILD_OSX_UNIVERSAL)
 ExternalProject_Add(build_opus
+    DOWNLOAD_EXTRACT_TIMESTAMP NO
     BUILD_IN_SOURCE 1
     PATCH_COMMAND sh -c "patch dnn/nnet.h < ${RADE_DIR}/src/opus-nnet.h.diff"
     CONFIGURE_COMMAND ${CONFIGURE_COMMAND}

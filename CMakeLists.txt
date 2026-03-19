@@ -60,6 +60,10 @@ endif()
 set(RADE_DIR ${CMAKE_SOURCE_DIR}/third_party/radae)
 option(ENABLE_RADE "Build with RADE digital voice support (downloads Opus at configure time)" ON)
 if(ENABLE_RADE AND EXISTS "${RADE_DIR}/src/rade_api.h")
+    # macOS universal binary: build Opus for both architectures
+    if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64.*arm64|arm64.*x86_64")
+        set(BUILD_OSX_UNIVERSAL ON)
+    endif()
     include(${RADE_DIR}/cmake/BuildOpus.cmake)
     set(RADE_SOURCES
         ${RADE_DIR}/src/rade_api_nopy.c
