@@ -37,7 +37,7 @@ jobs:
             gstreamer1.0-pulseaudio gstreamer1.0-gl \
             libgstreamer-gl1.0-0 libgstreamer-plugins-base1.0-0 \
             libfuse2 file desktop-file-utils imagemagick \
-            python3-pip
+            python3-pip autoconf automake libtool
 
       - name: Install system Qt (ARM only)
         if: matrix.use_aqt == false
@@ -66,6 +66,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
             $CMAKE_EXTRA
+
+      - name: Build Opus (RADE dependency)
+        run: cmake --build build --target build_opus -j$(nproc)
 
       - name: Build
         run: cmake --build build -j$(nproc)
