@@ -65,6 +65,7 @@ ExternalProject_Add(build_opus
     BUILD_COMMAND make -j4
     INSTALL_COMMAND ""
     URL ${OPUS_URL}
+    BUILD_BYPRODUCTS <BINARY_DIR>/.libs/libopus${CMAKE_STATIC_LIBRARY_SUFFIX}
 )
 
 ExternalProject_Get_Property(build_opus BINARY_DIR)
