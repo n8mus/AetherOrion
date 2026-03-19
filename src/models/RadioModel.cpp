@@ -402,19 +402,23 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                         }
 
                         // Request a remote audio RX stream (uncompressed).
-                        // The radio creates an ExtDataWithStream VITA-49 stream
-                        // (PCC 0x03E3, float32 stereo big-endian) and sends it
-                        // to our registered UDP port.
-                        sendCmd(
-                            "stream create type=remote_audio_rx compression=none",
-                            [this](int code, const QString& body) {
-                                if (code == 0) {
-                                    m_rxAudioStreamId = body.trimmed();
-                                    qDebug() << "RadioModel: remote_audio_rx stream created, id:" << m_rxAudioStreamId;
-                                } else
-                                    qWarning() << "RadioModel: stream create remote_audio_rx failed, code"
-                                               << Qt::hex << code << "body:" << body;
-                            });
+                        // Only create remote_audio_rx if PC audio is enabled.
+                        // When disabled, audio plays through the radio's physical
+                        // outputs (line out, headphone, front speaker).
+                        if (AppSettings::instance().value("PcAudioEnabled", "True").toString() == "True") {
+                            sendCmd(
+                                "stream create type=remote_audio_rx compression=none",
+                                [this](int code, const QString& body) {
+                                    if (code == 0) {
+                                        m_rxAudioStreamId = body.trimmed();
+                                        qDebug() << "RadioModel: remote_audio_rx stream created, id:" << m_rxAudioStreamId;
+                                    } else
+                                        qWarning() << "RadioModel: stream create remote_audio_rx failed, code"
+                                                   << Qt::hex << code << "body:" << body;
+                                });
+                        } else {
+                            qDebug() << "RadioModel: PC audio disabled, skipping remote_audio_rx (using radio line out)";
+                        }
 
                         // Request DAX TX audio stream (PC mic → radio)
                         sendCmd(
@@ -719,6 +723,29 @@ void RadioModel::sendCommand(const QString& cmd)
 void RadioModel::sendCmdPublic(const QString& cmd, ResponseCallback cb)
 {
     sendCmd(cmd, cb);
+}
+
+void RadioModel::createRxAudioStream()
+{
+    if (!m_rxAudioStreamId.isEmpty()) return;  // already exists
+    sendCmd("stream create type=remote_audio_rx compression=none",
+        [this](int code, const QString& body) {
+            if (code == 0) {
+                m_rxAudioStreamId = body.trimmed();
+                qDebug() << "RadioModel: remote_audio_rx stream created, id:" << m_rxAudioStreamId;
+            } else {
+                qWarning() << "RadioModel: stream create remote_audio_rx failed, code"
+                           << Qt::hex << code << "body:" << body;
+            }
+        });
+}
+
+void RadioModel::removeRxAudioStream()
+{
+    if (m_rxAudioStreamId.isEmpty()) return;
+    sendCmd(QString("stream remove 0x%1").arg(m_rxAudioStreamId));
+    qDebug() << "RadioModel: removed remote_audio_rx stream" << m_rxAudioStreamId;
+    m_rxAudioStreamId.clear();
 }
 
 quint32 RadioModel::sendCmd(const QString& command, ResponseCallback cb)

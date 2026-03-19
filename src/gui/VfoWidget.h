@@ -45,6 +45,7 @@ Q_SIGNALS:
     void closeSliceRequested();
     void lockToggled(bool locked);
     void nr2Toggled(bool on);
+    void pcAudioToggled(bool on);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -99,6 +100,7 @@ private:
     QSlider* m_afGainSlider{nullptr};
     QSlider* m_panSlider{nullptr};
     QPushButton* m_muteBtn{nullptr};
+    QPushButton* m_pcAudioBtn{nullptr};
     QPushButton* m_sqlBtn{nullptr};
     QSlider* m_sqlSlider{nullptr};
     QComboBox* m_agcCmb{nullptr};

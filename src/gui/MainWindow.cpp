@@ -454,6 +454,18 @@ MainWindow::MainWindow(QWidget* parent)
         m_audio.setRxVolume(v / 100.0f);
     });
 
+    // ── PC Audio toggle: create/remove remote_audio_rx stream ───────────
+    connect(spectrum()->vfoWidget(), &VfoWidget::pcAudioToggled,
+            this, [this](bool on) {
+        if (on) {
+            m_radioModel.createRxAudioStream();
+            m_audio.startRxStream();
+        } else {
+            m_radioModel.removeRxAudioStream();
+            m_audio.stopRxStream();
+        }
+    });
+
     // ── Client-side NR2 toggle: VfoWidget → AudioEngine ─────────────────
     // On first enable, generate FFTW wisdom if needed (takes several minutes).
     connect(spectrum()->vfoWidget(), &VfoWidget::nr2Toggled,

@@ -228,6 +228,10 @@ public:
     // Send a raw command to the radio (for dialogs that need direct protocol access).
     void sendCommand(const QString& cmd);
 
+    // PC Audio: create/remove remote_audio_rx stream
+    void createRxAudioStream();
+    void removeRxAudioStream();
+
     // Send a command with a response callback (for firmware uploader, etc.)
     void sendCmdPublic(const QString& cmd, std::function<void(int code, const QString& body)> cb);
 
