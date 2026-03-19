@@ -113,6 +113,8 @@ static QByteArray upsample2x(const QByteArray& pcm24k)
 
 void AudioEngine::feedAudioData(const QByteArray& pcm)
 {
+    if (!m_audioSink) return;  // PC audio disabled
+
     auto writeAudio = [this](const QByteArray& data) {
         if (!m_audioDevice || !m_audioDevice->isOpen()) return;
         if (m_resampleTo48k)

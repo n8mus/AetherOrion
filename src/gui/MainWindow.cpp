@@ -457,12 +457,13 @@ MainWindow::MainWindow(QWidget* parent)
     // ── PC Audio toggle: create/remove remote_audio_rx stream ───────────
     connect(spectrum()->vfoWidget(), &VfoWidget::pcAudioToggled,
             this, [this](bool on) {
+        if (!m_radioModel.isConnected()) return;
         if (on) {
-            m_radioModel.createRxAudioStream();
-            m_audio.startRxStream();
+            if (m_audio.startRxStream())
+                m_radioModel.createRxAudioStream();
         } else {
-            m_radioModel.removeRxAudioStream();
             m_audio.stopRxStream();
+            m_radioModel.removeRxAudioStream();
         }
     });
 
