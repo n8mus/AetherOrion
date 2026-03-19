@@ -44,13 +44,10 @@ jobs:
 
       - name: Configure (universal binary)
         run: |
-          cmake -B build -G Ninja \
+          cmake -B build -G "Unix Makefiles" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET="11.0"
-
-      - name: Build Opus (RADE dependency)
-        run: cmake --build build --target libopus.a -j$(sysctl -n hw.ncpu)
 
       - name: Build
         run: cmake --build build -j$(sysctl -n hw.ncpu)
