@@ -23,6 +23,9 @@ class ConnectionPanel;
 class SpectrumWidget;
 class PanadapterApplet;
 class AppletPanel;
+#ifdef HAVE_RADE
+class RADEEngine;
+#endif
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
@@ -108,6 +111,12 @@ private:
     bool m_useSystemClock{true};     // true when no GPS installed
     bool m_userDisconnected{false};  // true after explicit disconnect, blocks auto-connect
     bool m_displaySettingsPushed{false};  // one-shot: push saved display settings after pan created
+
+#ifdef HAVE_RADE
+    RADEEngine* m_radeEngine{nullptr};
+    void activateRADE();
+    void deactivateRADE();
+#endif
 };
 
 } // namespace AetherSDR

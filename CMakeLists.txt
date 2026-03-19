@@ -55,6 +55,19 @@ else()
     endif()
 endif()
 
+# RADE (Radio Autoencoder) — optional FreeDV digital voice codec
+# Install radae_nopy from https://github.com/drowe67/radae_nopy
+find_library(RADE_LIB NAMES rade)
+find_path(RADE_INC rade_api.h)
+if(RADE_LIB AND RADE_INC)
+    set(RADE_FOUND TRUE)
+    set(RADE_INCLUDE_DIRS "${RADE_INC}")
+    message(STATUS "RADE found: ${RADE_LIB}")
+else()
+    set(RADE_FOUND FALSE)
+    message(STATUS "RADE not found. FreeDV digital voice disabled.")
+endif()
+
 # Sources
 set(CORE_SOURCES
     src/core/AppSettings.cpp
@@ -73,6 +86,7 @@ set(CORE_SOURCES
     src/core/FirmwareStager.cpp
     src/core/RNNoiseFilter.cpp
     src/core/CwDecoder.cpp
+    src/core/RADEEngine.cpp
 )
 
 set(MODEL_SOURCES
@@ -247,6 +261,12 @@ if(FFTW3_FOUND)
             COMMENT "Copying libfftw3-3.dll to build directory"
         )
     endif()
+endif()
+
+if(RADE_FOUND)
+    target_compile_definitions(AetherSDR PRIVATE HAVE_RADE)
+    target_include_directories(AetherSDR PRIVATE ${RADE_INCLUDE_DIRS})
+    target_link_libraries(AetherSDR PRIVATE ${RADE_LIB})
 endif()
 
 # Pass project version to code

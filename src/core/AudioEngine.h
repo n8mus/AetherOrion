@@ -60,6 +60,16 @@ public:
     void setMuted(bool m);
     bool isTxStreaming() const { return m_audioSource != nullptr; }
 
+    // RADE digital voice mode
+    void setRadeMode(bool on);
+    bool isRadeMode() const { return m_radeMode; }
+
+    // Sends RADE modem output (float32 PCM) as VITA-49 packets via m_txSocket
+    void sendModemTxAudio(const QByteArray& float32pcm);
+
+    // Plays RADE decoded speech (int16 stereo 24kHz) bypassing m_radeMode block
+    void feedDecodedSpeech(const QByteArray& pcm);
+
     // Client-side NR2 (spectral noise reduction)
     void setNr2Enabled(bool on);
     bool nr2Enabled() const { return m_nr2Enabled; }
@@ -90,6 +100,7 @@ signals:
     void levelChanged(float rms);  // audio level for VU meter, 0.0–1.0
     void nr2EnabledChanged(bool on);
     void rn2EnabledChanged(bool on);
+    void txRawPcmReady(const QByteArray& pcm);  // raw 24kHz stereo int16 PCM for RADEEngine
 
 private slots:
     void onTxAudioReady();
@@ -113,6 +124,8 @@ private:
     quint32       m_txStreamId{0};
     quint8        m_txPacketCount{0};    // 4-bit, mod 16
     QByteArray    m_txAccumulator;       // accumulate PCM until 128 stereo pairs
+    QByteArray    m_txFloatAccumulator;  // accumulate float32 PCM for RADE modem TX
+    bool          m_radeMode{false};     // RADE digital voice mode active
 
     QAudioDevice m_outputDevice;
     QAudioDevice m_inputDevice;

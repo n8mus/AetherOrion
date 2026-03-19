@@ -48,6 +48,9 @@ Q_SIGNALS:
     void nr2Toggled(bool on);
     void rn2Toggled(bool on);
     void pcAudioToggled(bool on);
+#ifdef HAVE_RADE
+    void radeActivated(bool on);
+#endif
 
 protected:
     void paintEvent(QPaintEvent* event) override;
