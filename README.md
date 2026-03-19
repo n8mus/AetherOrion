@@ -13,7 +13,7 @@
 
 AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
 
-**Current version: 0.4.12** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+**Current version: 0.4.13** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
 
 > **Cross-platform downloads available:** Linux AppImage, macOS universal DMG, and Windows ZIP.
 > Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
@@ -65,6 +65,7 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - **RN2 neural noise suppression** — Mozilla/Xiph RNNoise deep-learning denoiser, bundled (no external dependency)
 - FFTW3 optimized FFTs with automatic radix-2 fallback and background wisdom generation
 - DSP level sliders (0-100) for all supported features
+- **CW decoder** — real-time Morse decode using ggmorse, auto-detects pitch and speed, confidence-colored text (green/yellow/orange/red)
 - Mode-specific controls (CW pitch-centered filters, RTTY mark/shift, DIG offset, FM duplex)
 - RIT / XIT with step buttons
 - Per-mode filter presets and tuning step sizes

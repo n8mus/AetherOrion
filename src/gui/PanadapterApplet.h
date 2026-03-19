@@ -3,6 +3,7 @@
 #include <QWidget>
 
 class QLabel;
+class QTextEdit;
 
 namespace AetherSDR {
 
@@ -23,11 +24,22 @@ public:
     // Set the slice ID (0=A, 1=B, 2=C, 3=D) shown in the title bar.
     void setSliceId(int id);
 
+    // CW decode panel
+    void setCwPanelVisible(bool visible);
+    void appendCwText(const QString& text, float cost = 0.0f);
+    void setCwStats(float pitchHz, float speedWpm);
+    void clearCwText();
+
     QSize sizeHint() const override { return {800, 316}; }
 
 private:
     SpectrumWidget* m_spectrum{nullptr};
     QLabel*         m_titleLabel{nullptr};
+
+    // CW decode
+    QWidget*   m_cwPanel{nullptr};
+    QTextEdit* m_cwText{nullptr};
+    QLabel*    m_cwStatsLabel{nullptr};
 };
 
 } // namespace AetherSDR

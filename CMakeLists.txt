@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(AetherSDR VERSION 0.4.12 LANGUAGES C CXX)
+project(AetherSDR VERSION 0.4.13 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -72,6 +72,7 @@ set(CORE_SOURCES
     src/core/FirmwareUploader.cpp
     src/core/FirmwareStager.cpp
     src/core/RNNoiseFilter.cpp
+    src/core/CwDecoder.cpp
 )
 
 set(MODEL_SOURCES
@@ -176,9 +177,24 @@ else()
     )
 endif()
 
+# Bundled ggmorse (MIT) — CW Morse code decoder
+set(GGMORSE_DIR ${CMAKE_SOURCE_DIR}/third_party/ggmorse)
+set(GGMORSE_SOURCES
+    ${GGMORSE_DIR}/src/ggmorse.cpp
+    ${GGMORSE_DIR}/src/resampler.cpp
+)
+set_source_files_properties(${GGMORSE_SOURCES} PROPERTIES
+    INCLUDE_DIRECTORIES "${GGMORSE_DIR}/include;${GGMORSE_DIR}/src"
+)
+if(MSVC)
+    set_source_files_properties(${GGMORSE_SOURCES} PROPERTIES COMPILE_FLAGS "/w")
+else()
+    set_source_files_properties(${GGMORSE_SOURCES} PROPERTIES COMPILE_FLAGS "-w")
+endif()
+
 qt_add_resources(RESOURCES resources.qrc)
 
-add_executable(AetherSDR ${ALL_SOURCES} ${RNNOISE_SOURCES} ${RESOURCES})
+add_executable(AetherSDR ${ALL_SOURCES} ${RNNOISE_SOURCES} ${GGMORSE_SOURCES} ${RESOURCES})
 
 # macOS app bundle
 if(APPLE)
@@ -202,6 +218,7 @@ target_include_directories(AetherSDR PRIVATE
     src/
     ${RNNOISE_DIR}/include
     ${RNNOISE_DIR}/src
+    ${GGMORSE_DIR}/include
 )
 
 target_link_libraries(AetherSDR PRIVATE

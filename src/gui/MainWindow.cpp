@@ -446,6 +446,14 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_radioModel.panStream(), &PanadapterStream::audioDataReady,
             &m_audio, &AudioEngine::feedAudioData);
 
+    // ── CW decoder: feed audio + display decoded text ─────────────────────
+    connect(m_radioModel.panStream(), &PanadapterStream::audioDataReady,
+            &m_cwDecoder, &CwDecoder::feedAudio);
+    connect(&m_cwDecoder, &CwDecoder::textDecoded,
+            m_panApplet, &PanadapterApplet::appendCwText);
+    connect(&m_cwDecoder, &CwDecoder::statsUpdated,
+            m_panApplet, &PanadapterApplet::setCwStats);
+
     // ── AF gain from applet panel → audio engine ──────────────────────────
     connect(m_appletPanel->rxApplet(), &RxApplet::afGainChanged, this, [this](int v) {
         m_audio.setRxVolume(v / 100.0f);
@@ -1227,6 +1235,16 @@ void MainWindow::onSliceAdded(SliceModel* s)
     connect(s, &SliceModel::modeChanged, this, [this, s](const QString& mode) {
         if (s->sliceId() == m_activeSliceId)
             updateFilterLimitsForMode(mode);
+
+        // Show/hide CW decode panel and start/stop decoder
+        if (s->sliceId() == m_activeSliceId) {
+            bool isCw = (mode == "CW" || mode == "CWL");
+            m_panApplet->setCwPanelVisible(isCw);
+            if (isCw && !m_cwDecoder.isRunning())
+                m_cwDecoder.start();
+            else if (!isCw && m_cwDecoder.isRunning())
+                m_cwDecoder.stop();
+        }
     });
 }
 
@@ -1287,6 +1305,14 @@ void MainWindow::setActiveSlice(int sliceId)
 
     // Update filter limits for the active slice's mode
     updateFilterLimitsForMode(s->mode());
+
+    // Show/hide CW decode panel for the active slice's current mode
+    bool isCw = (s->mode() == "CW" || s->mode() == "CWL");
+    m_panApplet->setCwPanelVisible(isCw);
+    if (isCw && !m_cwDecoder.isRunning())
+        m_cwDecoder.start();
+    else if (!isCw && m_cwDecoder.isRunning())
+        m_cwDecoder.stop();
 
     // Detect band from frequency
     if (m_bandSettings.currentBand().isEmpty())

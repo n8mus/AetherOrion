@@ -5,6 +5,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QTextEdit>
 
 namespace AetherSDR {
 
@@ -51,6 +52,57 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     // ── Spectrum widget (FFT + waterfall) ────────────────────────────────
     m_spectrum = new SpectrumWidget(this);
     layout->addWidget(m_spectrum, 1);
+
+    // ── CW decode panel (hidden by default, shown in CW mode) ─────────
+    m_cwPanel = new QWidget(this);
+    m_cwPanel->setFixedHeight(80);
+    m_cwPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_cwPanel->setStyleSheet("QWidget { background: #0a0a14; border-top: 1px solid #203040; }");
+
+    auto* cwLayout = new QVBoxLayout(m_cwPanel);
+    cwLayout->setContentsMargins(4, 2, 4, 2);
+    cwLayout->setSpacing(1);
+
+    // Stats bar: pitch, speed, clear button
+    auto* cwBar = new QHBoxLayout;
+    cwBar->setSpacing(6);
+    auto* cwTitle = new QLabel("CW");
+    cwTitle->setStyleSheet("QLabel { color: #00b4d8; font-size: 10px; font-weight: bold; background: transparent; }");
+    cwBar->addWidget(cwTitle);
+
+    m_cwStatsLabel = new QLabel;
+    m_cwStatsLabel->setStyleSheet("QLabel { color: #6a8090; font-size: 10px; background: transparent; }");
+    cwBar->addWidget(m_cwStatsLabel);
+    cwBar->addStretch();
+
+    auto* clearBtn = new QPushButton("CLR");
+    clearBtn->setStyleSheet(
+        "QPushButton { background: #1a2a3a; color: #8090a0; border: 1px solid #203040;"
+        " border-radius: 2px; font-size: 9px; font-weight: bold;"
+        " padding: 1px 6px; }"
+        "QPushButton:hover { color: #c8d8e8; background: #2a3a4a; }");
+    connect(clearBtn, &QPushButton::clicked, this, &PanadapterApplet::clearCwText);
+    cwBar->addWidget(clearBtn);
+
+    cwLayout->addLayout(cwBar);
+
+    // Text area
+    m_cwText = new QTextEdit;
+    m_cwText->setReadOnly(true);
+    m_cwText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_cwText->setStyleSheet(
+        "QTextEdit { background: #0a0a14; color: #00ff88; border: none;"
+        " font-family: monospace; font-size: 13px; font-weight: bold; }"
+        "QScrollBar:vertical { width: 6px; background: #0a0a14; }"
+        "QScrollBar::handle:vertical { background: #304050; border-radius: 3px; }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }");
+    m_cwText->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_cwText->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_cwText->setWordWrapMode(QTextOption::WrapAnywhere);
+    cwLayout->addWidget(m_cwText);
+
+    m_cwPanel->hide();
+    layout->addWidget(m_cwPanel);
 }
 
 void PanadapterApplet::setSliceId(int id)
@@ -58,6 +110,46 @@ void PanadapterApplet::setSliceId(int id)
     const char letters[] = "ABCD";
     const char letter = (id >= 0 && id < 4) ? letters[id] : '?';
     m_titleLabel->setText(QString("Slice %1").arg(letter));
+}
+
+void PanadapterApplet::setCwPanelVisible(bool visible)
+{
+    m_cwPanel->setVisible(visible);
+}
+
+void PanadapterApplet::appendCwText(const QString& text, float cost)
+{
+    // Strip newlines — ggmorse inserts them on pitch changes, but we want
+    // continuous flowing text. Replace with space to preserve word boundaries.
+    QString clean = text;
+    clean.replace('\n', ' ');
+
+    // Color by confidence: lower cost = higher confidence
+    //   < 0.15  green   (high confidence)
+    //   < 0.35  yellow  (medium)
+    //   < 0.60  orange  (meh)
+    //   >= 0.60 red     (low confidence)
+    QString color;
+    if (cost < 0.15f)      color = "#00ff88";
+    else if (cost < 0.35f) color = "#e0e040";
+    else if (cost < 0.60f) color = "#ff9020";
+    else                   color = "#ff4040";
+
+    m_cwText->moveCursor(QTextCursor::End);
+    m_cwText->insertHtml(QString("<span style=\"color:%1\">%2</span>")
+        .arg(color, clean.toHtmlEscaped()));
+    m_cwText->moveCursor(QTextCursor::End);
+}
+
+void PanadapterApplet::setCwStats(float pitchHz, float speedWpm)
+{
+    if (pitchHz > 0 && speedWpm > 0)
+        m_cwStatsLabel->setText(QString("%1 Hz  %2 WPM").arg(pitchHz, 0, 'f', 0).arg(speedWpm, 0, 'f', 0));
+}
+
+void PanadapterApplet::clearCwText()
+{
+    m_cwText->clear();
 }
 
 } // namespace AetherSDR

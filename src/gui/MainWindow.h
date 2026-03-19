@@ -9,6 +9,7 @@
 #include "core/RigctlPty.h"
 #include "core/SmartLinkClient.h"
 #include "core/WanConnection.h"
+#include "core/CwDecoder.h"
 
 #include <QMainWindow>
 #include <QSplitter>
@@ -67,6 +68,7 @@ private:
     SmartLinkClient   m_smartLink;
     WanConnection     m_wanConnection;
     AntennaGeniusModel m_antennaGenius;
+    CwDecoder         m_cwDecoder;
 
     // GUI — left sidebar
     ConnectionPanel* m_connPanel{nullptr};
