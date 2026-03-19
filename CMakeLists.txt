@@ -297,7 +297,6 @@ if(RADE_FOUND)
     target_compile_definitions(AetherSDR PRIVATE HAVE_RADE)
     target_include_directories(AetherSDR PRIVATE ${RADE_DIR}/src)
     target_link_libraries(AetherSDR PRIVATE opus m)
-    add_dependencies(AetherSDR build_opus)
 endif()
 
 # Pass project version to code
