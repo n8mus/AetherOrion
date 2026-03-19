@@ -415,6 +415,10 @@ and panadapter. The radio assigns these to our `client_handle`.
   NB/NR/ANF, RIT/XIT, tuning step stepper, tune lock
 - Frequency dial: click, scroll, keyboard, direct entry
 - Spectrum: click-to-tune, scroll-to-tune, filter passband overlay
+- Multi-slice support: color-coded markers, independent TX assignment,
+  clickable slice badges, +RX button, close/lock buttons, off-screen indicators
+- ARRL band plan overlay on FFT (color-coded CW/DATA/PHONE with license classes)
+- Spot frequency markers with hover tooltips
 - AppletPanel: toggle-button row (ANLG, RX, TUNE, TX, PHNE, P/CW, EQ)
 - Tuner applet (4o3a TGXL): Fwd Power/SWR gauges, C1/L/C2 relay bars,
   TUNE (autotune) and OPERATE/BYPASS/STANDBY buttons
@@ -434,21 +438,40 @@ and panadapter. The radio assigns these to our `client_handle`.
 - EqualizerModel: TX/RX EQ state, parses `eq txsc`/`eq rxsc` status, emits commands
 - HGauge shared header: reusable horizontal gauge widget with three-zone fill,
   peak-hold markers, and reversed fill mode
+- **NR2 spectral noise reduction**: Ephraim-Malah MMSE-LSA with OSMS floor tracking,
+  FFTW3 optimized with background wisdom generation + radix-2 fallback
+- **RN2 neural noise suppression**: Mozilla/Xiph RNNoise bundled, AVX2/SSE4.1/generic
+  runtime dispatch, r8brain-free-src polyphase resampling (24k↔48k)
+- **CW decoder**: real-time Morse decode via ggmorse, auto pitch/speed detection,
+  confidence-colored text (green/yellow/orange/red), auto-show in CW mode
+- **RADE digital voice**: FreeDV Radio Autoencoder (bundled with auto-downloaded Opus),
+  client-side neural encoder/decoder, DIGU/DIGL passthrough, sync/SNR signals
+- **r8brain-free-src resampling**: professional polyphase resampler replacing all
+  hand-rolled sample rate conversion (AudioEngine, RNNoiseFilter, RADEEngine)
+- PC audio toggle button (radio line out vs PC speakers)
+- Audio TX (mic → VITA-49 float32 stereo, PC audio TX via DAX)
+- 48kHz audio fallback for devices that don't support 24kHz
+- TNF management: add/drag/right-click/width/depth, permanent vs temporary
+- CAT control: 4-channel rigctld TCP + PTY virtual serial ports
+- FM duplex: CTCSS, repeater offset, REV toggle
+- XVTR transverter band support with context-aware frequency entry
+- SmartLink remote operation (beta): Auth0 login, TLS command channel
+- Multi-Flex support (independent operation alongside SmartSDR/Maestro)
+- Firmware upload from Linux (.ssdr files)
+- Radio setup dialog (9 tabs): Radio, Network, GPS, Audio, TX, Phone/CW, RX, Filters, XVTR
+- VFO widget: mode-aware passband positioning (flips side for LSB/DIGL/CWL)
 - TX button (sends `xmit 1` / `xmit 0`)
-- Persistent window geometry
+- Persistent window geometry and display settings
 
 ## What's NOT Yet Implemented
 
-- Slice filter passband shading on spectrum
-- Multi-slice support (slice tabs or overlaid markers)
-- Audio TX (microphone → radio, full VITA-49 framing)
+- RADE status indicator in VFO widget (sync/SNR display, #88)
+- RADE on Windows (#87)
 - Band stacking / band map
 - CW keyer / memories
-- Full meter display (SWR, ALC, power, etc. — MeterModel has the data)
-- Meter scaling review across all gauges (S-meter, TX power, mic level, compression)
-- DAX / CAT interface
+- DAX PipeWire virtual devices for digital mode apps
 - Spot / DX cluster integration
 - Memory channels
 - Macro / voice keyer
-- Network audio (Opus compression)
-- TNF (tracking notch filter) management
+- SmartLink UDP streaming (FFT, waterfall, audio over WAN)
+- Keyboard shortcuts and hotkeys
