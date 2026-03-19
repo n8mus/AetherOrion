@@ -368,13 +368,20 @@ void RxApplet::buildUI()
         m_modeCombo = new QComboBox;
         m_modeCombo->setFixedHeight(20);
         m_modeCombo->addItems({"USB", "LSB", "CW", "AM", "SAM", "FM",
-                               "NFM", "DFM", "DIGU", "DIGL", "RTTY"});
+                               "NFM", "DFM", "DIGU", "DIGL", "RTTY", "RADE"});
         AetherSDR::applyComboStyle(m_modeCombo);
         m_modeCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
         connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, [this](int) {
             if (m_modeCombo->signalsBlocked()) return;
-            if (m_slice) m_slice->setMode(m_modeCombo->currentText());
+            QString mode = m_modeCombo->currentText();
+            if (mode == "RADE") {
+                emit radeActivated(true);
+                return;
+            }
+            // If switching away from RADE, deactivate it
+            emit radeActivated(false);
+            if (m_slice) m_slice->setMode(mode);
         });
         m_freqRow->addWidget(m_modeCombo);
 
@@ -1192,6 +1199,8 @@ void RxApplet::connectSlice(SliceModel* s)
         QString cur = m_modeCombo->currentText();
         m_modeCombo->clear();
         m_modeCombo->addItems(modes);
+        if (m_modeCombo->findText("RADE") < 0)
+            m_modeCombo->addItem("RADE");
         int idx = m_modeCombo->findText(cur);
         if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
     });
@@ -1200,6 +1209,8 @@ void RxApplet::connectSlice(SliceModel* s)
         QString cur = m_modeCombo->currentText();
         m_modeCombo->clear();
         m_modeCombo->addItems(s->modeList());
+        if (m_modeCombo->findText("RADE") < 0)
+            m_modeCombo->addItem("RADE");
         int idx = m_modeCombo->findText(cur);
         if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
     }

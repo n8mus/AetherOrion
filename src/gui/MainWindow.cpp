@@ -43,6 +43,9 @@
 #include <QProgressDialog>
 #include <QThread>
 #include "core/AppSettings.h"
+#ifdef HAVE_RADE
+#include "core/RADEEngine.h"
+#endif
 #include <QDebug>
 
 namespace AetherSDR {
@@ -220,6 +223,12 @@ MainWindow::MainWindow(QWidget* parent)
         spectrum()->setTransmitting(tx);
         // On RX resume, native tiles will restart and m_hasNativeWaterfall
         // will be set again by the first arriving tile.
+#ifdef HAVE_RADE
+        if (m_audio.isRadeMode()) {
+            if (!tx && m_radeEngine && m_radeEngine->isActive())
+                m_radeEngine->resetTx();
+        }
+#endif
     });
 
     // ── Panadapter stream → spectrum widget ───────────────────────────────
@@ -605,6 +614,13 @@ MainWindow::MainWindow(QWidget* parent)
             this, [this](bool on) {
         m_audio.setRn2Enabled(on);
     });
+
+#ifdef HAVE_RADE
+    connect(m_appletPanel->rxApplet(), &RxApplet::radeActivated,
+            this, [this](bool on) { if (on) activateRADE(); else deactivateRADE(); });
+    connect(spectrum()->vfoWidget(), &VfoWidget::radeActivated,
+            this, [this](bool on) { if (on) activateRADE(); else deactivateRADE(); });
+#endif
 
     // ── Tuning step size → spectrum widget ─────────────────────────────────
     connect(m_appletPanel->rxApplet(), &RxApplet::stepSizeChanged,
@@ -1390,5 +1406,72 @@ void MainWindow::onFrequencyChanged(double mhz)
             s->setFrequency(mhz);
     }
 }
+
+#ifdef HAVE_RADE
+void MainWindow::activateRADE()
+{
+    auto* s = activeSlice();
+    if (!s) return;
+
+    // Set radio mode to DIGU/DIGL (passthrough for OFDM modem)
+    double freqMhz = s->frequency();
+    QString mode = (freqMhz < 10.0) ? "DIGL" : "DIGU";
+    s->setMode(mode);
+    s->setFilterLow(0);
+    s->setFilterHigh(3500);
+
+    // Create and start RADE engine
+    if (!m_radeEngine) {
+        m_radeEngine = new RADEEngine(this);
+    }
+    if (!m_radeEngine->start()) {
+        qWarning() << "MainWindow: failed to start RADE engine";
+        return;
+    }
+
+    m_audio.setRadeMode(true);
+
+    // TX path: mic -> RADEEngine -> sendModemTxAudio
+    connect(&m_audio, &AudioEngine::txRawPcmReady,
+            m_radeEngine, &RADEEngine::feedTxAudio);
+    connect(m_radeEngine, &RADEEngine::txModemReady,
+            this, [this](const QByteArray& pcm) {
+        m_audio.sendModemTxAudio(pcm);
+    });
+
+    // RX path: DAX RX audio -> RADEEngine -> decoded speech -> speaker
+    connect(m_radioModel.panStream(), &PanadapterStream::daxAudioReady,
+            m_radeEngine, &RADEEngine::feedRxAudio);
+    connect(m_radeEngine, &RADEEngine::rxSpeechReady,
+            &m_audio, &AudioEngine::feedDecodedSpeech);
+
+    // Start mic capture if not already running
+    if (!m_audio.isTxStreaming()) {
+        m_audio.startTxStream(
+            m_radioModel.connection()->radioAddress(), 4991);
+    }
+
+    qInfo() << "MainWindow: RADE mode activated";
+}
+
+void MainWindow::deactivateRADE()
+{
+    m_audio.setRadeMode(false);
+
+    if (m_radeEngine) {
+        disconnect(&m_audio, &AudioEngine::txRawPcmReady,
+                   m_radeEngine, nullptr);
+        disconnect(m_radeEngine, &RADEEngine::txModemReady,
+                   this, nullptr);
+        disconnect(m_radioModel.panStream(), &PanadapterStream::daxAudioReady,
+                   m_radeEngine, nullptr);
+        disconnect(m_radeEngine, &RADEEngine::rxSpeechReady,
+                   &m_audio, nullptr);
+        m_radeEngine->stop();
+    }
+
+    qInfo() << "MainWindow: RADE mode deactivated";
+}
+#endif
 
 } // namespace AetherSDR

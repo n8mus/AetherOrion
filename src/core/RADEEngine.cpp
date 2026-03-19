@@ -1,0 +1,381 @@
+#include "RADEEngine.h"
+#include <QDebug>
+#include <cmath>
+#include <cstring>
+
+#ifdef HAVE_RADE
+extern "C" {
+#include "rade_api.h"
+#include "lpcnet.h"
+#include "fargan.h"
+}
+#endif
+
+namespace AetherSDR {
+
+RADEEngine::RADEEngine(QObject* parent)
+    : QObject(parent)
+{}
+
+RADEEngine::~RADEEngine()
+{
+    stop();
+}
+
+bool RADEEngine::start()
+{
+#ifdef HAVE_RADE
+    if (m_rade) return true;  // already running
+
+    rade_initialize();
+
+    m_rade = rade_open(const_cast<char*>("dummy"),
+                       RADE_USE_C_ENCODER | RADE_USE_C_DECODER | RADE_VERBOSE_0);
+    if (!m_rade) {
+        qWarning() << "RADEEngine: rade_open() failed";
+        rade_finalize();
+        return false;
+    }
+
+    // TX: LPCNet feature extractor (speech → features)
+    m_lpcnetEnc = lpcnet_encoder_create();
+    if (!m_lpcnetEnc) {
+        qWarning() << "RADEEngine: lpcnet_encoder_create() failed";
+        rade_close(m_rade); m_rade = nullptr;
+        rade_finalize();
+        return false;
+    }
+
+    // RX: FARGAN vocoder (features → speech)
+    auto* fargan = new FARGANState;
+    fargan_init(fargan);
+    m_fargan = fargan;
+    m_farganWarmedUp = false;
+
+    m_txFeatAccum.clear();
+    m_txFrameCount = 0;
+    m_rxAccum.clear();
+    m_synced = false;
+
+    int n_features = rade_n_features_in_out(m_rade);
+    int n_tx_out = rade_n_tx_out(m_rade);
+    int nin = rade_nin(m_rade);
+    qInfo() << "RADEEngine: started — n_features=" << n_features
+            << "n_tx_out=" << n_tx_out << "nin=" << nin;
+    return true;
+#else
+    qWarning() << "RADEEngine: built without RADE support (HAVE_RADE not defined)";
+    return false;
+#endif
+}
+
+void RADEEngine::stop()
+{
+#ifdef HAVE_RADE
+    if (!m_rade) return;
+
+    if (m_lpcnetEnc) {
+        lpcnet_encoder_destroy(m_lpcnetEnc);
+        m_lpcnetEnc = nullptr;
+    }
+    if (m_fargan) {
+        delete static_cast<FARGANState*>(m_fargan);
+        m_fargan = nullptr;
+    }
+
+    rade_close(m_rade);
+    m_rade = nullptr;
+    rade_finalize();
+
+    m_txFeatAccum.clear();
+    m_txFrameCount = 0;
+    m_rxAccum.clear();
+    m_synced = false;
+    m_farganWarmedUp = false;
+
+    qInfo() << "RADEEngine: stopped";
+#endif
+}
+
+bool RADEEngine::isActive() const
+{
+#ifdef HAVE_RADE
+    return m_rade != nullptr;
+#else
+    return false;
+#endif
+}
+
+bool RADEEngine::isSynced() const
+{
+#ifdef HAVE_RADE
+    return m_synced;
+#else
+    return false;
+#endif
+}
+
+void RADEEngine::resetTx()
+{
+#ifdef HAVE_RADE
+    m_txFeatAccum.clear();
+    m_txFrameCount = 0;
+#endif
+}
+
+void RADEEngine::feedTxAudio(const QByteArray& pcm)
+{
+#ifdef HAVE_RADE
+    if (!m_rade || !m_lpcnetEnc) return;
+
+    // 1. Downsample 24kHz stereo → 16kHz mono for LPCNet
+    QByteArray mono16k = downsample24kTo16k(pcm);
+
+    // 2. Process 10ms frames (LPCNET_FRAME_SIZE = 160 samples @ 16kHz)
+    const auto* samples = reinterpret_cast<const int16_t*>(mono16k.constData());
+    int totalSamples = mono16k.size() / 2;
+    int pos = 0;
+
+    while (pos + LPCNET_FRAME_SIZE <= totalSamples) {
+        // Extract features for one 10ms frame
+        float features[NB_TOTAL_FEATURES];
+        // opus uses opus_int16 which is int16_t
+        lpcnet_compute_single_frame_features(
+            m_lpcnetEnc,
+            const_cast<int16_t*>(&samples[pos]),
+            features, 0 /*arch=auto*/);
+        pos += LPCNET_FRAME_SIZE;
+
+        // Accumulate features (RADE needs n_features_in features per call)
+        m_txFeatAccum.append(reinterpret_cast<const char*>(features),
+                             NB_TOTAL_FEATURES * sizeof(float));
+        m_txFrameCount++;
+
+        // RADE encoder needs 12 feature frames (120ms)
+        int n_features_in = rade_n_features_in_out(m_rade);
+        if (m_txFrameCount * NB_TOTAL_FEATURES >= n_features_in) {
+            int n_tx_out = rade_n_tx_out(m_rade);
+            RADE_COMP tx_out[n_tx_out];
+
+            rade_tx(m_rade, tx_out,
+                    reinterpret_cast<float*>(m_txFeatAccum.data()));
+
+            // 3. Convert RADE_COMP → 8kHz mono int16 (take real part)
+            QByteArray modem8k(n_tx_out * 2, Qt::Uninitialized);
+            auto* out = reinterpret_cast<int16_t*>(modem8k.data());
+            for (int i = 0; i < n_tx_out; ++i) {
+                float v = tx_out[i].real * 32768.0f;  // full scale (matches rade_modulate_wav)
+                out[i] = static_cast<int16_t>(
+                    std::clamp(v, -32767.0f, 32767.0f));
+            }
+
+            // 4. Upsample 8kHz mono → 24kHz stereo int16
+            QByteArray stereo24k = upsample8kTo24k(modem8k);
+
+            // 5. Convert int16 → float32 for feedDaxTxAudio
+            const auto* src = reinterpret_cast<const int16_t*>(stereo24k.constData());
+            int nSamples = stereo24k.size() / 2;
+            QByteArray float32pcm(nSamples * sizeof(float), Qt::Uninitialized);
+            auto* dst = reinterpret_cast<float*>(float32pcm.data());
+            for (int i = 0; i < nSamples; ++i)
+                dst[i] = src[i] / 32768.0f;
+
+            emit txModemReady(float32pcm);
+
+            m_txFeatAccum.clear();
+            m_txFrameCount = 0;
+        }
+    }
+#else
+    Q_UNUSED(pcm);
+#endif
+}
+
+void RADEEngine::feedRxAudio(int channel, const QByteArray& pcm)
+{
+#ifdef HAVE_RADE
+    if (!m_rade || !m_fargan) return;
+    if (channel != 1) return;  // only process DAX channel 1
+    auto* fargan = static_cast<FARGANState*>(m_fargan);
+
+    // 1. Downsample 24kHz stereo → 8kHz mono for RADE modem
+    QByteArray mono8k = downsample24kTo8k(pcm);
+
+    // 2. Convert int16 → RADE_COMP (real = sample/32768, imag = 0)
+    const auto* samples = reinterpret_cast<const int16_t*>(mono8k.constData());
+    int nSamples = mono8k.size() / 2;
+
+    // Append as RADE_COMP to accumulator
+    for (int i = 0; i < nSamples; ++i) {
+        RADE_COMP c;
+        c.real = samples[i] / 32768.0f;
+        c.imag = 0.0f;
+        m_rxAccum.append(reinterpret_cast<const char*>(&c), sizeof(RADE_COMP));
+    }
+
+    // 3. Process when we have enough samples
+    int nin = rade_nin(m_rade);
+    while (m_rxAccum.size() >= static_cast<int>(nin * sizeof(RADE_COMP))) {
+        int n_features_out = rade_n_features_in_out(m_rade);
+        float features_out[n_features_out];
+        int has_eoo = 0;
+        int n_eoo_bits = rade_n_eoo_bits(m_rade);
+        float eoo_out[n_eoo_bits];
+
+        auto* rx_in = reinterpret_cast<RADE_COMP*>(m_rxAccum.data());
+        int n_out = rade_rx(m_rade, features_out, &has_eoo, eoo_out, rx_in);
+
+        // Remove consumed samples
+        m_rxAccum.remove(0, nin * sizeof(RADE_COMP));
+
+        // Update sync status
+        bool synced = rade_sync(m_rade) != 0;
+        if (synced != m_synced) {
+            m_synced = synced;
+            emit syncChanged(synced);
+        }
+        if (synced) {
+            emit snrChanged(static_cast<float>(rade_snrdB_3k_est(m_rade)));
+        }
+
+        // 4. If features available, synthesize speech via FARGAN
+        if (n_out > 0) {
+            // FARGAN warmup: need initial features
+            if (!m_farganWarmedUp) {
+                // Feed zeros for warmup
+                float zeros[320] = {0};
+                float warmup_features[5 * NB_TOTAL_FEATURES] = {0};
+                // Copy first set of features for warmup
+                std::memcpy(warmup_features, features_out,
+                            NB_TOTAL_FEATURES * sizeof(float));
+                fargan_cont(fargan, zeros, warmup_features);
+                m_farganWarmedUp = true;
+            }
+
+            // Process features frame by frame (NB_TOTAL_FEATURES per frame)
+            int nFrames = n_out / NB_TOTAL_FEATURES;
+            QByteArray speech16k;
+            speech16k.reserve(nFrames * LPCNET_FRAME_SIZE * 2);
+
+            for (int f = 0; f < nFrames; ++f) {
+                float* feat = &features_out[f * NB_TOTAL_FEATURES];
+                // FARGAN uses only first NB_FEATURES (20) features
+                float fpcm[LPCNET_FRAME_SIZE];
+                fargan_synthesize(fargan, fpcm, feat);
+
+                // Convert float → int16
+                for (int i = 0; i < LPCNET_FRAME_SIZE; ++i) {
+                    float v = std::floor(0.5f + std::clamp(
+                        32768.0f * fpcm[i], -32767.0f, 32767.0f));
+                    int16_t s = static_cast<int16_t>(v);
+                    speech16k.append(reinterpret_cast<const char*>(&s), 2);
+                }
+            }
+
+            // 5. Upsample 16kHz mono → 24kHz stereo for speaker
+            if (!speech16k.isEmpty())
+                emit rxSpeechReady(upsample16kTo24k(speech16k));
+        }
+
+        nin = rade_nin(m_rade);
+    }
+#else
+    Q_UNUSED(channel); Q_UNUSED(pcm);
+#endif
+}
+
+// ── Resampling helpers ─────────────────────────────────────────────────────
+
+QByteArray RADEEngine::downsample24kTo8k(const QByteArray& stereo24k)
+{
+    // 24kHz stereo int16 → 8kHz mono int16 (3:1 decimation, left channel)
+    const auto* in = reinterpret_cast<const int16_t*>(stereo24k.constData());
+    int totalStereoSamples = stereo24k.size() / 2;
+    int totalFrames = totalStereoSamples / 2;  // stereo frames
+    int outFrames = totalFrames / 3;
+
+    QByteArray out(outFrames * 2, Qt::Uninitialized);
+    auto* dst = reinterpret_cast<int16_t*>(out.data());
+
+    for (int i = 0; i < outFrames; ++i) {
+        // Take every 3rd stereo frame, left channel only
+        dst[i] = in[i * 3 * 2];  // *2 for stereo, left channel
+    }
+    return out;
+}
+
+QByteArray RADEEngine::upsample8kTo24k(const QByteArray& mono8k)
+{
+    // 8kHz mono int16 → 24kHz stereo int16 (1:3 interpolation, duplicate to stereo)
+    const auto* in = reinterpret_cast<const int16_t*>(mono8k.constData());
+    int nSamples = mono8k.size() / 2;
+    int outSamples = nSamples * 3;
+
+    QByteArray out(outSamples * 2 * 2, Qt::Uninitialized);  // *2 for stereo, *2 for int16
+    auto* dst = reinterpret_cast<int16_t*>(out.data());
+
+    for (int i = 0; i < nSamples; ++i) {
+        int16_t s = in[i];
+        // Simple sample-and-hold interpolation (good enough for modem signal)
+        for (int j = 0; j < 3; ++j) {
+            int idx = (i * 3 + j) * 2;
+            dst[idx]     = s;  // left
+            dst[idx + 1] = s;  // right
+        }
+    }
+    return out;
+}
+
+QByteArray RADEEngine::downsample24kTo16k(const QByteArray& stereo24k)
+{
+    // 24kHz stereo int16 → 16kHz mono int16 (3:2 decimation)
+    // Take every 1.5th stereo frame = take 2 out of every 3
+    const auto* in = reinterpret_cast<const int16_t*>(stereo24k.constData());
+    int totalFrames = stereo24k.size() / 4;  // stereo frames (4 bytes each)
+    int outSamples = (totalFrames * 2) / 3;
+
+    QByteArray out(outSamples * 2, Qt::Uninitialized);
+    auto* dst = reinterpret_cast<int16_t*>(out.data());
+
+    int outIdx = 0;
+    for (int i = 0; i + 2 < totalFrames; i += 3) {
+        // From 3 input frames, produce 2 output samples
+        // Simple: take frame[0] and frame[1], skip frame[2]
+        if (outIdx < outSamples)
+            dst[outIdx++] = in[i * 2];       // frame 0, left channel
+        if (outIdx < outSamples)
+            dst[outIdx++] = in[(i + 1) * 2]; // frame 1, left channel
+    }
+    out.resize(outIdx * 2);
+    return out;
+}
+
+QByteArray RADEEngine::upsample16kTo24k(const QByteArray& mono16k)
+{
+    // 16kHz mono int16 → 24kHz stereo int16 (2:3 interpolation)
+    // From 2 input samples, produce 3 stereo frames
+    const auto* in = reinterpret_cast<const int16_t*>(mono16k.constData());
+    int nSamples = mono16k.size() / 2;
+    int outFrames = (nSamples * 3) / 2;
+
+    QByteArray out(outFrames * 4, Qt::Uninitialized);  // 4 bytes per stereo frame
+    auto* dst = reinterpret_cast<int16_t*>(out.data());
+
+    int outIdx = 0;
+    for (int i = 0; i + 1 < nSamples; i += 2) {
+        int16_t s0 = in[i];
+        int16_t s1 = in[i + 1];
+        int16_t mid = static_cast<int16_t>((s0 + s1) / 2);
+
+        // 2 input → 3 output frames (linear interpolation)
+        if (outIdx + 5 < outFrames * 2) {
+            dst[outIdx++] = s0;  dst[outIdx++] = s0;   // frame 0: L R
+            dst[outIdx++] = mid; dst[outIdx++] = mid;   // frame 1: L R
+            dst[outIdx++] = s1;  dst[outIdx++] = s1;    // frame 2: L R
+        }
+    }
+    out.resize(outIdx * 2);
+    return out;
+}
+
+} // namespace AetherSDR

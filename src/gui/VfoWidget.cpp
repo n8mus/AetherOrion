@@ -902,14 +902,20 @@ void VfoWidget::buildTabContent()
         m_modeCombo->setFixedHeight(26);
         // Default modes — replaced dynamically when slice connects and sends mode_list
         m_modeCombo->addItems({"USB", "LSB", "CW", "AM", "SAM", "FM",
-                                "NFM", "DFM", "DIGU", "DIGL", "RTTY"});
+                                "NFM", "DFM", "DIGU", "DIGL", "RTTY", "RADE"});
         AetherSDR::applyComboStyle(m_modeCombo);
         m_modeCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
         connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, [this](int) {
             if (m_modeCombo->signalsBlocked()) return;
+            QString mode = m_modeCombo->currentText();
+            if (mode == "RADE") {
+                emit radeActivated(true);
+                return;
+            }
+            emit radeActivated(false);
             if (!m_updatingFromModel && m_slice)
-                m_slice->setMode(m_modeCombo->currentText());
+                m_slice->setMode(mode);
         });
 
         // Top row: dropdown + 3 quick-mode buttons (USB, CW, AM)
@@ -1282,6 +1288,8 @@ void VfoWidget::setSlice(SliceModel* slice)
         QString cur = m_modeCombo->currentText();
         m_modeCombo->clear();
         m_modeCombo->addItems(modes);
+        if (m_modeCombo->findText("RADE") < 0)
+            m_modeCombo->addItem("RADE");
         int idx = m_modeCombo->findText(cur);
         if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
     });
@@ -1291,6 +1299,8 @@ void VfoWidget::setSlice(SliceModel* slice)
         QString cur = m_modeCombo->currentText();
         m_modeCombo->clear();
         m_modeCombo->addItems(m_slice->modeList());
+        if (m_modeCombo->findText("RADE") < 0)
+            m_modeCombo->addItem("RADE");
         int idx = m_modeCombo->findText(cur);
         if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
     }

@@ -55,6 +55,51 @@ else()
     endif()
 endif()
 
+# RADE (Radio Autoencoder) — optional digital voice codec
+set(RADE_DIR "${CMAKE_SOURCE_DIR}/external/radae")
+if(EXISTS "${RADE_DIR}/CMakeLists.txt")
+    # Find the pre-built RADE library (built separately via external/radae)
+    find_library(RADE_LIB
+        NAMES rade
+        PATHS "${RADE_DIR}/build" "${RADE_DIR}/build_linux" "${RADE_DIR}/build_osx"
+        NO_DEFAULT_PATH
+    )
+    # Cross-platform: detect .dylib, .so, or .a
+    if(NOT RADE_LIB)
+        file(GLOB RADE_LIB_CANDIDATES
+            "${RADE_DIR}/build/librade.*"
+            "${RADE_DIR}/build/src/librade.*"
+            "${RADE_DIR}/build_linux/librade.*"
+            "${RADE_DIR}/build_osx/librade.*"
+        )
+        if(RADE_LIB_CANDIDATES)
+            list(GET RADE_LIB_CANDIDATES 0 RADE_LIB)
+        endif()
+    endif()
+    find_path(RADE_INC rade_api.h
+        PATHS "${RADE_DIR}/src" "${RADE_DIR}/include"
+    )
+    if(RADE_LIB AND RADE_INC)
+        set(RADE_FOUND TRUE)
+        # Also need lpcnet/fargan headers from the RADE tree
+        set(RADE_INCLUDE_DIRS
+            "${RADE_INC}"
+            "${RADE_DIR}/src"
+            "${RADE_DIR}/opus/dnn"
+            "${RADE_DIR}/opus/include"
+            "${RADE_DIR}/opus/celt"
+            "${RADE_DIR}/opus/silk"
+        )
+        message(STATUS "RADE found: ${RADE_LIB}")
+    else()
+        set(RADE_FOUND FALSE)
+        message(STATUS "RADE not found (library or headers missing). Digital voice disabled.")
+    endif()
+else()
+    set(RADE_FOUND FALSE)
+    message(STATUS "RADE submodule not present at ${RADE_DIR}. Digital voice disabled.")
+endif()
+
 # Sources
 set(CORE_SOURCES
     src/core/AppSettings.cpp
@@ -72,6 +117,7 @@ set(CORE_SOURCES
     src/core/FirmwareUploader.cpp
     src/core/FirmwareStager.cpp
     src/core/RNNoiseFilter.cpp
+    src/core/RADEEngine.cpp
 )
 
 set(MODEL_SOURCES
@@ -230,6 +276,12 @@ if(FFTW3_FOUND)
             COMMENT "Copying libfftw3-3.dll to build directory"
         )
     endif()
+endif()
+
+if(RADE_FOUND)
+    target_compile_definitions(AetherSDR PRIVATE HAVE_RADE)
+    target_include_directories(AetherSDR PRIVATE ${RADE_INCLUDE_DIRS})
+    target_link_libraries(AetherSDR PRIVATE ${RADE_LIB})
 endif()
 
 # Pass project version to code

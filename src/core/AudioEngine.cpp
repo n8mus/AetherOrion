@@ -115,6 +115,7 @@ static QByteArray upsample2x(const QByteArray& pcm24k)
 void AudioEngine::feedAudioData(const QByteArray& pcm)
 {
     if (!m_audioSink) return;  // PC audio disabled
+    if (m_radeMode) return;    // RADE mode: raw SSB audio is blocked; decoded speech via feedDecodedSpeech()
 
     auto writeAudio = [this](const QByteArray& data) {
         if (!m_audioDevice || !m_audioDevice->isOpen()) return;
@@ -300,6 +301,7 @@ void AudioEngine::stopTxStream()
     }
     m_txSocket.close();
     m_txAccumulator.clear();
+    m_txFloatAccumulator.clear();
 }
 
 void AudioEngine::onTxAudioReady()
@@ -321,6 +323,12 @@ void AudioEngine::onTxAudioReady()
             dst[i * 2 + 1] = src[i * 4 + 1];  // R
         }
         data = ds;
+    }
+
+    // RADE mode: emit raw PCM for RADEEngine instead of sending VITA-49
+    if (m_radeMode) {
+        emit txRawPcmReady(data);  // data is int16 stereo 24kHz
+        return;
     }
 
     m_txAccumulator.append(data);
@@ -422,6 +430,37 @@ void AudioEngine::setInputDevice(const QAudioDevice& dev)
         stopTxStream();
         startTxStream(addr, port);
     }
+}
+
+// ─── RADE digital voice support ──────────────────────────────────────────────
+
+void AudioEngine::setRadeMode(bool on)
+{
+    m_radeMode = on;
+}
+
+void AudioEngine::sendModemTxAudio(const QByteArray& float32pcm)
+{
+    if (m_txStreamId == 0 || !m_txSocket.isOpen()) return;
+
+    m_txFloatAccumulator.append(float32pcm);
+
+    constexpr int FLOAT_BYTES_PER_PKT = TX_SAMPLES_PER_PACKET * 2 * sizeof(float); // 1024
+    while (m_txFloatAccumulator.size() >= FLOAT_BYTES_PER_PKT) {
+        auto* samples = reinterpret_cast<const float*>(m_txFloatAccumulator.constData());
+        QByteArray pkt = buildVitaTxPacket(samples, TX_SAMPLES_PER_PACKET);
+        m_txSocket.writeDatagram(pkt, m_txAddress, m_txPort);
+        m_txFloatAccumulator.remove(0, FLOAT_BYTES_PER_PKT);
+    }
+}
+
+void AudioEngine::feedDecodedSpeech(const QByteArray& pcm)
+{
+    if (!m_audioSink || !m_audioDevice || !m_audioDevice->isOpen()) return;
+    if (m_resampleTo48k)
+        m_audioDevice->write(upsample2x(pcm));
+    else
+        m_audioDevice->write(pcm);
 }
 
 } // namespace AetherSDR
