@@ -1,6 +1,7 @@
 #include "AudioEngine.h"
 #include "SpectralNR.h"
 #include "RNNoiseFilter.h"
+#include "Resampler.h"
 
 #include <QMediaDevices>
 #include <QAudioDevice>
@@ -95,21 +96,13 @@ void AudioEngine::setMuted(bool muted)
         m_audioSink->setVolume(muted ? 0.0f : m_rxVolume);
 }
 
-// Upsample 24kHz stereo Int16 → 48kHz by duplicating each sample pair
-static QByteArray upsample2x(const QByteArray& pcm24k)
+// Resample 24kHz stereo int16 → 48kHz stereo int16 via r8brain.
+QByteArray AudioEngine::resampleStereo(const QByteArray& pcm)
 {
-    QByteArray out(pcm24k.size() * 2, Qt::Uninitialized);
-    const auto* src = reinterpret_cast<const qint16*>(pcm24k.constData());
-    auto* dst = reinterpret_cast<qint16*>(out.data());
-    const int stereoSamples = pcm24k.size() / 4;  // 2 channels × 2 bytes
-    for (int i = 0; i < stereoSamples; ++i) {
-        // Copy L+R pair twice
-        dst[i * 4 + 0] = src[i * 2 + 0];  // L
-        dst[i * 4 + 1] = src[i * 2 + 1];  // R
-        dst[i * 4 + 2] = src[i * 2 + 0];  // L (dup)
-        dst[i * 4 + 3] = src[i * 2 + 1];  // R (dup)
-    }
-    return out;
+    if (!m_rxResampler)
+        m_rxResampler = std::make_unique<Resampler>(24000, 48000);
+    const auto* src = reinterpret_cast<const int16_t*>(pcm.constData());
+    return m_rxResampler->processStereoToStereo(src, pcm.size() / 4);
 }
 
 void AudioEngine::feedAudioData(const QByteArray& pcm)
@@ -120,7 +113,7 @@ void AudioEngine::feedAudioData(const QByteArray& pcm)
     auto writeAudio = [this](const QByteArray& data) {
         if (!m_audioDevice || !m_audioDevice->isOpen()) return;
         if (m_resampleTo48k)
-            m_audioDevice->write(upsample2x(data));
+            m_audioDevice->write(resampleStereo(data));
         else
             m_audioDevice->write(data);
     };
@@ -458,7 +451,7 @@ void AudioEngine::feedDecodedSpeech(const QByteArray& pcm)
 {
     if (!m_audioSink || !m_audioDevice || !m_audioDevice->isOpen()) return;
     if (m_resampleTo48k)
-        m_audioDevice->write(upsample2x(pcm));
+        m_audioDevice->write(resampleStereo(pcm));
     else
         m_audioDevice->write(pcm);
 }

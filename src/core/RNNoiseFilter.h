@@ -7,6 +7,8 @@ struct DenoiseState;
 
 namespace AetherSDR {
 
+class Resampler;
+
 // Client-side RNN noise suppression using Mozilla/Xiph RNNoise.
 // Processes 24kHz stereo Int16 audio by upsampling to 48kHz mono,
 // running RNNoise, and downsampling back to 24kHz stereo.
@@ -27,9 +29,10 @@ public:
 
 private:
     DenoiseState* m_state{nullptr};
-    QByteArray    m_inAccum;       // accumulate 48kHz mono float input
-    QByteArray    m_outAccum;      // accumulate 24kHz stereo int16 output
-    float         m_lastSample{0}; // last 24kHz mono sample for interpolation
+    std::unique_ptr<Resampler> m_up;    // 24kHz mono → 48kHz mono
+    std::unique_ptr<Resampler> m_down;  // 48kHz mono → 24kHz mono
+    QByteArray    m_inAccum;            // accumulate 48kHz mono float input
+    QByteArray    m_outAccum;           // accumulate 24kHz stereo int16 output
 };
 
 } // namespace AetherSDR

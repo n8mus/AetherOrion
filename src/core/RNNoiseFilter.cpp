@@ -1,4 +1,5 @@
 #include "RNNoiseFilter.h"
+#include "Resampler.h"
 #include "rnnoise.h"
 
 #include <cstring>
@@ -11,6 +12,8 @@ static constexpr int FRAME_SIZE = 480;
 
 RNNoiseFilter::RNNoiseFilter()
     : m_state(rnnoise_create(nullptr))
+    , m_up(std::make_unique<Resampler>(24000, 48000))
+    , m_down(std::make_unique<Resampler>(48000, 24000))
 {}
 
 RNNoiseFilter::~RNNoiseFilter()
@@ -24,9 +27,10 @@ void RNNoiseFilter::reset()
     if (m_state)
         rnnoise_destroy(m_state);
     m_state = rnnoise_create(nullptr);
+    m_up = std::make_unique<Resampler>(24000, 48000);
+    m_down = std::make_unique<Resampler>(48000, 24000);
     m_inAccum.clear();
     m_outAccum.clear();
-    m_lastSample = 0;
 }
 
 QByteArray RNNoiseFilter::process(const QByteArray& pcm24kStereo)
@@ -35,28 +39,26 @@ QByteArray RNNoiseFilter::process(const QByteArray& pcm24kStereo)
         return pcm24kStereo;
 
     const auto* src = reinterpret_cast<const int16_t*>(pcm24kStereo.constData());
-    const int totalInt16 = pcm24kStereo.size() / 2;
-    const int stereoFrames = totalInt16 / 2;  // L+R pairs at 24kHz
+    const int stereoFrames = pcm24kStereo.size() / 4;  // L+R pairs at 24kHz
 
-    // 1. Convert 24kHz stereo int16 → 24kHz mono float
-    //    Then upsample 24k → 48k with linear interpolation
-    //    RNNoise expects float in [-32768, 32768] range
-    const int monoSamples48k = stereoFrames * 2;
-    std::vector<float> mono48k(monoSamples48k);
+    // 1. Upsample 24kHz stereo → 48kHz mono via r8brain
+    //    processStereoToMono handles: stereo→mono downmix + 24k→48k resample
+    QByteArray mono48k = m_up->processStereoToMono(src, stereoFrames);
 
-    for (int i = 0; i < stereoFrames; ++i) {
-        float cur = static_cast<float>(src[2 * i] + src[2 * i + 1]) * 0.5f;
-        // Interpolated sample between previous and current
-        mono48k[2 * i] = (m_lastSample + cur) * 0.5f;
-        // Current sample
-        mono48k[2 * i + 1] = cur;
-        m_lastSample = cur;
-    }
+    // Convert resampled int16 to float (RNNoise expects [-32768, 32768] range)
+    const auto* mono48kSamples = reinterpret_cast<const int16_t*>(mono48k.constData());
+    const int monoSamples48k = mono48k.size() / 2;
 
     // 2. Append to input accumulator and process complete 480-sample frames
     const int prevAccumSamples = m_inAccum.size() / static_cast<int>(sizeof(float));
-    m_inAccum.append(reinterpret_cast<const char*>(mono48k.data()),
-                     monoSamples48k * sizeof(float));
+    {
+        // Convert int16 → float and append
+        const int startIdx = prevAccumSamples;
+        m_inAccum.resize((startIdx + monoSamples48k) * sizeof(float));
+        auto* floatBuf = reinterpret_cast<float*>(m_inAccum.data());
+        for (int i = 0; i < monoSamples48k; ++i)
+            floatBuf[startIdx + i] = static_cast<float>(mono48kSamples[i]);
+    }
 
     const int totalAccumSamples = prevAccumSamples + monoSamples48k;
     const int completeFrames = totalAccumSamples / FRAME_SIZE;
@@ -82,21 +84,21 @@ QByteArray RNNoiseFilter::process(const QByteArray& pcm24kStereo)
             m_inAccum.clear();
         }
 
-        // 3. Downsample 48kHz mono → 24kHz stereo int16, append to output accumulator
+        // 3. Convert processed 48kHz float → int16, then downsample to 24kHz stereo
         const int outputMonoSamples = completeFrames * FRAME_SIZE;
-        const int output24kFrames = outputMonoSamples / 2;
-        const int outBytes = output24kFrames * 4;  // stereo int16
-        const int prevOutSize = m_outAccum.size();
-        m_outAccum.resize(prevOutSize + outBytes);
-        auto* dst = reinterpret_cast<int16_t*>(m_outAccum.data() + prevOutSize);
-
-        for (int i = 0; i < output24kFrames; ++i) {
-            // Average adjacent 48k samples for anti-alias decimation
-            float sample = (processed48k[2 * i] + processed48k[2 * i + 1]) * 0.5f;
-            int16_t s = static_cast<int16_t>(qBound(-32768.0f, sample, 32767.0f));
-            dst[2 * i]     = s;  // L
-            dst[2 * i + 1] = s;  // R
+        std::vector<int16_t> processed48kInt16(outputMonoSamples);
+        for (int i = 0; i < outputMonoSamples; ++i) {
+            float v = processed48k[i];
+            if (v > 32767.0f) v = 32767.0f;
+            if (v < -32768.0f) v = -32768.0f;
+            processed48kInt16[i] = static_cast<int16_t>(v);
         }
+
+        // Downsample 48kHz mono → 24kHz stereo via r8brain
+        QByteArray downsampled = m_down->processMonoToStereo(
+            processed48kInt16.data(), outputMonoSamples);
+
+        m_outAccum.append(downsampled);
     }
 
     // 4. Return exactly the same number of bytes as input

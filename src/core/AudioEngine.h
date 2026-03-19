@@ -18,6 +18,7 @@ namespace AetherSDR {
 
 class SpectralNR;
 class RNNoiseFilter;
+class Resampler;
 
 // AudioEngine handles audio playback (RX) and capture (TX).
 //
@@ -109,6 +110,7 @@ private:
     QAudioFormat makeFormat() const;
     float computeRMS(const QByteArray& pcm) const;
     QByteArray buildVitaTxPacket(const float* samples, int numStereoSamples);
+    QByteArray resampleStereo(const QByteArray& pcm);
     void processNr2(const QByteArray& stereoPcm);
 
     // RX
@@ -132,6 +134,7 @@ private:
     float m_rxVolume{1.0f};
     bool  m_muted{false};
     bool  m_resampleTo48k{false};      // RX: upsample 24kHz → 48kHz output
+    std::unique_ptr<Resampler> m_rxResampler;  // 24k stereo → 48k stereo (lazy init)
     bool  m_txDownsampleFrom48k{false}; // TX: downsample 48kHz → 24kHz input
 
     // Client-side NR2 (spectral)

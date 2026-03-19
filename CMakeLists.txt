@@ -110,6 +110,7 @@ set(CORE_SOURCES
     src/core/FirmwareStager.cpp
     src/core/RNNoiseFilter.cpp
     src/core/CwDecoder.cpp
+    src/core/Resampler.cpp
     src/core/RADEEngine.cpp
 )
 
@@ -257,6 +258,7 @@ target_include_directories(AetherSDR PRIVATE
     ${RNNOISE_DIR}/include
     ${RNNOISE_DIR}/src
     ${GGMORSE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/third_party/r8brain
 )
 
 target_link_libraries(AetherSDR PRIVATE

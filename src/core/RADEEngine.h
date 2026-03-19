@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QByteArray>
+#include <memory>
 
 #ifdef HAVE_RADE
 struct rade;
@@ -11,6 +12,8 @@ struct LPCNetEncState;
 #endif
 
 namespace AetherSDR {
+
+class Resampler;
 
 // Wraps the RADE v1 (Radio Autoencoder) codec for FreeDV digital voice.
 // The radio is set to DIGU (SSB passthrough). RADE handles the encoding
@@ -63,17 +66,13 @@ private:
     QByteArray m_rxAccum;
 
     bool m_farganWarmedUp{false};
-#endif
 
-    // Resampling helpers
-    // 24kHz stereo int16 → 8kHz mono int16 (3:1 decimation, take left channel)
-    static QByteArray downsample24kTo8k(const QByteArray& stereo24k);
-    // 8kHz mono int16 → 24kHz stereo int16 (1:3 interpolation)
-    static QByteArray upsample8kTo24k(const QByteArray& mono8k);
-    // 24kHz stereo int16 → 16kHz mono int16 (3:2 decimation)
-    static QByteArray downsample24kTo16k(const QByteArray& stereo24k);
-    // 16kHz mono int16 → 24kHz stereo int16 (2:3 interpolation)
-    static QByteArray upsample16kTo24k(const QByteArray& mono16k);
+    // Resamplers (r8brain)
+    std::unique_ptr<Resampler> m_down24to8;   // 24k→8k (modem RX input)
+    std::unique_ptr<Resampler> m_up8to24;     // 8k→24k (modem TX output)
+    std::unique_ptr<Resampler> m_down24to16;  // 24k→16k (LPCNet TX input)
+    std::unique_ptr<Resampler> m_up16to24;    // 16k→24k (FARGAN RX output)
+#endif
 };
 
 } // namespace AetherSDR

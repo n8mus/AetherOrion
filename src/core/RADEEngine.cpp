@@ -1,4 +1,5 @@
 #include "RADEEngine.h"
+#include "Resampler.h"
 #include <QDebug>
 #include <cmath>
 #include <cstring>
@@ -52,6 +53,12 @@ bool RADEEngine::start()
     fargan_init(fargan);
     m_fargan = fargan;
     m_farganWarmedUp = false;
+
+    // Create resamplers
+    m_down24to8  = std::make_unique<Resampler>(24000, 8000);
+    m_up8to24    = std::make_unique<Resampler>(8000, 24000);
+    m_down24to16 = std::make_unique<Resampler>(24000, 16000);
+    m_up16to24   = std::make_unique<Resampler>(16000, 24000);
 
     m_txFeatAccum.clear();
     m_txFrameCount = 0;
@@ -130,7 +137,7 @@ void RADEEngine::feedTxAudio(const QByteArray& pcm)
     if (!m_rade || !m_lpcnetEnc) return;
 
     // 1. Downsample 24kHz stereo → 16kHz mono for LPCNet
-    QByteArray mono16k = downsample24kTo16k(pcm);
+    QByteArray mono16k = m_down24to16->processStereoToMono(reinterpret_cast<const int16_t*>(pcm.constData()), pcm.size() / 4);
 
     // 2. Process 10ms frames (LPCNET_FRAME_SIZE = 160 samples @ 16kHz)
     const auto* samples = reinterpret_cast<const int16_t*>(mono16k.constData());
@@ -171,7 +178,7 @@ void RADEEngine::feedTxAudio(const QByteArray& pcm)
             }
 
             // 4. Upsample 8kHz mono → 24kHz stereo int16
-            QByteArray stereo24k = upsample8kTo24k(modem8k);
+            QByteArray stereo24k = m_up8to24->processMonoToStereo(reinterpret_cast<const int16_t*>(modem8k.constData()), modem8k.size() / 2);
 
             // 5. Convert int16 → float32 for feedDaxTxAudio
             const auto* src = reinterpret_cast<const int16_t*>(stereo24k.constData());
@@ -200,7 +207,7 @@ void RADEEngine::feedRxAudio(int channel, const QByteArray& pcm)
     auto* fargan = static_cast<FARGANState*>(m_fargan);
 
     // 1. Downsample 24kHz stereo → 8kHz mono for RADE modem
-    QByteArray mono8k = downsample24kTo8k(pcm);
+    QByteArray mono8k = m_down24to8->processStereoToMono(reinterpret_cast<const int16_t*>(pcm.constData()), pcm.size() / 4);
 
     // 2. Convert int16 → RADE_COMP (real = sample/32768, imag = 0)
     const auto* samples = reinterpret_cast<const int16_t*>(mono8k.constData());
@@ -275,7 +282,7 @@ void RADEEngine::feedRxAudio(int channel, const QByteArray& pcm)
 
             // 5. Upsample 16kHz mono → 24kHz stereo for speaker
             if (!speech16k.isEmpty())
-                emit rxSpeechReady(upsample16kTo24k(speech16k));
+                emit rxSpeechReady(m_up16to24->processMonoToStereo(reinterpret_cast<const int16_t*>(speech16k.constData()), speech16k.size() / 2));
         }
 
         nin = rade_nin(m_rade);
@@ -285,8 +292,9 @@ void RADEEngine::feedRxAudio(int channel, const QByteArray& pcm)
 #endif
 }
 
-// ── Resampling helpers ─────────────────────────────────────────────────────
+} // namespace AetherSDR
 
+#if 0 // Old resampling helpers replaced by r8brain Resampler
 QByteArray RADEEngine::downsample24kTo8k(const QByteArray& stereo24k)
 {
     // 24kHz stereo int16 → 8kHz mono int16 (3:1 decimation with averaging)
@@ -386,5 +394,4 @@ QByteArray RADEEngine::upsample16kTo24k(const QByteArray& mono16k)
     out.resize(outIdx * 2);
     return out;
 }
-
-} // namespace AetherSDR
+#endif
