@@ -43,31 +43,62 @@ Current version: **0.4.16** (set in both `CMakeLists.txt` and `README.md`).
 src/
 ├── main.cpp
 ├── core/
+│   ├── AppSettings         — XML settings persistence (~/.config/AetherSDR/), replaces QSettings
 │   ├── RadioDiscovery      — UDP 4992 broadcast listener, emits radioDiscovered/Lost
 │   ├── RadioConnection     — TCP 4992 command channel, V/H/R/S/M SmartSDR protocol
 │   ├── CommandParser       — Stateless protocol line parser + command builder
-│   ├── PanadapterStream    — VITA-49 UDP receiver: routes FFT, waterfall, audio by PCC
-│   └── AudioEngine         — QAudioSink push-fed by PanadapterStream (RX); TX stub
+│   ├── PanadapterStream    — VITA-49 UDP receiver: routes FFT, waterfall, audio, meters by PCC
+│   ├── AudioEngine         — QAudioSink RX + QAudioSource TX, volume boost, NR2/RN2 pipeline
+│   ├── SpectralNR          — NR2: Ephraim-Malah MMSE-LSA spectral noise reduction (FFTW3)
+│   ├── RNNoiseFilter       — RN2: Mozilla/Xiph RNNoise neural noise suppression
+│   ├── CwDecoder           — Real-time CW decode via ggmorse, confidence scoring
+│   ├── Resampler           — r8brain-free-src polyphase resampler wrapper (24k↔48k, etc.)
+│   ├── RADEEngine          — FreeDV RADE v1 digital voice encoder/decoder
+│   ├── SmartLinkClient     — Auth0 login + TLS command channel for remote operation
+│   ├── WanConnection       — SmartLink WAN TCP+UDP streaming with NAT keepalive
+│   ├── RigctlServer        — rigctld-compatible TCP server (4 channels)
+│   ├── RigctlProtocol      — Hamlib rigctld protocol parser
+│   ├── RigctlPty           — Virtual serial port (PTY) for CAT control
+│   ├── PipeWireAudioBridge — Linux DAX: PulseAudio pipe modules (4 RX + 1 TX)
+│   ├── VirtualAudioBridge  — macOS DAX: CoreAudio HAL plugin shared memory bridge
+│   ├── FirmwareStager      — Download SmartSDR installer, extract .ssdr files
+│   └── FirmwareUploader    — TCP upload of .ssdr firmware to radio
 ├── models/
 │   ├── RadioModel          — Central state: owns connection, slices, panadapter config
 │   ├── SliceModel          — Per-slice state (freq, mode, filter, DSP, RIT/XIT, etc.)
 │   ├── MeterModel          — Meter definition registry + VITA-49 value conversion
 │   ├── TransmitModel       — Transmit state, internal ATU, TX profile management
-│   └── EqualizerModel      — 8-band EQ state for TX and RX (eq txsc / eq rxsc)
+│   ├── EqualizerModel      — 8-band EQ state for TX and RX (eq txsc / eq rxsc)
+│   ├── TunerModel          — 4o3a Tuner Genius XL state (relays, SWR, tuning)
+│   ├── TnfModel            — Tracking notch filter management (add/remove/drag)
+│   ├── BandSettings        — Per-band persistent settings
+│   └── AntennaGeniusModel  — 4o3a Antenna Genius switch state
 └── gui/
     ├── MainWindow          — Dark-themed QMainWindow, wires everything together
     ├── ConnectionPanel     — Radio list + connect/disconnect button
-    ├── FrequencyDial       — Custom 9-digit MHz display with click/scroll/keyboard tuning
     ├── SpectrumWidget      — FFT spectrum + scrolling waterfall + frequency scale
-    ├── AppletPanel         — Toggle-button column of applet panels (ANLG, RX, TX, etc.)
-    ├── SMeterWidget        — Analog S-Meter gauge with peak hold (toggled by ANLG button)
+    ├── SpectrumOverlayMenu — Right-click DSP/display overlay on spectrum
+    ├── VfoWidget           — VFO display: frequency, mode, filter, DSP tabs, passband
+    ├── AppletPanel         — Toggle-button column of applet panels (VU, RX, TX, etc.)
+    ├── SMeterWidget        — Analog S-Meter/Power gauge with peak hold, 3-tier power scale
     ├── RxApplet            — Full RX controls: antenna, filter, AGC, AF gain, pan, DSP, RIT/XIT
     ├── TxApplet            — TX controls: power gauges/sliders, profiles, ATU, TUNE/MOX
     ├── TunerApplet         — 4o3a TGXL tuner: gauges, relay bars, TUNE/OPERATE
     ├── PhoneCwApplet       — P/CW mic controls: level/compression gauges, mic profile, PROC/DAX/MON
     ├── PhoneApplet         — PHONE applet: VOX, AM carrier, DEXP, TX filter low/high
     ├── EqApplet            — 8-band graphic equalizer applet (TX/RX views)
-    └── HGauge.h            — Shared horizontal gauge widget (header-only)
+    ├── CatApplet           — CAT/DAX controls: rigctld, PTY, DAX enable, MeterSliders
+    ├── AntennaGeniusApplet — 4o3a Antenna Genius port/band display
+    ├── PanadapterApplet    — Display settings: AVG, FPS, fill, gain, black level, DAX rate
+    ├── RadioSetupDialog    — Radio setup (9 tabs): Radio, Network, GPS, Audio, TX, etc.
+    ├── MemoryDialog        — Memory channel manager with editable name column
+    ├── ProfileManagerDialog— Global/TX/mic profile management
+    ├── SpotSettingsDialog   — Spot/DX cluster settings
+    ├── NetworkDiagnosticsDialog — SmartLink network diagnostics
+    ├── MeterSlider         — Combined level meter + gain slider widget (DAX channels)
+    ├── HGauge.h            — Shared horizontal gauge widget (header-only)
+    ├── ComboStyle.h        — Shared dark combo box styling helper
+    └── SliceColors.h       — Per-slice color assignments
 ```
 
 ### Data Flow
@@ -80,7 +111,17 @@ UDP VITA-49 (4991)→  PanadapterStream
                        ├── PCC 0x8004 (waterfall tiles)→ SpectrumWidget.updateWaterfallRow()
                        ├── PCC 0x8002 (meter data)     → MeterModel.updateValues()
                        ├── PCC 0x03E3 (audio float32)  → AudioEngine.feedAudioData()
+                       │                                  ├── NR2 → SpectralNR.process()
+                       │                                  ├── RN2 → RNNoiseFilter.process()
+                       │                                  └── CW  → CwDecoder.feedAudio()
+                       ├── PCC 0x0123 (DAX audio int16)→ PipeWireAudioBridge.feedDaxAudio()
                        └── PCC 0x0123 (audio int16)    → AudioEngine.feedAudioData()
+
+TX Audio:
+  QAudioSource (mic) → AudioEngine.onTxAudioReady()
+                        ├── Voice mode → VITA-49 float32 → radio
+                        ├── DAX mode   → PipeWireAudioBridge → feedDaxTxAudio()
+                        └── RADE mode  → RADEEngine.feedTxAudio() → modem → radio
 ```
 
 ---
@@ -423,7 +464,7 @@ and panadapter. The radio assigns these to our `client_handle`.
 - Tuner applet (4o3a TGXL): Fwd Power/SWR gauges, C1/L/C2 relay bars,
   TUNE (autotune) and OPERATE/BYPASS/STANDBY buttons
 - Tuner auto-detect: hidden when no TGXL, appears on amplifier subscription
-- Fwd Power gauge auto-scales: barefoot (0–200 W) vs PGXL (0–2000 W)
+- Fwd Power gauge 3-tier auto-scale: barefoot (0–120 W), Aurora (0–600 W), PGXL (0–2000 W)
 - TX applet: Fwd Power/SWR gauges, RF Power/Tune Power sliders,
   TX profile dropdown, TUNE/MOX/ATU/MEM buttons, ATU status indicators, APD
 - TransmitModel: transmit state, internal ATU state, TX profile management
@@ -470,6 +511,10 @@ and panadapter. The radio assigns these to our `client_handle`.
 - **Client-side waterfall auto-black**: measures noise floor from tiles, replaces
   radio's auto_black which targeted SmartSDR's different rendering engine
 - **Memory name editing**: double-click Name column in memory dialog
+- **3-tier TX power meters**: auto-detect barefoot/Aurora/PGXL from max_power_level,
+  scales TxApplet gauge, TunerApplet gauge, and SMeterWidget Power arc (#116)
+- **Windows Inno Setup installer**: proper setup.exe with Start Menu, desktop icon,
+  uninstaller — alongside portable ZIP
 - TX button (sends `xmit 1` / `xmit 0`)
 - Persistent window geometry and display settings
 
