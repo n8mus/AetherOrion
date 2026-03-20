@@ -34,6 +34,9 @@ private:
     QWidget* buildAudioTab();
     QWidget* buildFiltersTab();
     QWidget* buildXvtrTab();
+#ifdef HAVE_SERIALPORT
+    QWidget* buildSerialTab();
+#endif
 
     RadioModel*  m_model;
     AudioEngine* m_audio{nullptr};

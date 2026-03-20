@@ -1,0 +1,162 @@
+#include "SerialPortController.h"
+#include "AppSettings.h"
+#include "LogManager.h"
+
+#ifdef HAVE_SERIALPORT
+#include <QSerialPortInfo>
+#endif
+
+namespace AetherSDR {
+
+SerialPortController::SerialPortController(QObject* parent)
+    : QObject(parent)
+{
+}
+
+SerialPortController::~SerialPortController()
+{
+    close();
+}
+
+bool SerialPortController::open(const QString& portName, int baudRate,
+                                 int dataBits, int parity, int stopBits)
+{
+#ifdef HAVE_SERIALPORT
+    if (m_port.isOpen()) close();
+
+    m_port.setPortName(portName);
+    m_port.setBaudRate(baudRate);
+    m_port.setDataBits(static_cast<QSerialPort::DataBits>(dataBits));
+    m_port.setParity(static_cast<QSerialPort::Parity>(parity));
+    m_port.setStopBits(static_cast<QSerialPort::StopBits>(stopBits));
+    m_port.setFlowControl(QSerialPort::NoFlowControl);
+
+    if (!m_port.open(QIODevice::ReadWrite)) {
+        qCWarning(lcCat) << "SerialPortController: failed to open" << portName
+                         << m_port.errorString();
+        emit errorOccurred(m_port.errorString());
+        return false;
+    }
+
+    // Start with all lines deasserted
+    m_port.setDataTerminalReady(!m_dtrActiveHigh);
+    m_port.setRequestToSend(!m_rtsActiveHigh);
+
+    qCDebug(lcCat) << "SerialPortController: opened" << portName << "at" << baudRate;
+    return true;
+#else
+    Q_UNUSED(portName); Q_UNUSED(baudRate);
+    Q_UNUSED(dataBits); Q_UNUSED(parity); Q_UNUSED(stopBits);
+    return false;
+#endif
+}
+
+void SerialPortController::close()
+{
+#ifdef HAVE_SERIALPORT
+    if (m_port.isOpen()) {
+        // Deassert all lines before closing
+        m_port.setDataTerminalReady(!m_dtrActiveHigh);
+        m_port.setRequestToSend(!m_rtsActiveHigh);
+        m_port.close();
+        qCDebug(lcCat) << "SerialPortController: closed";
+    }
+#endif
+}
+
+bool SerialPortController::isOpen() const
+{
+#ifdef HAVE_SERIALPORT
+    return m_port.isOpen();
+#else
+    return false;
+#endif
+}
+
+QString SerialPortController::portName() const
+{
+#ifdef HAVE_SERIALPORT
+    return m_port.portName();
+#else
+    return {};
+#endif
+}
+
+void SerialPortController::setTransmitting(bool tx)
+{
+    applyPin(PinFunction::PTT, tx);
+    applyPin(PinFunction::CwPTT, tx);
+}
+
+void SerialPortController::setCwKeyDown(bool down)
+{
+    applyPin(PinFunction::CwKey, down);
+}
+
+void SerialPortController::applyPin(PinFunction targetFn, bool active)
+{
+#ifdef HAVE_SERIALPORT
+    if (!m_port.isOpen()) return;
+
+    if (m_dtrFn == targetFn) {
+        bool level = m_dtrActiveHigh ? active : !active;
+        m_port.setDataTerminalReady(level);
+    }
+    if (m_rtsFn == targetFn) {
+        bool level = m_rtsActiveHigh ? active : !active;
+        m_port.setRequestToSend(level);
+    }
+#else
+    Q_UNUSED(targetFn); Q_UNUSED(active);
+#endif
+}
+
+void SerialPortController::loadSettings()
+{
+    auto& s = AppSettings::instance();
+    QString portName = s.value("SerialPortName", "").toString();
+
+    auto strToFn = [](const QString& str) -> PinFunction {
+        if (str == "PTT") return PinFunction::PTT;
+        if (str == "CwKey") return PinFunction::CwKey;
+        if (str == "CwPTT") return PinFunction::CwPTT;
+        return PinFunction::None;
+    };
+
+    m_dtrFn = strToFn(s.value("SerialDtrFunction", "None").toString());
+    m_rtsFn = strToFn(s.value("SerialRtsFunction", "None").toString());
+    m_dtrActiveHigh = s.value("SerialDtrPolarity", "ActiveHigh").toString() == "ActiveHigh";
+    m_rtsActiveHigh = s.value("SerialRtsPolarity", "ActiveHigh").toString() == "ActiveHigh";
+
+    if (!portName.isEmpty() && s.value("SerialAutoOpen", "False").toString() == "True") {
+        int baud = s.value("SerialBaudRate", "9600").toInt();
+        int data = s.value("SerialDataBits", "8").toInt();
+        int par  = s.value("SerialParity", "0").toInt();
+        int stop = s.value("SerialStopBits", "1").toInt();
+        open(portName, baud, data, par, stop);
+    }
+}
+
+void SerialPortController::saveSettings()
+{
+    auto& s = AppSettings::instance();
+
+    auto fnToStr = [](PinFunction fn) -> QString {
+        switch (fn) {
+        case PinFunction::PTT:   return "PTT";
+        case PinFunction::CwKey: return "CwKey";
+        case PinFunction::CwPTT: return "CwPTT";
+        default:                 return "None";
+        }
+    };
+
+    s.setValue("SerialPortName", portName());
+    s.setValue("SerialDtrFunction", fnToStr(m_dtrFn));
+    s.setValue("SerialRtsFunction", fnToStr(m_rtsFn));
+    s.setValue("SerialDtrPolarity", m_dtrActiveHigh ? "ActiveHigh" : "ActiveLow");
+    s.setValue("SerialRtsPolarity", m_rtsActiveHigh ? "ActiveHigh" : "ActiveLow");
+    s.setValue("SerialAutoOpen", isOpen() ? "True" : "False");
+    s.save();
+}
+
+} // namespace AetherSDR

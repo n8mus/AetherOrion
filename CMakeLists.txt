@@ -19,6 +19,12 @@ find_package(Qt6 REQUIRED COMPONENTS
     Network
     Multimedia
 )
+find_package(Qt6 QUIET COMPONENTS SerialPort)
+if(Qt6SerialPort_FOUND)
+    message(STATUS "Qt6::SerialPort found — serial PTT/CW support enabled")
+else()
+    message(STATUS "Qt6::SerialPort not found — serial PTT/CW support disabled")
+endif()
 
 # PortAudio (optional fallback for audio)
 find_package(PkgConfig QUIET)
@@ -118,6 +124,7 @@ set(CORE_SOURCES
     src/core/RADEEngine.cpp
     src/core/LogManager.cpp
     src/core/SupportBundle.cpp
+    src/core/SerialPortController.cpp
 )
 
 if(APPLE)
@@ -284,6 +291,11 @@ target_link_libraries(AetherSDR PRIVATE
     Qt6::Network
     Qt6::Multimedia
 )
+
+if(Qt6SerialPort_FOUND)
+    target_compile_definitions(AetherSDR PRIVATE HAVE_SERIALPORT)
+    target_link_libraries(AetherSDR PRIVATE Qt6::SerialPort)
+endif()
 
 if(PORTAUDIO_FOUND)
     target_compile_definitions(AetherSDR PRIVATE HAVE_PORTAUDIO)

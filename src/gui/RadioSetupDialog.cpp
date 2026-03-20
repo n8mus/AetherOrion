@@ -3,6 +3,10 @@
 #include "models/RadioModel.h"
 #include "core/AppSettings.h"
 #include "core/AudioEngine.h"
+#ifdef HAVE_SERIALPORT
+#include "core/SerialPortController.h"
+#include <QSerialPortInfo>
+#endif
 #include "core/FirmwareUploader.h"
 #include "core/FirmwareStager.h"
 
@@ -70,6 +74,9 @@ RadioSetupDialog::RadioSetupDialog(RadioModel* model, AudioEngine* audio, QWidge
     tabs->addTab(buildRxTab(), "RX");
     tabs->addTab(buildFiltersTab(), "Filters");
     tabs->addTab(buildXvtrTab(), "XVTR");
+#ifdef HAVE_SERIALPORT
+    tabs->addTab(buildSerialTab(), "Serial");
+#endif
 
     layout->addWidget(tabs);
 
@@ -1737,5 +1744,179 @@ QWidget* RadioSetupDialog::buildXvtrTab()
     vbox->addWidget(xvtrTabs);
     return page;
 }
+
+#ifdef HAVE_SERIALPORT
+QWidget* RadioSetupDialog::buildSerialTab()
+{
+    auto* page = new QWidget;
+    auto* vbox = new QVBoxLayout(page);
+    vbox->setSpacing(8);
+    vbox->setContentsMargins(8, 8, 8, 8);
+
+    const QString kLabelStyle = "QLabel { color: #8898a8; font-size: 11px; }";
+    const QString kGroupStyle = "QGroupBox { color: #00b4d8; font-size: 12px; border: 1px solid #203040; "
+                                "border-radius: 4px; margin-top: 6px; padding-top: 14px; } "
+                                "QGroupBox::title { subcontrol-origin: margin; left: 8px; }";
+
+    auto& settings = AppSettings::instance();
+
+    // ── Port Configuration ───────────────────────────────────────────────
+    {
+        auto* group = new QGroupBox("Port Configuration");
+        group->setStyleSheet(kGroupStyle);
+        auto* grid = new QGridLayout(group);
+        grid->setSpacing(4);
+
+        // Port selector
+        grid->addWidget(new QLabel("Port:"), 0, 0);
+        auto* portCombo = new QComboBox;
+        portCombo->setMinimumWidth(200);
+        for (const auto& info : QSerialPortInfo::availablePorts())
+            portCombo->addItem(QString("%1 — %2").arg(info.portName(), info.description()),
+                               info.portName());
+        QString savedPort = settings.value("SerialPortName", "").toString();
+        for (int i = 0; i < portCombo->count(); ++i) {
+            if (portCombo->itemData(i).toString() == savedPort) {
+                portCombo->setCurrentIndex(i);
+                break;
+            }
+        }
+        grid->addWidget(portCombo, 0, 1, 1, 2);
+
+        auto* refreshBtn = new QPushButton("Refresh");
+        refreshBtn->setFixedHeight(24);
+        connect(refreshBtn, &QPushButton::clicked, this, [portCombo]() {
+            portCombo->clear();
+            for (const auto& info : QSerialPortInfo::availablePorts())
+                portCombo->addItem(QString("%1 — %2").arg(info.portName(), info.description()),
+                                   info.portName());
+        });
+        grid->addWidget(refreshBtn, 0, 3);
+
+        // Baud rate
+        grid->addWidget(new QLabel("Baud:"), 1, 0);
+        auto* baudCombo = new QComboBox;
+        for (int b : {9600, 19200, 38400, 57600, 115200})
+            baudCombo->addItem(QString::number(b), b);
+        int savedBaud = settings.value("SerialBaudRate", "9600").toInt();
+        baudCombo->setCurrentIndex(baudCombo->findData(savedBaud));
+        grid->addWidget(baudCombo, 1, 1);
+
+        // Data bits
+        grid->addWidget(new QLabel("Data:"), 1, 2);
+        auto* dataCombo = new QComboBox;
+        dataCombo->addItem("8", 8);
+        dataCombo->addItem("7", 7);
+        grid->addWidget(dataCombo, 1, 3);
+
+        // Parity
+        grid->addWidget(new QLabel("Parity:"), 2, 0);
+        auto* parityCombo = new QComboBox;
+        parityCombo->addItem("None", 0);
+        parityCombo->addItem("Even", 2);
+        parityCombo->addItem("Odd", 3);
+        grid->addWidget(parityCombo, 2, 1);
+
+        // Stop bits
+        grid->addWidget(new QLabel("Stop:"), 2, 2);
+        auto* stopCombo = new QComboBox;
+        stopCombo->addItem("1", 1);
+        stopCombo->addItem("2", 2);
+        grid->addWidget(stopCombo, 2, 3);
+
+        vbox->addWidget(group);
+
+        // Save port settings on any change
+        auto savePort = [portCombo, baudCombo, dataCombo, parityCombo, stopCombo]() {
+            auto& s = AppSettings::instance();
+            s.setValue("SerialPortName", portCombo->currentData().toString());
+            s.setValue("SerialBaudRate", baudCombo->currentData().toString());
+            s.setValue("SerialDataBits", dataCombo->currentData().toString());
+            s.setValue("SerialParity", parityCombo->currentData().toString());
+            s.setValue("SerialStopBits", stopCombo->currentData().toString());
+            s.save();
+        };
+        connect(portCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, savePort);
+        connect(baudCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, savePort);
+    }
+
+    // ── Pin Assignment ───────────────────────────────────────────────────
+    {
+        auto* group = new QGroupBox("Pin Assignment");
+        group->setStyleSheet(kGroupStyle);
+        auto* grid = new QGridLayout(group);
+        grid->setSpacing(4);
+
+        auto* headerPin = new QLabel("Pin");
+        auto* headerFn  = new QLabel("Function");
+        auto* headerPol = new QLabel("Polarity");
+        headerPin->setStyleSheet(kLabelStyle);
+        headerFn->setStyleSheet(kLabelStyle);
+        headerPol->setStyleSheet(kLabelStyle);
+        grid->addWidget(headerPin, 0, 0);
+        grid->addWidget(headerFn,  0, 1);
+        grid->addWidget(headerPol, 0, 2);
+
+        auto makeFnCombo = [this](const QString& savedKey) {
+            auto* combo = new QComboBox;
+            combo->addItem("None",   "None");
+            combo->addItem("PTT",    "PTT");
+            combo->addItem("CW Key", "CwKey");
+            combo->addItem("CW PTT", "CwPTT");
+            QString saved = AppSettings::instance().value(savedKey, "None").toString();
+            for (int i = 0; i < combo->count(); ++i)
+                if (combo->itemData(i).toString() == saved) { combo->setCurrentIndex(i); break; }
+            connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [savedKey, combo]() {
+                auto& s = AppSettings::instance();
+                s.setValue(savedKey, combo->currentData().toString());
+                s.save();
+            });
+            return combo;
+        };
+
+        auto makePolCombo = [this](const QString& savedKey) {
+            auto* combo = new QComboBox;
+            combo->addItem("Active High", "ActiveHigh");
+            combo->addItem("Active Low",  "ActiveLow");
+            QString saved = AppSettings::instance().value(savedKey, "ActiveHigh").toString();
+            combo->setCurrentIndex(saved == "ActiveLow" ? 1 : 0);
+            connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [savedKey, combo]() {
+                auto& s = AppSettings::instance();
+                s.setValue(savedKey, combo->currentData().toString());
+                s.save();
+            });
+            return combo;
+        };
+
+        // DTR row
+        grid->addWidget(new QLabel("DTR"), 1, 0);
+        grid->addWidget(makeFnCombo("SerialDtrFunction"), 1, 1);
+        grid->addWidget(makePolCombo("SerialDtrPolarity"), 1, 2);
+
+        // RTS row
+        grid->addWidget(new QLabel("RTS"), 2, 0);
+        grid->addWidget(makeFnCombo("SerialRtsFunction"), 2, 1);
+        grid->addWidget(makePolCombo("SerialRtsPolarity"), 2, 2);
+
+        vbox->addWidget(group);
+    }
+
+    // ── Auto-open toggle ─────────────────────────────────────────────────
+    {
+        auto* autoOpen = new QCheckBox("Auto-open serial port on startup");
+        autoOpen->setStyleSheet("QCheckBox { color: #c8d8e8; }");
+        autoOpen->setChecked(settings.value("SerialAutoOpen", "False").toString() == "True");
+        connect(autoOpen, &QCheckBox::toggled, this, [](bool on) {
+            auto& s = AppSettings::instance();
+            s.setValue("SerialAutoOpen", on ? "True" : "False");
+            s.save();
+        });
+        vbox->addWidget(autoOpen);
+    }
+
+    vbox->addStretch();
+    return page;
+}
+#endif
 
 } // namespace AetherSDR

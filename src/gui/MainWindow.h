@@ -10,6 +10,9 @@
 #include "core/SmartLinkClient.h"
 #include "core/WanConnection.h"
 #include "core/CwDecoder.h"
+#ifdef HAVE_SERIALPORT
+#include "core/SerialPortController.h"
+#endif
 
 #include <QMainWindow>
 #include <QSplitter>
@@ -79,6 +82,9 @@ private:
     WanConnection     m_wanConnection;
     AntennaGeniusModel m_antennaGenius;
     CwDecoder         m_cwDecoder;
+#ifdef HAVE_SERIALPORT
+    SerialPortController m_serialPort;
+#endif
 
     // GUI — left sidebar
     ConnectionPanel* m_connPanel{nullptr};

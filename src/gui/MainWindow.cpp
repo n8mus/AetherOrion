@@ -260,6 +260,9 @@ MainWindow::MainWindow(QWidget* parent)
         if (m_daxBridge)
             m_daxBridge->setTransmitting(tx);
 #endif
+#ifdef HAVE_SERIALPORT
+        m_serialPort.setTransmitting(tx);
+#endif
     });
 
     // ── Panadapter stream → spectrum widget ───────────────────────────────
@@ -726,6 +729,11 @@ MainWindow::MainWindow(QWidget* parent)
         spectrum()->setCwPitch(m_radioModel.transmitModel()->cwPitch());
     });
 
+    // ── Serial port PTT/CW keying ───────────────────────────────────────
+#ifdef HAVE_SERIALPORT
+    m_serialPort.loadSettings();
+#endif
+
     // ── P/CW applet: mic meters + ALC meter + model ────────────────────────
     connect(m_radioModel.meterModel(), &MeterModel::micMetersChanged,
             m_appletPanel->phoneCwApplet(), &PhoneCwApplet::updateMeters);
@@ -903,6 +911,10 @@ void MainWindow::buildMenuBar()
             bool centered = AppSettings::instance().value("CwMarkerCentered", "True").toString() == "True";
             spectrum()->setCwMarkerCentered(centered);
 
+#ifdef HAVE_SERIALPORT
+            // Re-load serial port settings if changed
+            m_serialPort.loadSettings();
+#endif
             // Re-evaluate CW decode overlay visibility
             bool decodeOn = AppSettings::instance().value("CwDecodeOverlay", "True").toString() == "True";
             auto* s = activeSlice();
