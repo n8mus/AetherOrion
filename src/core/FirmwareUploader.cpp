@@ -1,4 +1,5 @@
 #include "FirmwareUploader.h"
+#include "LogManager.h"
 #include "../models/RadioModel.h"
 #include "../core/RadioConnection.h"
 
@@ -96,7 +97,7 @@ void FirmwareUploader::onUploadPortReceived(int code, const QString& body)
 
     m_uploadPort = port;
 
-    qDebug() << "FirmwareUploader: connecting to upload port" << m_uploadPort;
+    qCDebug(lcFirmware) << "FirmwareUploader: connecting to upload port" << m_uploadPort;
     emit progressChanged(0, QString("Connecting to port %1...").arg(m_uploadPort));
 
     // Step 3: Connect TCP to the upload port
@@ -111,7 +112,7 @@ void FirmwareUploader::onUploadPortReceived(int code, const QString& body)
                 // Try fallback port
                 if (m_uploadPort != FALLBACK_PORT) {
                     m_uploadPort = FALLBACK_PORT;
-                    qDebug() << "FirmwareUploader: trying fallback port" << FALLBACK_PORT;
+                    qCDebug(lcFirmware) << "FirmwareUploader: trying fallback port" << FALLBACK_PORT;
                     emit progressChanged(0, QString("Trying fallback port %1...").arg(FALLBACK_PORT));
                     m_socket.abort();
                     m_socket.connectToHost(m_model->radioAddress(), m_uploadPort);
@@ -129,7 +130,7 @@ void FirmwareUploader::onConnected()
 {
     if (m_cancelled) return;
 
-    qDebug() << "FirmwareUploader: connected, sending" << m_fileData.size() << "bytes";
+    qCDebug(lcFirmware) << "FirmwareUploader: connected, sending" << m_fileData.size() << "bytes";
     emit progressChanged(0, "Uploading firmware...");
 
     // Step 4: Send the file data in chunks
@@ -150,7 +151,7 @@ void FirmwareUploader::onBytesWritten(qint64 bytes)
 
     if (m_bytesSent >= m_fileData.size()) {
         // Upload complete
-        qDebug() << "FirmwareUploader: upload complete";
+        qCDebug(lcFirmware) << "FirmwareUploader: upload complete";
         m_socket.flush();
         m_socket.disconnectFromHost();
         m_uploading = false;
@@ -173,7 +174,7 @@ void FirmwareUploader::onError()
     // If we haven't sent anything and this is the first port attempt, try fallback
     if (m_bytesSent == 0 && m_uploadPort != FALLBACK_PORT) {
         m_uploadPort = FALLBACK_PORT;
-        qDebug() << "FirmwareUploader: error on primary port, trying" << FALLBACK_PORT;
+        qCDebug(lcFirmware) << "FirmwareUploader: error on primary port, trying" << FALLBACK_PORT;
         emit progressChanged(0, QString("Retrying on port %1...").arg(FALLBACK_PORT));
         m_socket.abort();
         m_socket.connectToHost(m_model->radioAddress(), m_uploadPort);

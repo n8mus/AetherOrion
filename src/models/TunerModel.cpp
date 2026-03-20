@@ -1,4 +1,5 @@
 #include "TunerModel.h"
+#include "core/LogManager.h"
 
 #include <QDebug>
 
@@ -17,7 +18,7 @@ void TunerModel::setHandle(const QString& handle)
     bool wasPres = !m_handle.isEmpty();
     m_handle = handle;
     bool nowPres = !m_handle.isEmpty();
-    qDebug() << "TunerModel: handle set to" << m_handle;
+    qCDebug(lcTuner) << "TunerModel: handle set to" << m_handle;
     if (wasPres != nowPres)
         emit presenceChanged(nowPres);
     emit stateChanged();
@@ -71,33 +72,33 @@ void TunerModel::applyStatus(const QMap<QString, QString>& kvs)
 void TunerModel::setOperate(bool on)
 {
     if (m_handle.isEmpty()) {
-        qDebug() << "TunerModel::setOperate: no handle yet, ignoring";
+        qCDebug(lcTuner) << "TunerModel::setOperate: no handle yet, ignoring";
         return;
     }
     const QString cmd = "tgxl set handle=" + m_handle + " mode=" + (on ? "1" : "0");
-    qDebug() << "TunerModel:" << cmd;
+    qCDebug(lcTuner) << "TunerModel:" << cmd;
     emit commandReady(cmd);
 }
 
 void TunerModel::setBypass(bool on)
 {
     if (m_handle.isEmpty()) {
-        qDebug() << "TunerModel::setBypass: no handle yet, ignoring";
+        qCDebug(lcTuner) << "TunerModel::setBypass: no handle yet, ignoring";
         return;
     }
     const QString cmd = "tgxl set handle=" + m_handle + " bypass=" + (on ? "1" : "0");
-    qDebug() << "TunerModel:" << cmd;
+    qCDebug(lcTuner) << "TunerModel:" << cmd;
     emit commandReady(cmd);
 }
 
 void TunerModel::autoTune()
 {
     if (m_handle.isEmpty()) {
-        qDebug() << "TunerModel::autoTune: no handle yet, ignoring";
+        qCDebug(lcTuner) << "TunerModel::autoTune: no handle yet, ignoring";
         return;
     }
     const QString cmd = "tgxl autotune handle=" + m_handle;
-    qDebug() << "TunerModel:" << cmd;
+    qCDebug(lcTuner) << "TunerModel:" << cmd;
     emit commandReady(cmd);
 }
 

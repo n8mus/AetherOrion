@@ -1,6 +1,7 @@
 #include "RadioModel.h"
 #include "core/CommandParser.h"
 #include "core/AppSettings.h"
+#include "core/LogManager.h"
 #include <QDebug>
 #include <QRegularExpression>
 #include "core/AppSettings.h"
@@ -51,7 +52,7 @@ RadioModel::RadioModel(QObject* parent)
     m_reconnectTimer.setInterval(3000);
     connect(&m_reconnectTimer, &QTimer::timeout, this, [this]() {
         if (!m_intentionalDisconnect && !m_lastInfo.address.isNull()) {
-            qDebug() << "RadioModel: auto-reconnecting to" << m_lastInfo.address.toString();
+            qCDebug(lcProtocol) << "RadioModel: auto-reconnecting to" << m_lastInfo.address.toString();
             m_connection.connectToRadio(m_lastInfo);
         }
     });
@@ -85,7 +86,7 @@ void RadioModel::connectToRadio(const RadioInfo& info)
 
 void RadioModel::connectViaWan(WanConnection* wan, const QString& publicIp, quint16 udpPort)
 {
-    qDebug() << "RadioModel: connectViaWan publicIp=" << publicIp
+    qCDebug(lcProtocol) << "RadioModel: connectViaWan publicIp=" << publicIp
              << "udpPort=" << udpPort
              << "wanHandle=0x" << QString::number(wan->clientHandle(), 16);
 
@@ -106,10 +107,10 @@ void RadioModel::connectViaWan(WanConnection* wan, const QString& publicIp, quin
     // The WAN connection is already established (TLS + wan validate done)
     // and has already received V/H. Trigger onConnected manually.
     if (wan->isConnected()) {
-        qDebug() << "RadioModel: WAN already connected, triggering onConnected";
+        qCDebug(lcProtocol) << "RadioModel: WAN already connected, triggering onConnected";
         onConnected();
     } else {
-        qDebug() << "RadioModel: WAN not yet connected, waiting for connected signal";
+        qCDebug(lcProtocol) << "RadioModel: WAN not yet connected, waiting for connected signal";
     }
 }
 
@@ -138,7 +139,7 @@ void RadioModel::setTransmit(bool tx)
 void RadioModel::addSlice()
 {
     if (m_panId.isEmpty()) {
-        qWarning() << "RadioModel::addSlice: no panadapter, cannot create slice";
+        qCWarning(lcProtocol) << "RadioModel::addSlice: no panadapter, cannot create slice";
         return;
     }
 
@@ -147,13 +148,13 @@ void RadioModel::addSlice()
     const QString freq = QString::number(m_panCenterMhz, 'f', 6);
     const QString cmd = QString("slice create pan=%1 freq=%2").arg(m_panId, freq);
 
-    qDebug() << "RadioModel::addSlice:" << cmd;
+    qCDebug(lcProtocol) << "RadioModel::addSlice:" << cmd;
     m_connection.sendCommand(cmd, [](int code, const QString& body) {
         if (code != 0)
-            qWarning() << "RadioModel: slice create failed, code"
+            qCWarning(lcProtocol) << "RadioModel: slice create failed, code"
                        << Qt::hex << code << "body:" << body;
         else
-            qDebug() << "RadioModel: new slice created, index =" << body;
+            qCDebug(lcProtocol) << "RadioModel: new slice created, index =" << body;
     });
 }
 
@@ -278,7 +279,7 @@ void RadioModel::setPanNoiseFloorEnable(bool on)
 
 void RadioModel::onConnected()
 {
-    qDebug() << "RadioModel: connected";
+    qCDebug(lcProtocol) << "RadioModel: connected";
     m_panResized = false;
     emit connectionStateChanged(true);
     // Delay network monitor until after client gui registration
@@ -292,7 +293,7 @@ void RadioModel::onConnected()
         // On WAN: wait for client ip response before sending client gui.
         // The radio needs time after wan validate to accept GUI registration.
         sendCmd("client ip", [this, clientId](int, const QString& body) {
-            qDebug() << "RadioModel: client ip ->" << body.trimmed();
+            qCDebug(lcProtocol) << "RadioModel: client ip ->" << body.trimmed();
             registerAsGuiClient(clientId);
         });
     } else {
@@ -304,7 +305,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
 {
     sendCmd(QString("client gui %1").arg(clientId), [this](int code, const QString&) {
         if (code != 0)
-            qWarning() << "RadioModel: client gui failed, code" << Qt::hex << code;
+            qCWarning(lcProtocol) << "RadioModel: client gui failed, code" << Qt::hex << code;
 
         sendCmd("client program AetherSDR");
         sendCmd("client station AetherSDR");
@@ -330,7 +331,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
             if (code == 0) {
                 QStringList inputs = body.trimmed().split(',', Qt::SkipEmptyParts);
                 m_transmitModel.setMicInputList(inputs);
-                qDebug() << "RadioModel: mic inputs:" << inputs;
+                qCDebug(lcProtocol) << "RadioModel: mic inputs:" << inputs;
             }
         });
 
@@ -345,7 +346,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
         // The radio only accepts udp_register on WAN connections.
         if (m_wanConn) {
             m_panStream.startWanUdpRegister(clientHandle());
-            qDebug() << "RadioModel: WAN — started UDP registration via udp_register";
+            qCDebug(lcProtocol) << "RadioModel: WAN — started UDP registration via udp_register";
         }
 
         const quint16 udpPort = m_panStream.localPort();
@@ -353,9 +354,9 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
             QString("client udpport %1").arg(udpPort),
             [this, udpPort](int code2, const QString&) {
                 if (code2 == 0)
-                    qDebug() << "RadioModel: UDP port" << udpPort << "registered via client udpport";
+                    qCDebug(lcProtocol) << "RadioModel: UDP port" << udpPort << "registered via client udpport";
                 else
-                    qDebug() << "RadioModel: client udpport returned error" << Qt::hex << code2
+                    qCDebug(lcProtocol) << "RadioModel: client udpport returned error" << Qt::hex << code2
                              << "(expected on WAN — using udp_register instead)";
 
                 // Query radio info (region, callsign, options, etc.)
@@ -381,7 +382,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                             else if (key == "gateway")        m_gateway = val;
                             else if (key == "mac")            m_mac = val;
                         }
-                        qDebug() << "RadioModel: info — callsign:" << m_callsign
+                        qCDebug(lcProtocol) << "RadioModel: info — callsign:" << m_callsign
                                  << "region:" << m_region << "options:" << m_radioOptions;
                         emit infoChanged();
                     });
@@ -389,15 +390,15 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                 sendCmd("slice list",
                     [this](int code3, const QString& body) {
                         if (code3 != 0) {
-                            qWarning() << "RadioModel: slice list failed, code" << Qt::hex << code3;
+                            qCWarning(lcProtocol) << "RadioModel: slice list failed, code" << Qt::hex << code3;
                             return;
                         }
                         const QStringList ids = body.trimmed().split(' ', Qt::SkipEmptyParts);
-                        qDebug() << "RadioModel: slice list ->" << (ids.isEmpty() ? "(empty)" : body);
+                        qCDebug(lcProtocol) << "RadioModel: slice list ->" << (ids.isEmpty() ? "(empty)" : body);
 
                         if (ids.isEmpty() || m_slices.isEmpty()) {
                             // No slices at all, or no slices belonging to us
-                            qDebug() << "RadioModel: creating own slice (total on radio:"
+                            qCDebug(lcProtocol) << "RadioModel: creating own slice (total on radio:"
                                      << ids.size() << ", ours:" << m_slices.size() << ")";
                             // Use saved frequency/mode from last session if available
                             auto& settings = AppSettings::instance();
@@ -411,7 +412,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                                 createDefaultSlice();
                             }
                         } else {
-                            qDebug() << "RadioModel: SmartConnect — using our pan"
+                            qCDebug(lcProtocol) << "RadioModel: SmartConnect — using our pan"
                                      << m_panId << "and" << m_slices.size() << "slice(s)";
                         }
 
@@ -430,13 +431,13 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                                 [this](int code, const QString& body) {
                                     if (code == 0) {
                                         m_rxAudioStreamId = body.trimmed();
-                                        qDebug() << "RadioModel: remote_audio_rx stream created, id:" << m_rxAudioStreamId;
+                                        qCDebug(lcProtocol) << "RadioModel: remote_audio_rx stream created, id:" << m_rxAudioStreamId;
                                     } else
-                                        qWarning() << "RadioModel: stream create remote_audio_rx failed, code"
+                                        qCWarning(lcProtocol) << "RadioModel: stream create remote_audio_rx failed, code"
                                                    << Qt::hex << code << "body:" << body;
                                 });
                         } else {
-                            qDebug() << "RadioModel: PC audio disabled, skipping remote_audio_rx (using radio line out)";
+                            qCDebug(lcProtocol) << "RadioModel: PC audio disabled, skipping remote_audio_rx (using radio line out)";
                         }
 
                         // Request DAX TX audio stream (PC mic → radio)
@@ -445,12 +446,12 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                             [this](int code, const QString& body) {
                                 if (code == 0) {
                                     quint32 id = body.trimmed().toUInt(nullptr, 16);
-                                    qDebug() << "RadioModel: dax_tx stream created, id:"
+                                    qCDebug(lcProtocol) << "RadioModel: dax_tx stream created, id:"
                                              << Qt::hex << id;
                                     sendCmd("transmit set met_in_rx=1");
                                     emit txAudioStreamReady(id);
                                 } else {
-                                    qWarning() << "RadioModel: stream create dax_tx failed, code"
+                                    qCWarning(lcProtocol) << "RadioModel: stream create dax_tx failed, code"
                                                << Qt::hex << code << "body:" << body;
                                 }
                             });
@@ -474,7 +475,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
 
 void RadioModel::onDisconnected()
 {
-    qDebug() << "RadioModel: disconnected";
+    qCDebug(lcProtocol) << "RadioModel: disconnected";
     stopNetworkMonitor();
     m_panStream.stop();
     m_panId.clear();
@@ -485,17 +486,17 @@ void RadioModel::onDisconnected()
     emit connectionStateChanged(false);
 
     if (m_wanConn) {
-        qDebug() << "RadioModel: WAN disconnected (no auto-reconnect for SmartLink)";
+        qCDebug(lcProtocol) << "RadioModel: WAN disconnected (no auto-reconnect for SmartLink)";
         m_wanConn = nullptr;
     } else if (!m_intentionalDisconnect && !m_lastInfo.address.isNull()) {
-        qDebug() << "RadioModel: unexpected disconnect — reconnecting in 3s";
+        qCDebug(lcProtocol) << "RadioModel: unexpected disconnect — reconnecting in 3s";
         m_reconnectTimer.start();
     }
 }
 
 void RadioModel::onConnectionError(const QString& msg)
 {
-    qWarning() << "RadioModel: connection error:" << msg;
+    qCWarning(lcProtocol) << "RadioModel: connection error:" << msg;
     emit connectionError(msg);
     emit connectionStateChanged(false);
 }
@@ -737,7 +738,7 @@ void RadioModel::onMessageReceived(const ParsedMessage& msg)
 
 void RadioModel::sendCommand(const QString& cmd)
 {
-    qDebug() << "RadioModel::sendCommand:" << cmd
+    qCDebug(lcProtocol) << "RadioModel::sendCommand:" << cmd
              << "connected:" << isConnected() << "wan:" << (m_wanConn != nullptr);
     this->sendCmd(cmd);
 }
@@ -754,9 +755,9 @@ void RadioModel::createRxAudioStream()
         [this](int code, const QString& body) {
             if (code == 0) {
                 m_rxAudioStreamId = body.trimmed();
-                qDebug() << "RadioModel: remote_audio_rx stream created, id:" << m_rxAudioStreamId;
+                qCDebug(lcProtocol) << "RadioModel: remote_audio_rx stream created, id:" << m_rxAudioStreamId;
             } else {
-                qWarning() << "RadioModel: stream create remote_audio_rx failed, code"
+                qCWarning(lcProtocol) << "RadioModel: stream create remote_audio_rx failed, code"
                            << Qt::hex << code << "body:" << body;
             }
         });
@@ -766,7 +767,7 @@ void RadioModel::removeRxAudioStream()
 {
     if (m_rxAudioStreamId.isEmpty()) return;
     sendCmd(QString("stream remove 0x%1").arg(m_rxAudioStreamId));
-    qDebug() << "RadioModel: removed remote_audio_rx stream" << m_rxAudioStreamId;
+    qCDebug(lcProtocol) << "RadioModel: removed remote_audio_rx stream" << m_rxAudioStreamId;
     m_rxAudioStreamId.clear();
 }
 
@@ -884,7 +885,7 @@ void RadioModel::onStatusReceived(const QString& object,
                         merged.insert(token.left(eq), token.mid(eq + 1));
                 }
             }
-            qDebug() << "RadioModel: memory status for index" << idx
+            qCDebug(lcProtocol) << "RadioModel: memory status for index" << idx
                      << "keys:" << merged.keys();
             handleMemoryStatus(idx, merged);
             return;
@@ -907,7 +908,7 @@ void RadioModel::onStatusReceived(const QString& object,
                     if (owner == clientHandle()) {
                         m_panId = panId;
                         updateStreamFilters();
-                        qDebug() << "RadioModel: claimed panadapter" << m_panId;
+                        qCDebug(lcProtocol) << "RadioModel: claimed panadapter" << m_panId;
                     } else {
                         return;  // not our panadapter, ignore
                     }
@@ -935,7 +936,7 @@ void RadioModel::onStatusReceived(const QString& object,
                     if (owner == clientHandle()) {
                         m_waterfallId = wfId;
                         updateStreamFilters();
-                        qDebug() << "RadioModel: claimed waterfall" << m_waterfallId;
+                        qCDebug(lcProtocol) << "RadioModel: claimed waterfall" << m_waterfallId;
                     } else {
                         return;  // not our waterfall
                     }
@@ -995,7 +996,7 @@ void RadioModel::onStatusReceived(const QString& object,
             // Detect power amplifier (PGXL or any non-TGXL amp)
             if (!model.isEmpty() && model != "TunerGeniusXL" && !m_hasAmplifier) {
                 m_hasAmplifier = true;
-                qDebug() << "RadioModel: power amplifier detected, model=" << model;
+                qCDebug(lcProtocol) << "RadioModel: power amplifier detected, model=" << model;
                 emit amplifierChanged(true);
             }
         }
@@ -1207,9 +1208,9 @@ void RadioModel::handleSliceStatus(int id,
         quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
         if (owner == clientHandle()) {
             m_ownedSliceIds.insert(id);
-            qDebug() << "RadioModel: slice" << id << "is ours (client_handle match)";
+            qCDebug(lcProtocol) << "RadioModel: slice" << id << "is ours (client_handle match)";
         } else if (owner != 0) {
-            qDebug() << "RadioModel: slice" << id << "belongs to another client"
+            qCDebug(lcProtocol) << "RadioModel: slice" << id << "belongs to another client"
                      << Qt::hex << owner << ", removing";
             m_ownedSliceIds.remove(id);
             // If we already have a SliceModel for this ID, remove it
@@ -1224,7 +1225,7 @@ void RadioModel::handleSliceStatus(int id,
 
     // If we've seen client_handle info and this slice isn't ours, skip it
     if (!m_ownedSliceIds.isEmpty() && !m_ownedSliceIds.contains(id)) {
-        qDebug() << "RadioModel: ignoring slice" << id << "status (not in owned set)";
+        qCDebug(lcProtocol) << "RadioModel: ignoring slice" << id << "status (not in owned set)";
         return;
     }
 
@@ -1403,17 +1404,17 @@ void RadioModel::configurePan()
         QString("display pan set %1 xpixels=1024 ypixels=700").arg(m_panId),
         [this](int code, const QString&) {
             if (code != 0)
-                qWarning() << "RadioModel: display pan set xpixels/ypixels failed, code"
+                qCWarning(lcProtocol) << "RadioModel: display pan set xpixels/ypixels failed, code"
                            << Qt::hex << code;
             else
-                qDebug() << "RadioModel: panadapter xpixels=1024 ypixels=700 set OK";
+                qCDebug(lcProtocol) << "RadioModel: panadapter xpixels=1024 ypixels=700 set OK";
         });
 
     sendCmd(
         QString("display pan set %1 fps=25 average=0 min_dbm=-130 max_dbm=-40").arg(m_panId),
         [](int code, const QString&) {
             if (code != 0)
-                qWarning() << "RadioModel: display pan set fps/average/dbm failed, code" << Qt::hex << code;
+                qCWarning(lcProtocol) << "RadioModel: display pan set fps/average/dbm failed, code" << Qt::hex << code;
         });
 }
 
@@ -1427,7 +1428,7 @@ void RadioModel::configureWaterfall()
                             .arg(m_waterfallId);
     sendCmd(cmd, [this](int code, const QString&) {
         if (code != 0) {
-            qDebug() << "RadioModel: display panafall set waterfall failed, code"
+            qCDebug(lcProtocol) << "RadioModel: display panafall set waterfall failed, code"
                      << Qt::hex << code << "— trying display waterfall set";
             // Fallback for firmware that doesn't support panafall addressing
             sendCmd(
@@ -1435,13 +1436,13 @@ void RadioModel::configureWaterfall()
                     .arg(m_waterfallId),
                 [](int code2, const QString&) {
                     if (code2 != 0)
-                        qWarning() << "RadioModel: display waterfall set also failed, code"
+                        qCWarning(lcProtocol) << "RadioModel: display waterfall set also failed, code"
                                    << Qt::hex << code2;
                     else
-                        qDebug() << "RadioModel: waterfall configured via display waterfall set";
+                        qCDebug(lcProtocol) << "RadioModel: waterfall configured via display waterfall set";
                 });
         } else {
-            qDebug() << "RadioModel: waterfall configured (auto_black=0 black_level=15 color_gain=50)";
+            qCDebug(lcProtocol) << "RadioModel: waterfall configured (auto_black=0 black_level=15 color_gain=50)";
         }
     });
 }
@@ -1461,18 +1462,18 @@ void RadioModel::createDefaultSlice(const QString& freqMhz,
                                      const QString& mode,
                                      const QString& antenna)
 {
-    qDebug() << "RadioModel: standalone mode — creating panadapter + slice"
+    qCDebug(lcProtocol) << "RadioModel: standalone mode — creating panadapter + slice"
              << freqMhz << mode << antenna;
 
     sendCmd("panadapter create",
         [this, freqMhz, mode, antenna](int code, const QString& body) {
             if (code != 0) {
-                qWarning() << "RadioModel: panadapter create failed, code" << Qt::hex << code
+                qCWarning(lcProtocol) << "RadioModel: panadapter create failed, code" << Qt::hex << code
                            << "body:" << body;
                 return;
             }
 
-            qDebug() << "RadioModel: panadapter create response body:" << body;
+            qCDebug(lcProtocol) << "RadioModel: panadapter create response body:" << body;
 
             // Response body may be a bare hex ID ("0x40000000") or KV ("pan=0x40000000").
             // Parse KVs first; fall back to treating the whole body as the ID.
@@ -1486,10 +1487,10 @@ void RadioModel::createDefaultSlice(const QString& freqMhz,
                 panId = body.trimmed();
             }
 
-            qDebug() << "RadioModel: panadapter created, pan_id =" << panId;
+            qCDebug(lcProtocol) << "RadioModel: panadapter created, pan_id =" << panId;
 
             if (panId.isEmpty()) {
-                qWarning() << "RadioModel: panadapter create returned empty pan_id";
+                qCWarning(lcProtocol) << "RadioModel: panadapter create returned empty pan_id";
                 return;
             }
 
@@ -1500,10 +1501,10 @@ void RadioModel::createDefaultSlice(const QString& freqMhz,
             sendCmd(sliceCmd,
                 [panId](int code2, const QString& body2) {
                     if (code2 != 0) {
-                        qWarning() << "RadioModel: slice create failed, code"
+                        qCWarning(lcProtocol) << "RadioModel: slice create failed, code"
                                    << Qt::hex << code2 << "body:" << body2;
                     } else {
-                        qDebug() << "RadioModel: slice created, index =" << body2;
+                        qCDebug(lcProtocol) << "RadioModel: slice created, index =" << body2;
                         // Radio now emits S|slice N ... status messages;
                         // handleSliceStatus() picks them up automatically.
                     }
@@ -1539,28 +1540,28 @@ void RadioModel::handleProfileStatusRaw(const QString& profileType,
         if (key == "list") {
             QStringList profiles = val.split('^', Qt::SkipEmptyParts);
             m_transmitModel.setProfileList(profiles);
-            qDebug() << "RadioModel: TX profiles:" << profiles;
+            qCDebug(lcProtocol) << "RadioModel: TX profiles:" << profiles;
         } else if (key == "current") {
             m_transmitModel.setActiveProfile(val);
-            qDebug() << "RadioModel: active TX profile:" << val;
+            qCDebug(lcProtocol) << "RadioModel: active TX profile:" << val;
         }
     } else if (profileType == "mic") {
         if (key == "list") {
             QStringList profiles = val.split('^', Qt::SkipEmptyParts);
             m_transmitModel.setMicProfileList(profiles);
-            qDebug() << "RadioModel: mic profiles:" << profiles;
+            qCDebug(lcProtocol) << "RadioModel: mic profiles:" << profiles;
         } else if (key == "current") {
             m_transmitModel.setActiveMicProfile(val);
-            qDebug() << "RadioModel: active mic profile:" << val;
+            qCDebug(lcProtocol) << "RadioModel: active mic profile:" << val;
         }
     } else if (profileType == "global") {
         if (key == "list") {
             m_globalProfiles = val.split('^', Qt::SkipEmptyParts);
-            qDebug() << "RadioModel: global profiles:" << m_globalProfiles;
+            qCDebug(lcProtocol) << "RadioModel: global profiles:" << m_globalProfiles;
             emit globalProfilesChanged();
         } else if (key == "current") {
             m_activeGlobalProfile = val;
-            qDebug() << "RadioModel: active global profile:" << val;
+            qCDebug(lcProtocol) << "RadioModel: active global profile:" << val;
             emit globalProfilesChanged();
         }
     }
@@ -1592,9 +1593,9 @@ void RadioModel::createAudioStream()
                     [this](int code, const QString& body) {
                         if (code == 0) {
                             m_rxAudioStreamId = body.trimmed();
-                            qDebug() << "RadioModel: remote_audio_rx stream re-created, id:" << m_rxAudioStreamId;
+                            qCDebug(lcProtocol) << "RadioModel: remote_audio_rx stream re-created, id:" << m_rxAudioStreamId;
                         } else
-                            qWarning() << "RadioModel: stream create remote_audio_rx failed, code"
+                            qCWarning(lcProtocol) << "RadioModel: stream create remote_audio_rx failed, code"
                                        << Qt::hex << code << "body:" << body;
                     });
             });
@@ -1604,9 +1605,9 @@ void RadioModel::createAudioStream()
             [this](int code, const QString& body) {
                 if (code == 0) {
                     m_rxAudioStreamId = body.trimmed();
-                    qDebug() << "RadioModel: remote_audio_rx stream re-created, id:" << m_rxAudioStreamId;
+                    qCDebug(lcProtocol) << "RadioModel: remote_audio_rx stream re-created, id:" << m_rxAudioStreamId;
                 } else
-                    qWarning() << "RadioModel: stream create remote_audio_rx failed, code"
+                    qCWarning(lcProtocol) << "RadioModel: stream create remote_audio_rx failed, code"
                                << Qt::hex << code << "body:" << body;
             });
     }
@@ -1616,7 +1617,7 @@ void RadioModel::createAudioStream()
         [this](int code, const QString& body) {
             if (code == 0) {
                 quint32 id = body.trimmed().toUInt(nullptr, 16);
-                qDebug() << "RadioModel: dax_tx stream re-created, id:" << Qt::hex << id;
+                qCDebug(lcProtocol) << "RadioModel: dax_tx stream re-created, id:" << Qt::hex << id;
                 emit txAudioStreamReady(id);
             }
         });

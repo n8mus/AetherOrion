@@ -1,4 +1,5 @@
 #include "SmartLinkClient.h"
+#include "LogManager.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -6,7 +7,6 @@
 #include <QNetworkReply>
 #include <QSslConfiguration>
 #include <QUrl>
-#include <QDebug>
 
 namespace AetherSDR {
 
@@ -47,7 +47,7 @@ void SmartLinkClient::login(const QString& email, const QString& password)
     body["client_id"]   = AUTH0_CLIENT_ID;
     body["scope"]       = "openid email given_name family_name profile picture offline_access";
 
-    qDebug() << "SmartLinkClient: Auth0 login for" << email.left(3) + "***";
+    qCDebug(lcSmartLink) << "SmartLinkClient: Auth0 login for" << email.left(3) + "***";
 
     auto* reply = m_nam.post(req, QJsonDocument(body).toJson());
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
@@ -57,7 +57,7 @@ void SmartLinkClient::login(const QString& email, const QString& password)
             const auto data = reply->readAll();
             QJsonObject err = QJsonDocument::fromJson(data).object();
             QString desc = err.value("error_description").toString(reply->errorString());
-            qWarning() << "SmartLinkClient: Auth0 login failed:" << desc;
+            qCWarning(lcSmartLink) << "SmartLinkClient: Auth0 login failed:" << desc;
             emit authFailed(desc);
             return;
         }
@@ -68,12 +68,12 @@ void SmartLinkClient::login(const QString& email, const QString& password)
         m_refreshToken = resp.value("refresh_token").toString();
 
         if (m_idToken.isEmpty()) {
-            qWarning() << "SmartLinkClient: Auth0 response missing id_token";
+            qCWarning(lcSmartLink) << "SmartLinkClient: Auth0 response missing id_token";
             emit authFailed("No id_token in response");
             return;
         }
 
-        qDebug() << "SmartLinkClient: Auth0 login successful, id_token length:" << m_idToken.length();
+        qCDebug(lcSmartLink) << "SmartLinkClient: Auth0 login successful, id_token length:" << m_idToken.length();
         m_authenticated = true;
         emit authenticated();
 
@@ -93,7 +93,7 @@ void SmartLinkClient::loginWithRefreshToken(const QString& refreshToken)
     body["refresh_token"] = refreshToken;
     body["client_id"]     = AUTH0_CLIENT_ID;
 
-    qDebug() << "SmartLinkClient: Auth0 refresh token login";
+    qCDebug(lcSmartLink) << "SmartLinkClient: Auth0 refresh token login";
 
     auto* reply = m_nam.post(req, QJsonDocument(body).toJson());
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
@@ -103,7 +103,7 @@ void SmartLinkClient::loginWithRefreshToken(const QString& refreshToken)
             const auto data = reply->readAll();
             QJsonObject err = QJsonDocument::fromJson(data).object();
             QString desc = err.value("error_description").toString(reply->errorString());
-            qWarning() << "SmartLinkClient: Auth0 refresh failed:" << desc;
+            qCWarning(lcSmartLink) << "SmartLinkClient: Auth0 refresh failed:" << desc;
             emit authFailed(desc);
             return;
         }
@@ -121,7 +121,7 @@ void SmartLinkClient::loginWithRefreshToken(const QString& refreshToken)
             return;
         }
 
-        qDebug() << "SmartLinkClient: Auth0 refresh successful";
+        qCDebug(lcSmartLink) << "SmartLinkClient: Auth0 refresh successful";
         m_authenticated = true;
         emit authenticated();
         connectToServer();
@@ -144,11 +144,11 @@ void SmartLinkClient::logout()
 void SmartLinkClient::connectToServer()
 {
     if (m_idToken.isEmpty()) {
-        qWarning() << "SmartLinkClient: cannot connect to server without token";
+        qCWarning(lcSmartLink) << "SmartLinkClient: cannot connect to server without token";
         return;
     }
 
-    qDebug() << "SmartLinkClient: connecting to" << SMARTLINK_HOST << ":" << SMARTLINK_PORT;
+    qCDebug(lcSmartLink) << "SmartLinkClient: connecting to" << SMARTLINK_HOST << ":" << SMARTLINK_PORT;
 
     // Standard TLS with certificate validation
     QSslConfiguration sslConfig = QSslConfiguration::defaultConfiguration();
@@ -172,7 +172,7 @@ void SmartLinkClient::requestConnect(const QString& serial, quint16 holePunchPor
     if (!m_serverConnected) return;
     QString cmd = QString("application connect serial=%1 hole_punch_port=%2\n")
                       .arg(serial).arg(holePunchPort);
-    qDebug() << "SmartLinkClient: requesting connection to" << serial
+    qCDebug(lcSmartLink) << "SmartLinkClient: requesting connection to" << serial
              << "hole_punch_port=" << holePunchPort;
     m_socket.write(cmd.toUtf8());
 }
@@ -181,25 +181,25 @@ void SmartLinkClient::requestConnect(const QString& serial, quint16 holePunchPor
 
 void SmartLinkClient::onSslConnected()
 {
-    qDebug() << "SmartLinkClient: TLS connected to SmartLink server";
+    qCDebug(lcSmartLink) << "SmartLinkClient: TLS connected to SmartLink server";
     m_serverConnected = true;
 
     // Register with the server
-    qDebug() << "SmartLinkClient: sending application register (token length:" << m_idToken.length() << ")";
+    qCDebug(lcSmartLink) << "SmartLinkClient: sending application register (token length:" << m_idToken.length() << ")";
     QString cmd = QString("application register name=AetherSDR platform=Linux token=%1\n")
                       .arg(m_idToken);
     m_socket.write(cmd.toUtf8());
 
     // Start keepalive pings
     m_pingTimer.start();
-    qDebug() << "SmartLinkClient: keepalive ping timer started (10s interval)";
+    qCDebug(lcSmartLink) << "SmartLinkClient: keepalive ping timer started (10s interval)";
 
     emit serverConnected();
 }
 
 void SmartLinkClient::onSslDisconnected()
 {
-    qDebug() << "SmartLinkClient: TLS disconnected from SmartLink server";
+    qCDebug(lcSmartLink) << "SmartLinkClient: TLS disconnected from SmartLink server";
     m_pingTimer.stop();
     m_serverConnected = false;
     emit serverDisconnected();
@@ -208,7 +208,7 @@ void SmartLinkClient::onSslDisconnected()
 void SmartLinkClient::onSslError(const QList<QSslError>& errors)
 {
     for (const auto& err : errors)
-        qWarning() << "SmartLinkClient: SSL error:" << err.errorString();
+        qCWarning(lcSmartLink) << "SmartLinkClient: SSL error:" << err.errorString();
     // Don't ignore errors for the SmartLink server (it has a valid cert)
 }
 
@@ -240,9 +240,9 @@ void SmartLinkClient::parseMessage(const QString& msg)
 {
     // Redact any token= values from log output
     if (msg.contains("token="))
-        qDebug() << "SmartLink RX:" << msg.left(msg.indexOf("token=") + 6) + "***REDACTED***";
+        qCDebug(lcSmartLink) << "SmartLink RX:" << msg.left(msg.indexOf("token=") + 6) + "***REDACTED***";
     else
-        qDebug() << "SmartLink RX:" << msg.left(120);
+        qCDebug(lcSmartLink) << "SmartLink RX:" << msg.left(120);
 
     if (msg.startsWith("radio list ")) {
         parseRadioList(msg);
@@ -253,13 +253,13 @@ void SmartLinkClient::parseMessage(const QString& msg)
     } else if (msg.startsWith("application user_settings")) {
         parseUserSettings(msg);
     } else if (msg.startsWith("application registration_invalid")) {
-        qWarning() << "SmartLinkClient: registration invalid — token rejected";
+        qCWarning(lcSmartLink) << "SmartLinkClient: registration invalid — token rejected";
         m_authenticated = false;
         emit authFailed("SmartLink registration invalid — please re-login");
     } else if (msg.startsWith("radio test_connection")) {
         parseTestResults(msg);
     } else if (!msg.startsWith("ping")) {
-        qDebug() << "SmartLinkClient: unhandled message:" << msg.left(80);
+        qCDebug(lcSmartLink) << "SmartLinkClient: unhandled message:" << msg.left(80);
     }
 }
 
@@ -305,9 +305,9 @@ void SmartLinkClient::parseRadioList(const QString& msg)
             radios.append(info);
     }
 
-    qDebug() << "SmartLinkClient: received" << radios.size() << "WAN radio(s)";
+    qCDebug(lcSmartLink) << "SmartLinkClient: received" << radios.size() << "WAN radio(s)";
     for (const auto& r : radios)
-        qDebug() << "  " << r.model << r.nickname << r.serial << r.status
+        qCDebug(lcSmartLink) << "  " << r.model << r.nickname << r.serial << r.status
                  << "ip:" << r.publicIp << "tls:" << r.publicTlsPort
                  << "udp:" << r.publicUdpPort << "upnp:" << r.upnpSupported
                  << "holePunch:" << r.requiresHolePunch;
@@ -329,7 +329,7 @@ void SmartLinkClient::parseConnectReady(const QString& msg)
     QString handle = kv.value("handle");
     QString serial = kv.value("serial");
 
-    qDebug() << "SmartLinkClient: connect ready, serial:" << serial;
+    qCDebug(lcSmartLink) << "SmartLinkClient: connect ready, serial:" << serial;
     emit connectReady(handle, serial);
 }
 
@@ -340,7 +340,7 @@ void SmartLinkClient::parseApplicationInfo(const QString& msg)
         if (w.startsWith("public_ip="))
             m_publicIp = w.mid(10);
     }
-    qDebug() << "SmartLinkClient: public IP:" << m_publicIp;
+    qCDebug(lcSmartLink) << "SmartLinkClient: public IP:" << m_publicIp;
 }
 
 void SmartLinkClient::parseUserSettings(const QString& msg)
@@ -355,7 +355,7 @@ void SmartLinkClient::parseUserSettings(const QString& msg)
         else if (key == "first_name") m_userFirstName = val;
         else if (key == "last_name")  m_userLastName = val;
     }
-    qDebug() << "SmartLinkClient: user:" << m_userFirstName << m_userLastName
+    qCDebug(lcSmartLink) << "SmartLinkClient: user:" << m_userFirstName << m_userLastName
              << "callsign:" << m_userCallsign;
 }
 
@@ -369,7 +369,7 @@ void SmartLinkClient::parseTestResults(const QString& msg)
             kv[w.left(eq)] = w.mid(eq + 1);
     }
 
-    qDebug() << "SmartLinkClient: test_connection results for" << kv.value("serial")
+    qCDebug(lcSmartLink) << "SmartLinkClient: test_connection results for" << kv.value("serial")
              << "upnpTcp:" << kv.value("upnp_tcp_port_working")
              << "upnpUdp:" << kv.value("upnp_udp_port_working")
              << "fwdTcp:" << kv.value("forward_tcp_port_working")

@@ -1,7 +1,6 @@
 #include "CwDecoder.h"
+#include "LogManager.h"
 #include "ggmorse/ggmorse.h"
-
-#include <QDebug>
 #include <cstring>
 
 namespace AetherSDR {
@@ -49,7 +48,7 @@ void CwDecoder::start()
     m_workerThread = worker;
     worker->start();
 
-    qDebug() << "CwDecoder: started";
+    qCDebug(lcDsp) << "CwDecoder: started";
 }
 
 void CwDecoder::stop()
@@ -63,7 +62,7 @@ void CwDecoder::stop()
     }
 
     m_ggmorse.reset();
-    qDebug() << "CwDecoder: stopped";
+    qCDebug(lcDsp) << "CwDecoder: stopped";
 }
 
 void CwDecoder::feedAudio(const QByteArray& pcm24kStereo)
@@ -95,7 +94,7 @@ void CwDecoder::decodeLoop()
     const int bytesPerFrame = m_ggmorse->getSamplesPerFrame() * resampleFactor * m_ggmorse->getSampleSizeBytesInp();
     int feedCount = 0;
 
-    qDebug() << "CwDecoder: decode loop running, bytesPerFrame:" << bytesPerFrame;
+    qCDebug(lcDsp) << "CwDecoder: decode loop running, bytesPerFrame:" << bytesPerFrame;
 
     while (m_running) {
         // Wait until we have at least one frame of data
@@ -129,7 +128,7 @@ void CwDecoder::decodeLoop()
         if (feedCount % 200 == 0 && feedCount > 0) {
             const auto& stats = m_ggmorse->getStatistics();
             const auto& rxData = m_ggmorse->getRxData();
-            qDebug() << "CwDecoder:" << feedCount << "frames fed, pitch:"
+            qCDebug(lcDsp) << "CwDecoder:" << feedCount << "frames fed, pitch:"
                      << stats.estimatedPitch_Hz << "Hz, speed:"
                      << stats.estimatedSpeed_wpm << "WPM, decode:" << gotData
                      << "rxLen:" << rxData.size()
@@ -154,7 +153,7 @@ void CwDecoder::decodeLoop()
         }
     }
 
-    qDebug() << "CwDecoder: decode loop exiting, total frames:" << feedCount;
+    qCDebug(lcDsp) << "CwDecoder: decode loop exiting, total frames:" << feedCount;
 }
 
 } // namespace AetherSDR

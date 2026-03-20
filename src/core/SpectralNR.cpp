@@ -1,6 +1,5 @@
 #include "SpectralNR.h"
-
-#include <QDebug>
+#include "LogManager.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -53,7 +52,7 @@ SpectralNR::SpectralNR(int fftSize, int sampleRate)
     m_planRev = fftw_plan_dft_c2r_1d(fftSize, m_ifftIn,
                                       m_ifftOut.data(), FFTW_MEASURE);
     if (!m_planFwd || !m_planRev) {
-        qWarning() << "SpectralNR: FFTW plan creation failed — NR2 will not function";
+        qCWarning(lcDsp) << "SpectralNR: FFTW plan creation failed — NR2 will not function";
         m_planFailed = true;
     }
 #else

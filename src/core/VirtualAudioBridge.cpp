@@ -1,6 +1,6 @@
 #include "VirtualAudioBridge.h"
+#include "LogManager.h"
 
-#include <QDebug>
 #include <QTimer>
 
 #include <fcntl.h>
@@ -33,11 +33,11 @@ static bool openShmSegment(const char* name, int& fd, DaxShmBlock*& block)
         // Does not exist yet — create it.
         fd = shm_open(name, O_CREAT | O_RDWR, 0666);
         if (fd < 0) {
-            qWarning() << "VirtualAudioBridge: shm_open failed for" << name;
+            qCWarning(lcDax) << "VirtualAudioBridge: shm_open failed for" << name;
             return false;
         }
         if (ftruncate(fd, sizeof(DaxShmBlock)) != 0) {
-            qWarning() << "VirtualAudioBridge: ftruncate failed for" << name;
+            qCWarning(lcDax) << "VirtualAudioBridge: ftruncate failed for" << name;
             ::close(fd);
             fd = -1;
             return false;
@@ -49,7 +49,7 @@ static bool openShmSegment(const char* name, int& fd, DaxShmBlock*& block)
     void* ptr = mmap(nullptr, sizeof(DaxShmBlock), PROT_READ | PROT_WRITE,
                      MAP_SHARED, fd, 0);
     if (ptr == MAP_FAILED) {
-        qWarning() << "VirtualAudioBridge: mmap failed for" << name;
+        qCWarning(lcDax) << "VirtualAudioBridge: mmap failed for" << name;
         ::close(fd);
         fd = -1;
         return false;
@@ -99,7 +99,7 @@ bool VirtualAudioBridge::open()
         if (m_txBlock && pollNum % 100 == 0) {
             uint32_t wp = m_txBlock->writePos.load(std::memory_order_relaxed);
             uint32_t rp = m_txBlock->readPos.load(std::memory_order_relaxed);
-            qDebug() << "TX shm poll#" << pollNum
+            qCDebug(lcDax) << "TX shm poll#" << pollNum
                      << "wp=" << wp << "rp=" << rp
                      << "avail=" << (wp - rp) << "active=" << m_txBlock->active;
         }
@@ -109,7 +109,7 @@ bool VirtualAudioBridge::open()
             static int txPollCount = 0;
             ++txPollCount;
             if (txPollCount <= 10 || txPollCount % 100 == 0)
-                qDebug() << "VirtualAudioBridge: TX audio from shm, bytes=" << audio.size()
+                qCDebug(lcDax) << "VirtualAudioBridge: TX audio from shm, bytes=" << audio.size()
                          << "(poll #" << txPollCount << ")"
                          << "wp=" << m_txBlock->writePos.load(std::memory_order_relaxed)
                          << "active=" << m_txBlock->active;
@@ -119,7 +119,7 @@ bool VirtualAudioBridge::open()
     m_txPollTimer->start();
 
     m_open = true;
-    qInfo() << "VirtualAudioBridge: opened 4 RX + 1 TX shared memory segments";
+    qCInfo(lcDax) << "VirtualAudioBridge: opened 4 RX + 1 TX shared memory segments";
     return true;
 }
 

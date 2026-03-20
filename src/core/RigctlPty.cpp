@@ -1,9 +1,9 @@
 #include "RigctlPty.h"
+#include "LogManager.h"
 #include "RigctlProtocol.h"
 #include "models/RadioModel.h"
 
 #include <QSocketNotifier>
-#include <QDebug>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -32,7 +32,7 @@ RigctlPty::~RigctlPty()
 bool RigctlPty::start()
 {
 #ifdef _WIN32
-    qWarning() << "RigctlPty: PTY not supported on Windows";
+    qCWarning(lcCat) << "RigctlPty: PTY not supported on Windows";
     return false;
 #else
     if (m_masterFd >= 0)
@@ -40,7 +40,7 @@ bool RigctlPty::start()
 
     char slaveName[256] = {};
     if (openpty(&m_masterFd, &m_slaveFd, slaveName, nullptr, nullptr) != 0) {
-        qWarning() << "RigctlPty: openpty() failed";
+        qCWarning(lcCat) << "RigctlPty: openpty() failed";
         return false;
     }
 
@@ -62,7 +62,7 @@ bool RigctlPty::start()
     // Create symlink for convenience
     ::unlink(m_symlinkPath.toLocal8Bit().constData());
     if (::symlink(slaveName, m_symlinkPath.toLocal8Bit().constData()) != 0) {
-        qWarning() << "RigctlPty: symlink failed:" << m_symlinkPath;
+        qCWarning(lcCat) << "RigctlPty: symlink failed:" << m_symlinkPath;
     }
 
     // Set up protocol handler
@@ -73,7 +73,7 @@ bool RigctlPty::start()
     m_notifier = new QSocketNotifier(m_masterFd, QSocketNotifier::Read, this);
     connect(m_notifier, &QSocketNotifier::activated, this, &RigctlPty::onDataReady);
 
-    qInfo() << "RigctlPty: started on" << m_slavePath << "symlink:" << m_symlinkPath;
+    qCInfo(lcCat) << "RigctlPty: started on" << m_slavePath << "symlink:" << m_symlinkPath;
     emit started(m_symlinkPath);
     return true;
 #endif
@@ -102,7 +102,7 @@ void RigctlPty::stop()
     // Remove symlink
     ::unlink(m_symlinkPath.toLocal8Bit().constData());
 
-    qInfo() << "RigctlPty: stopped";
+    qCInfo(lcCat) << "RigctlPty: stopped";
     emit stopped();
 #endif
 }

@@ -1,4 +1,5 @@
 #include "MeterModel.h"
+#include "core/LogManager.h"
 #include <QDebug>
 #include <cmath>
 
@@ -34,7 +35,7 @@ void MeterModel::defineMeter(const MeterDef& def)
     else if (def.name == "+13.8A")
         m_supplyIdx = def.index;
 
-    qDebug() << "MeterModel: defined meter" << def.index
+    qCDebug(lcMeters) << "MeterModel: defined meter" << def.index
              << def.source << def.sourceIndex << def.name
              << def.unit << "[" << def.low << "->" << def.high << "]";
 }

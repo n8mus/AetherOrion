@@ -1,6 +1,6 @@
 #include "RADEEngine.h"
+#include "LogManager.h"
 #include "Resampler.h"
-#include <QDebug>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -34,7 +34,7 @@ bool RADEEngine::start()
     m_rade = rade_open(const_cast<char*>("dummy"),
                        RADE_USE_C_ENCODER | RADE_USE_C_DECODER | RADE_VERBOSE_0);
     if (!m_rade) {
-        qWarning() << "RADEEngine: rade_open() failed";
+        qCWarning(lcRade) << "RADEEngine: rade_open() failed";
         rade_finalize();
         return false;
     }
@@ -42,7 +42,7 @@ bool RADEEngine::start()
     // TX: LPCNet feature extractor (speech → features)
     m_lpcnetEnc = lpcnet_encoder_create();
     if (!m_lpcnetEnc) {
-        qWarning() << "RADEEngine: lpcnet_encoder_create() failed";
+        qCWarning(lcRade) << "RADEEngine: lpcnet_encoder_create() failed";
         rade_close(m_rade); m_rade = nullptr;
         rade_finalize();
         return false;
@@ -68,11 +68,11 @@ bool RADEEngine::start()
     int n_features = rade_n_features_in_out(m_rade);
     int n_tx_out = rade_n_tx_out(m_rade);
     int nin = rade_nin(m_rade);
-    qInfo() << "RADEEngine: started — n_features=" << n_features
+    qCInfo(lcRade) << "RADEEngine: started — n_features=" << n_features
             << "n_tx_out=" << n_tx_out << "nin=" << nin;
     return true;
 #else
-    qWarning() << "RADEEngine: built without RADE support (HAVE_RADE not defined)";
+    qCWarning(lcRade) << "RADEEngine: built without RADE support (HAVE_RADE not defined)";
     return false;
 #endif
 }
@@ -101,7 +101,7 @@ void RADEEngine::stop()
     m_synced = false;
     m_farganWarmedUp = false;
 
-    qInfo() << "RADEEngine: stopped";
+    qCInfo(lcRade) << "RADEEngine: stopped";
 #endif
 }
 

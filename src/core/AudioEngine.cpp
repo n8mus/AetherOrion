@@ -1,4 +1,5 @@
 #include "AudioEngine.h"
+#include "LogManager.h"
 #include "SpectralNR.h"
 #include "RNNoiseFilter.h"
 #include "Resampler.h"
@@ -7,7 +8,6 @@
 #include <QAudioDevice>
 #include <QDir>
 #include <QtEndian>
-#include <QDebug>
 #include <cmath>
 #include <cstring>
 
@@ -43,12 +43,12 @@ bool AudioEngine::startRxStream()
         ? QMediaDevices::defaultAudioOutput() : m_outputDevice;
 
     if (!dev.isFormatSupported(fmt)) {
-        qWarning() << "AudioEngine: output device does not support 24kHz stereo Int16, trying 48kHz";
+        qCWarning(lcAudio) << "AudioEngine: output device does not support 24kHz stereo Int16, trying 48kHz";
         fmt.setSampleRate(48000);
         m_resampleTo48k = true;
         if (!dev.isFormatSupported(fmt)) {
-            qWarning() << "AudioEngine: output device does not support 48kHz stereo Int16 either";
-            qWarning() << "No audio device detected";
+            qCWarning(lcAudio) << "AudioEngine: output device does not support 48kHz stereo Int16 either";
+            qCWarning(lcAudio) << "No audio device detected";
             return false;
         }
     } else {
@@ -60,13 +60,13 @@ bool AudioEngine::startRxStream()
     m_audioDevice = m_audioSink->start();   // push-mode
 
     if (!m_audioDevice) {
-        qWarning() << "AudioEngine: failed to open audio sink";
+        qCWarning(lcAudio) << "AudioEngine: failed to open audio sink";
         delete m_audioSink;
         m_audioSink = nullptr;
         return false;
     }
 
-    qDebug() << "AudioEngine: RX stream started";
+    qCDebug(lcAudio) << "AudioEngine: RX stream started";
     emit rxStarted();
     return true;
 }
@@ -171,7 +171,7 @@ void AudioEngine::setNr2Enabled(bool on)
         }
         m_nr2 = std::make_unique<SpectralNR>(256, DEFAULT_SAMPLE_RATE);
         if (m_nr2->hasPlanFailed()) {
-            qWarning() << "AudioEngine: NR2 FFTW plan creation failed — disabling";
+            qCWarning(lcAudio) << "AudioEngine: NR2 FFTW plan creation failed — disabling";
             m_nr2.reset();
             m_nr2Enabled = false;
             emit nr2EnabledChanged(false);
@@ -180,7 +180,7 @@ void AudioEngine::setNr2Enabled(bool on)
     } else {
         m_nr2.reset();
     }
-    qDebug() << "AudioEngine: NR2" << (on ? "enabled" : "disabled");
+    qCDebug(lcAudio) << "AudioEngine: NR2" << (on ? "enabled" : "disabled");
     emit nr2EnabledChanged(on);
 }
 
@@ -191,7 +191,7 @@ void AudioEngine::setRn2Enabled(bool on)
     if (on) {
         m_rn2 = std::make_unique<RNNoiseFilter>();
         if (!m_rn2->isValid()) {
-            qWarning() << "AudioEngine: RN2 rnnoise_create() failed — disabling";
+            qCWarning(lcAudio) << "AudioEngine: RN2 rnnoise_create() failed — disabling";
             m_rn2.reset();
             m_rn2Enabled = false;
             emit rn2EnabledChanged(false);
@@ -202,7 +202,7 @@ void AudioEngine::setRn2Enabled(bool on)
     } else {
         m_rn2.reset();
     }
-    qDebug() << "AudioEngine: RN2 (RNNoise)" << (on ? "enabled" : "disabled");
+    qCDebug(lcAudio) << "AudioEngine: RN2 (RNNoise)" << (on ? "enabled" : "disabled");
     emit rn2EnabledChanged(on);
 }
 
@@ -281,7 +281,7 @@ bool AudioEngine::startTxStream(const QHostAddress& radioAddress, quint16 radioP
         ? QMediaDevices::defaultAudioInput() : m_inputDevice;
 
     if (dev.isNull()) {
-        qWarning() << "AudioEngine: no audio input device available";
+        qCWarning(lcAudio) << "AudioEngine: no audio input device available";
         return false;
     }
 
@@ -293,17 +293,17 @@ bool AudioEngine::startTxStream(const QHostAddress& radioAddress, quint16 radioP
         fmt.setSampleRate(24000);
         m_txDownsampleFrom48k = false;
         if (!dev.isFormatSupported(fmt)) {
-            qWarning() << "AudioEngine: input device supports neither 48kHz nor 24kHz";
+            qCWarning(lcAudio) << "AudioEngine: input device supports neither 48kHz nor 24kHz";
             return false;
         }
     }
 #else
     if (!dev.isFormatSupported(fmt)) {
-        qWarning() << "AudioEngine: input device does not support 24kHz, trying 48kHz";
+        qCWarning(lcAudio) << "AudioEngine: input device does not support 24kHz, trying 48kHz";
         fmt.setSampleRate(48000);
         m_txDownsampleFrom48k = true;
         if (!dev.isFormatSupported(fmt)) {
-            qWarning() << "AudioEngine: input device does not support 48kHz either";
+            qCWarning(lcAudio) << "AudioEngine: input device does not support 48kHz either";
             return false;
         }
     } else {
@@ -311,7 +311,7 @@ bool AudioEngine::startTxStream(const QHostAddress& radioAddress, quint16 radioP
     }
 #endif
 
-    qDebug() << "AudioEngine: input device:" << dev.description()
+    qCDebug(lcAudio) << "AudioEngine: input device:" << dev.description()
              << "rate:" << fmt.sampleRate() << "ch:" << fmt.channelCount();
 
 #ifdef Q_OS_MAC
@@ -322,7 +322,7 @@ bool AudioEngine::startTxStream(const QHostAddress& radioAddress, quint16 radioP
     m_audioSource->start(m_micBuffer);
 
     if (m_audioSource->state() == QAudio::StoppedState) {
-        qWarning() << "AudioEngine: failed to start audio source";
+        qCWarning(lcAudio) << "AudioEngine: failed to start audio source";
         delete m_audioSource; m_audioSource = nullptr;
         delete m_micBuffer; m_micBuffer = nullptr;
         return false;
@@ -338,14 +338,14 @@ bool AudioEngine::startTxStream(const QHostAddress& radioAddress, quint16 radioP
     m_audioSource = new QAudioSource(dev, fmt, this);
     m_micDevice = m_audioSource->start();
     if (!m_micDevice) {
-        qWarning() << "AudioEngine: failed to open audio source";
+        qCWarning(lcAudio) << "AudioEngine: failed to open audio source";
         delete m_audioSource; m_audioSource = nullptr;
         return false;
     }
     connect(m_micDevice, &QIODevice::readyRead, this, &AudioEngine::onTxAudioReady);
 #endif
 
-    qDebug() << "AudioEngine: TX stream started ->" << radioAddress.toString()
+    qCDebug(lcAudio) << "AudioEngine: TX stream started ->" << radioAddress.toString()
              << ":" << radioPort << "streamId:" << Qt::hex << m_txStreamId;
     return true;
 }
@@ -503,7 +503,7 @@ QByteArray AudioEngine::buildVitaTxPacket(const float* samples, int numStereoSam
 void AudioEngine::setOutputDevice(const QAudioDevice& dev)
 {
     m_outputDevice = dev;
-    qDebug() << "AudioEngine: output device set to" << dev.description();
+    qCDebug(lcAudio) << "AudioEngine: output device set to" << dev.description();
     // Restart RX stream if running
     if (m_audioSink) {
         stopRxStream();
@@ -514,7 +514,7 @@ void AudioEngine::setOutputDevice(const QAudioDevice& dev)
 void AudioEngine::setInputDevice(const QAudioDevice& dev)
 {
     m_inputDevice = dev;
-    qDebug() << "AudioEngine: input device set to" << dev.description();
+    qCDebug(lcAudio) << "AudioEngine: input device set to" << dev.description();
     // Restart TX stream if running
     if (m_audioSource) {
         QHostAddress addr = m_txAddress;

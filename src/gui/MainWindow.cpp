@@ -19,6 +19,7 @@
 #include "MemoryDialog.h"
 #include "SpotSettingsDialog.h"
 #include "ProfileManagerDialog.h"
+#include "SupportDialog.h"
 #include "models/SliceModel.h"
 #include "models/MeterModel.h"
 #include "models/TunerModel.h"
@@ -999,6 +1000,11 @@ void MainWindow::buildMenuBar()
     });
 
     auto* helpMenu = menuBar()->addMenu("&Help");
+    helpMenu->addAction("Support...", this, [this]() {
+        SupportDialog dlg(this);
+        dlg.exec();
+    });
+    helpMenu->addSeparator();
     helpMenu->addAction("About AetherSDR", this, [this]{
         const QString text = QString(
             "<div style='text-align:center;'>"

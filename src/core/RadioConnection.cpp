@@ -1,5 +1,5 @@
 #include "RadioConnection.h"
-#include <QDebug>
+#include "LogManager.h"
 
 namespace AetherSDR {
 
@@ -39,10 +39,10 @@ void RadioConnection::connectToRadio(const RadioInfo& info)
 void RadioConnection::connectToHost(const QHostAddress& address, quint16 port)
 {
     if (m_state != ConnectionState::Disconnected) {
-        qWarning() << "RadioConnection: already connected or connecting";
+        qCWarning(lcConnection) << "RadioConnection: already connected or connecting";
         return;
     }
-    qDebug() << "RadioConnection: connecting to" << address.toString() << ":" << port;
+    qCDebug(lcConnection) << "RadioConnection: connecting to" << address.toString() << ":" << port;
     setState(ConnectionState::Connecting);
     m_socket.connectToHost(address, port);
 }
@@ -62,7 +62,7 @@ void RadioConnection::disconnectFromRadio()
 quint32 RadioConnection::sendCommand(const QString& command, ResponseCallback callback)
 {
     if (!isConnected()) {
-        qWarning() << "RadioConnection::sendCommand: not connected";
+        qCWarning(lcConnection) << "RadioConnection::sendCommand: not connected";
         return 0;
     }
     const quint32 seq = m_seqCounter.fetch_add(1);
@@ -73,7 +73,7 @@ quint32 RadioConnection::sendCommand(const QString& command, ResponseCallback ca
     if (command.startsWith("ping")) {
         m_lastPingSeq = seq;
     } else {
-        qDebug() << "TX:" << data.trimmed();
+        qCDebug(lcConnection) << "TX:" << data.trimmed();
     }
     m_socket.write(data);
     return seq;
@@ -83,7 +83,7 @@ quint32 RadioConnection::sendCommand(const QString& command, ResponseCallback ca
 
 void RadioConnection::onSocketConnected()
 {
-    qDebug() << "RadioConnection: TCP connected";
+    qCDebug(lcConnection) << "RadioConnection: TCP connected";
     // Disable Nagle — send commands immediately without buffering
     m_socket.setSocketOption(QAbstractSocket::LowDelayOption, 1);
     // Do NOT set Connected yet — wait for V and H messages from the radio.
@@ -92,7 +92,7 @@ void RadioConnection::onSocketConnected()
 
 void RadioConnection::onSocketDisconnected()
 {
-    qDebug() << "RadioConnection: TCP disconnected";
+    qCDebug(lcConnection) << "RadioConnection: TCP disconnected";
     m_heartbeat.stop();
     setState(ConnectionState::Disconnected);
     emit disconnected();
@@ -101,7 +101,7 @@ void RadioConnection::onSocketDisconnected()
 void RadioConnection::onSocketError(QAbstractSocket::SocketError /*error*/)
 {
     const QString msg = m_socket.errorString();
-    qWarning() << "RadioConnection: socket error:" << msg;
+    qCWarning(lcConnection) << "RadioConnection: socket error:" << msg;
     setState(ConnectionState::Error);
     emit errorOccurred(msg);
 }
@@ -139,7 +139,7 @@ void RadioConnection::processLine(const QString& line)
         isPingReply = line.startsWith(QString("R%1|").arg(m_lastPingSeq));
     }
     if (!isGps && !isPingReply)
-        qDebug() << "RX:" << line;
+        qCDebug(lcConnection) << "RX:" << line;
 
     ParsedMessage msg = CommandParser::parseLine(line);
     emit messageReceived(msg);
@@ -151,7 +151,7 @@ void RadioConnection::processLine(const QString& line)
 
     case MessageType::Handle:
         m_handle = msg.handle;
-        qDebug() << "RadioConnection: assigned handle" << QString::number(m_handle, 16);
+        qCDebug(lcConnection) << "RadioConnection: assigned handle" << QString::number(m_handle, 16);
         setState(ConnectionState::Connected);
         m_heartbeat.start();
         // Full command sequence (sub → client gui → udpport → slice list) is

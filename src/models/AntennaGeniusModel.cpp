@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QNetworkDatagram>
 #include "core/AppSettings.h"
+#include "core/LogManager.h"
 #include <QDebug>
 #include <QRegularExpression>
 
@@ -42,7 +43,7 @@ void AntennaGeniusModel::startDiscovery()
     // Bind to 9007 to receive AG broadcast datagrams.
     if (!m_udpSocket->bind(QHostAddress::AnyIPv4, kAgPort,
                            QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
-        qWarning() << "AntennaGenius: failed to bind UDP" << kAgPort
+        qCWarning(lcTuner) << "AntennaGenius: failed to bind UDP" << kAgPort
                     << m_udpSocket->errorString();
         delete m_udpSocket;
         m_udpSocket = nullptr;
@@ -60,7 +61,7 @@ void AntennaGeniusModel::startDiscovery()
     });
     m_discoveryTimeout->start();
 
-    qDebug() << "AntennaGenius: discovery started on UDP" << kAgPort;
+    qCDebug(lcTuner) << "AntennaGenius: discovery started on UDP" << kAgPort;
 }
 
 void AntennaGeniusModel::stopDiscovery()
@@ -116,7 +117,7 @@ void AntennaGeniusModel::onDiscoveryDatagram()
         if (!found) {
             bool wasEmpty = m_discoveredDevices.isEmpty();
             m_discoveredDevices.append(info);
-            qDebug() << "AntennaGenius: discovered" << info.name
+            qCDebug(lcTuner) << "AntennaGenius: discovered" << info.name
                      << "at" << info.ip.toString() << "serial" << info.serial;
             emit deviceDiscovered(info);
             if (wasEmpty)
@@ -148,7 +149,7 @@ void AntennaGeniusModel::connectToDevice(const AgDeviceInfo& info)
     connect(m_tcpSocket, &QTcpSocket::errorOccurred,
             this, [this]() { onTcpError(); });
 
-    qDebug() << "AntennaGenius: connecting to" << info.ip.toString() << ":" << info.port;
+    qCDebug(lcTuner) << "AntennaGenius: connecting to" << info.ip.toString() << ":" << info.port;
     m_tcpSocket->connectToHost(info.ip, info.port);
 }
 
@@ -177,13 +178,13 @@ void AntennaGeniusModel::disconnectFromDevice()
 
 void AntennaGeniusModel::onTcpConnected()
 {
-    qDebug() << "AntennaGenius: TCP connected to" << m_device.ip.toString();
+    qCDebug(lcTuner) << "AntennaGenius: TCP connected to" << m_device.ip.toString();
     // Wait for prologue line ("V<version> AG") before sending commands.
 }
 
 void AntennaGeniusModel::onTcpDisconnected()
 {
-    qDebug() << "AntennaGenius: TCP disconnected";
+    qCDebug(lcTuner) << "AntennaGenius: TCP disconnected";
     if (m_connected) {
         m_connected = false;
         emit disconnected();
@@ -197,7 +198,7 @@ void AntennaGeniusModel::onTcpError()
 {
     if (!m_tcpSocket) return;
     QString err = m_tcpSocket->errorString();
-    qWarning() << "AntennaGenius: TCP error:" << err;
+    qCWarning(lcTuner) << "AntennaGenius: TCP error:" << err;
     emit connectionError(err);
 }
 
@@ -223,7 +224,7 @@ void AntennaGeniusModel::onTcpReadyRead()
                 auto parts = line.split(' ');
                 if (!parts.isEmpty())
                     m_device.version = parts[0].mid(1);  // skip 'V'
-                qDebug() << "AntennaGenius: prologue received, version"
+                qCDebug(lcTuner) << "AntennaGenius: prologue received, version"
                          << m_device.version;
                 m_connected = true;
                 emit connected();
@@ -315,7 +316,7 @@ void AntennaGeniusModel::processResponse(int seq, int code, const QString& body)
                 ant.inbandMask  = kvs.value("inband", "0").toUShort(nullptr, 16);
                 m_antennas.append(ant);
             }
-            qDebug() << "AntennaGenius:" << m_antennas.size() << "antennas loaded";
+            qCDebug(lcTuner) << "AntennaGenius:" << m_antennas.size() << "antennas loaded";
             emit antennasChanged();
 
         } else if (seq == m_seqBandList) {
@@ -335,13 +336,13 @@ void AntennaGeniusModel::processResponse(int seq, int code, const QString& body)
                 band.freqStopMhz  = kvs.value("freq_stop", "0").toDouble();
                 m_bands.append(band);
             }
-            qDebug() << "AntennaGenius:" << m_bands.size() << "bands loaded";
+            qCDebug(lcTuner) << "AntennaGenius:" << m_bands.size() << "bands loaded";
             emit bandsChanged();
 
             // Bands just loaded — reprocess the cached radio frequency so
             // m_lastRadioBand is set correctly for antenna save/recall.
             if (m_lastRadioFreqMhz > 0.0) {
-                qDebug() << "AG-FREQ: reprocessing cached frequency"
+                qCDebug(lcTuner) << "AG-FREQ: reprocessing cached frequency"
                          << m_lastRadioFreqMhz << "MHz after bands loaded";
                 double cached = m_lastRadioFreqMhz;
                 m_lastRadioFreqMhz = 0.0;  // prevent infinite loop
@@ -383,7 +384,7 @@ void AntennaGeniusModel::processResponse(int seq, int code, const QString& body)
     if (code == 0) {
         pr.lines.append(body);
     } else {
-        qWarning() << "AntennaGenius: command" << pr.command
+        qCWarning(lcTuner) << "AntennaGenius: command" << pr.command
                     << "error code" << Qt::hex << code << body;
     }
 }
@@ -410,7 +411,7 @@ void AntennaGeniusModel::processStatus(const QString& body)
         }
     } else if (body.startsWith("antenna reload")) {
         // Antenna configuration changed on the device — re-fetch.
-        qDebug() << "AntennaGenius: antenna reload, re-fetching list";
+        qCDebug(lcTuner) << "AntennaGenius: antenna reload, re-fetching list";
         m_seqAntennaList = sendCommand("antenna list");
     }
     // "relay tx=00 rx=04 state=04" — informational, ignore for now.
@@ -452,7 +453,7 @@ void AntennaGeniusModel::selectAntenna(int portId, int antennaId)
     // Antenna 0 (deselect) is always allowed.
     const auto& otherPort = (portId == 1) ? m_portB : m_portA;
     if (antennaId > 0 && otherPort.rxAntenna == antennaId) {
-        qDebug() << "AntennaGenius: antenna" << antennaName(antennaId)
+        qCDebug(lcTuner) << "AntennaGenius: antenna" << antennaName(antennaId)
                  << "already in use on port" << otherPort.portId << "— blocked";
         return;
     }
@@ -475,21 +476,21 @@ void AntennaGeniusModel::selectAntenna(int portId, int antennaId)
     } else if (canTxOnBand(antennaId, effectiveBand)) {
         txAnt = antennaId;
     } else if (effectiveBand > 0) {
-        qDebug() << "AntennaGenius: antenna" << antennaName(antennaId)
+        qCDebug(lcTuner) << "AntennaGenius: antenna" << antennaName(antennaId)
                  << "has no TX permission on band" << bandName(effectiveBand)
                  << "— keeping txant=" << txAnt;
     }
 
     QString cmd = QString("port set %1 rxant=%2 txant=%3")
                       .arg(portId).arg(antennaId).arg(txAnt);
-    qDebug() << "AntennaGenius:" << cmd;
+    qCDebug(lcTuner) << "AntennaGenius:" << cmd;
     sendCommand(cmd);
 
     // Save band→antenna mapping for the effective band on this port.
     if (effectiveBand > 0) {
         saveBandAntenna(portId, effectiveBand, antennaId);
     } else {
-        qDebug() << "AntennaGenius: no band known for port" << portId
+        qCDebug(lcTuner) << "AntennaGenius: no band known for port" << portId
                  << "— cannot save antenna mapping";
     }
 }
@@ -499,7 +500,7 @@ void AntennaGeniusModel::setAutoMode(int portId, bool on)
     if (!m_connected) return;
     QString cmd = QString("port set %1 auto=%2")
                       .arg(portId).arg(on ? 1 : 0);
-    qDebug() << "AntennaGenius:" << cmd;
+    qCDebug(lcTuner) << "AntennaGenius:" << cmd;
     sendCommand(cmd);
 }
 
@@ -512,7 +513,7 @@ void AntennaGeniusModel::setRadioFrequency(double freqMhz)
         return;
     }
     if (m_bands.isEmpty()) {
-        qDebug() << "AG-FREQ: bands list empty, will reprocess when loaded";
+        qCDebug(lcTuner) << "AG-FREQ: bands list empty, will reprocess when loaded";
         return;
     }
 
@@ -532,7 +533,7 @@ void AntennaGeniusModel::setRadioFrequency(double freqMhz)
     // to onBandChanged() which uses the correctly-captured old antenna.
     if (m_portA.band > 0) {
         m_lastRadioBand = matchedBand;
-        qDebug() << "AG-FREQ:" << freqMhz << "MHz → band"
+        qCDebug(lcTuner) << "AG-FREQ:" << freqMhz << "MHz → band"
                  << matchedBand << bandName(matchedBand)
                  << "(AG has BCD, deferring to onBandChanged)";
         emit radioBandChanged(matchedBand);
@@ -542,7 +543,7 @@ void AntennaGeniusModel::setRadioFrequency(double freqMhz)
     int oldBand = m_lastRadioBand;
     m_lastRadioBand = matchedBand;
 
-    qDebug() << "AG-FREQ:" << freqMhz << "MHz → band"
+    qCDebug(lcTuner) << "AG-FREQ:" << freqMhz << "MHz → band"
              << matchedBand << bandName(matchedBand)
              << "(was" << oldBand << bandName(oldBand) << ")";
 
@@ -565,7 +566,7 @@ void AntennaGeniusModel::setRadioFrequency(double freqMhz)
     // Recall saved antenna for new band.
     int saved = recallBandAntenna(1, matchedBand);
     if (saved > 0 && saved != m_portA.rxAntenna) {
-        qDebug() << "AG-FREQ: recalling antenna" << antennaName(saved)
+        qCDebug(lcTuner) << "AG-FREQ: recalling antenna" << antennaName(saved)
                  << "for" << bandName(matchedBand);
         selectAntenna(1, saved);
     } else if (saved <= 0 && m_portA.rxAntenna > 0) {
@@ -581,7 +582,7 @@ void AntennaGeniusModel::saveBandAntenna(int portId, int bandId, int antennaId)
     auto& s = AppSettings::instance();
     QString key = QString("AG_Port%1_Band%2").arg(portId).arg(bandId);
     s.setValue(key, QString::number(antennaId));
-    qDebug() << "AntennaGenius: saved band" << bandName(bandId)
+    qCDebug(lcTuner) << "AntennaGenius: saved band" << bandName(bandId)
              << "→" << antennaName(antennaId) << "for port" << portId;
 }
 
@@ -594,7 +595,7 @@ int AntennaGeniusModel::recallBandAntenna(int portId, int bandId) const
 
 void AntennaGeniusModel::onBandChanged(int portId, int oldBand, int oldAnt, int newBand)
 {
-    qDebug() << "AntennaGenius: port" << portId << "band changed"
+    qCDebug(lcTuner) << "AntennaGenius: port" << portId << "band changed"
              << bandName(oldBand) << "→" << bandName(newBand);
 
     // Save the antenna for the old band, but only as a default if no
@@ -615,7 +616,7 @@ void AntennaGeniusModel::onBandChanged(int portId, int oldBand, int oldAnt, int 
     if (saved > 0) {
         const auto& ps = (portId == 1) ? m_portA : m_portB;
         if (saved != ps.rxAntenna) {
-            qDebug() << "AntennaGenius: recalling antenna" << antennaName(saved)
+            qCDebug(lcTuner) << "AntennaGenius: recalling antenna" << antennaName(saved)
                      << "for band" << bandName(newBand) << "on port" << portId;
             selectAntenna(portId, saved);
         }

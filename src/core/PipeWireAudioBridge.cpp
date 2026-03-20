@@ -1,8 +1,8 @@
 #include "PipeWireAudioBridge.h"
+#include "LogManager.h"
 
 #include <QTimer>
 #include <QProcess>
-#include <QDebug>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -50,7 +50,7 @@ bool PipeWireAudioBridge::open()
     // Create 4 RX pipe sources (radio → apps)
     for (int i = 0; i < NUM_CHANNELS; ++i) {
         if (!loadPipeSource(i)) {
-            qWarning() << "PipeWireAudioBridge: failed to create RX pipe" << (i + 1);
+            qCWarning(lcDax) << "PipeWireAudioBridge: failed to create RX pipe" << (i + 1);
             close();
             return false;
         }
@@ -58,7 +58,7 @@ bool PipeWireAudioBridge::open()
 
     // Create TX pipe sink (apps → radio)
     if (!loadPipeSink()) {
-        qWarning() << "PipeWireAudioBridge: failed to create TX pipe";
+        qCWarning(lcDax) << "PipeWireAudioBridge: failed to create TX pipe";
         close();
         return false;
     }
@@ -70,7 +70,7 @@ bool PipeWireAudioBridge::open()
     m_txReadTimer->start();
 
     m_open = true;
-    qInfo() << "PipeWireAudioBridge: opened — 4 RX sources + 1 TX sink";
+    qCInfo(lcDax) << "PipeWireAudioBridge: opened — 4 RX sources + 1 TX sink";
     return true;
 }
 
@@ -103,7 +103,7 @@ void PipeWireAudioBridge::close()
     }
 
     m_open = false;
-    qInfo() << "PipeWireAudioBridge: closed";
+    qCInfo(lcDax) << "PipeWireAudioBridge: closed";
 }
 
 // ── Module loading via pactl ─────────────────────────────────────────────────
@@ -113,11 +113,11 @@ static uint32_t runPactl(const QStringList& args)
     QProcess proc;
     proc.start("pactl", args);
     if (!proc.waitForFinished(5000)) {
-        qWarning() << "PipeWireAudioBridge: pactl timed out:" << args;
+        qCWarning(lcDax) << "PipeWireAudioBridge: pactl timed out:" << args;
         return 0;
     }
     if (proc.exitCode() != 0) {
-        qWarning() << "PipeWireAudioBridge: pactl failed:" << proc.readAllStandardError().trimmed();
+        qCWarning(lcDax) << "PipeWireAudioBridge: pactl failed:" << proc.readAllStandardError().trimmed();
         return 0;
     }
     // pactl load-module returns the module index
@@ -135,7 +135,7 @@ bool PipeWireAudioBridge::loadPipeSource(int index)
     // Create the named pipe (FIFO)
     ::unlink(pipePath.toUtf8().constData());
     if (::mkfifo(pipePath.toUtf8().constData(), 0666) != 0) {
-        qWarning() << "PipeWireAudioBridge: mkfifo failed:" << strerror(errno);
+        qCWarning(lcDax) << "PipeWireAudioBridge: mkfifo failed:" << strerror(errno);
         return false;
     }
 
@@ -158,7 +158,7 @@ bool PipeWireAudioBridge::loadPipeSource(int index)
     // Open the pipe for writing (non-blocking to avoid hanging if no reader)
     int fd = ::open(pipePath.toUtf8().constData(), O_WRONLY | O_NONBLOCK);
     if (fd < 0) {
-        qWarning() << "PipeWireAudioBridge: open pipe failed:" << strerror(errno);
+        qCWarning(lcDax) << "PipeWireAudioBridge: open pipe failed:" << strerror(errno);
         runPactl({"unload-module", QString::number(modIdx)});
         ::unlink(pipePath.toUtf8().constData());
         return false;
@@ -168,7 +168,7 @@ bool PipeWireAudioBridge::loadPipeSource(int index)
     m_rx[index].moduleIndex = modIdx;
     m_rx[index].pipePath = pipePath;
 
-    qDebug() << "PipeWireAudioBridge: RX" << (index + 1) << "pipe source loaded, module" << modIdx;
+    qCDebug(lcDax) << "PipeWireAudioBridge: RX" << (index + 1) << "pipe source loaded, module" << modIdx;
     return true;
 }
 
@@ -180,7 +180,7 @@ bool PipeWireAudioBridge::loadPipeSink()
 
     ::unlink(pipePath.toUtf8().constData());
     if (::mkfifo(pipePath.toUtf8().constData(), 0666) != 0) {
-        qWarning() << "PipeWireAudioBridge: mkfifo failed:" << strerror(errno);
+        qCWarning(lcDax) << "PipeWireAudioBridge: mkfifo failed:" << strerror(errno);
         return false;
     }
 
@@ -202,7 +202,7 @@ bool PipeWireAudioBridge::loadPipeSink()
     // Open the pipe for reading (non-blocking)
     int fd = ::open(pipePath.toUtf8().constData(), O_RDONLY | O_NONBLOCK);
     if (fd < 0) {
-        qWarning() << "PipeWireAudioBridge: open TX pipe failed:" << strerror(errno);
+        qCWarning(lcDax) << "PipeWireAudioBridge: open TX pipe failed:" << strerror(errno);
         runPactl({"unload-module", QString::number(modIdx)});
         ::unlink(pipePath.toUtf8().constData());
         return false;
@@ -212,7 +212,7 @@ bool PipeWireAudioBridge::loadPipeSink()
     m_tx.moduleIndex = modIdx;
     m_tx.pipePath = pipePath;
 
-    qDebug() << "PipeWireAudioBridge: TX pipe sink loaded, module" << modIdx;
+    qCDebug(lcDax) << "PipeWireAudioBridge: TX pipe sink loaded, module" << modIdx;
     return true;
 }
 

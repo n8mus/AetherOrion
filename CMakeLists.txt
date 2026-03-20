@@ -116,6 +116,7 @@ set(CORE_SOURCES
     src/core/CwDecoder.cpp
     src/core/Resampler.cpp
     src/core/RADEEngine.cpp
+    src/core/LogManager.cpp
 )
 
 if(APPLE)
@@ -161,6 +162,7 @@ set(GUI_SOURCES
     src/gui/CatApplet.cpp
     src/gui/MeterSlider.cpp
     src/gui/AntennaGeniusApplet.cpp
+    src/gui/SupportDialog.cpp
 )
 
 set(ALL_SOURCES

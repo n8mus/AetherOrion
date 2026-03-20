@@ -1,8 +1,8 @@
 #include "RadioDiscovery.h"
+#include "LogManager.h"
 
 #include <QNetworkDatagram>
 #include <QDateTime>
-#include <QDebug>
 
 namespace AetherSDR {
 
@@ -23,12 +23,12 @@ void RadioDiscovery::startListening()
 {
     if (!m_socket.bind(QHostAddress::AnyIPv4, DISCOVERY_PORT,
                        QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
-        qWarning() << "RadioDiscovery: failed to bind UDP port" << DISCOVERY_PORT
+        qCWarning(lcDiscovery) << "RadioDiscovery: failed to bind UDP port" << DISCOVERY_PORT
                    << m_socket.errorString();
         return;
     }
     m_staleTimer.start();
-    qDebug() << "RadioDiscovery: listening on UDP" << DISCOVERY_PORT;
+    qCDebug(lcDiscovery) << "RadioDiscovery: listening on UDP" << DISCOVERY_PORT;
 }
 
 void RadioDiscovery::stopListening()
@@ -81,7 +81,7 @@ void RadioDiscovery::onReadyRead()
             info.address = datagram.senderAddress();
 
         if (info.serial.isEmpty()) {
-            qWarning() << "RadioDiscovery: received packet without serial, ignoring";
+            qCWarning(lcDiscovery) << "RadioDiscovery: received packet without serial, ignoring";
             continue;
         }
 
@@ -100,7 +100,7 @@ void RadioDiscovery::upsertRadio(const RadioInfo& info)
         }
     }
     m_radios.append(info);
-    qDebug() << "RadioDiscovery: found" << info.displayName();
+    qCDebug(lcDiscovery) << "RadioDiscovery: found" << info.displayName();
     emit radioDiscovered(info);
 }
 
@@ -117,7 +117,7 @@ void RadioDiscovery::onStaleCheck()
     for (const QString& serial : lost) {
         m_lastSeen.remove(serial);
         m_radios.removeIf([&](const RadioInfo& r){ return r.serial == serial; });
-        qDebug() << "RadioDiscovery: lost radio" << serial;
+        qCDebug(lcDiscovery) << "RadioDiscovery: lost radio" << serial;
         emit radioLost(serial);
     }
 }

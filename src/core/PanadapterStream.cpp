@@ -1,11 +1,11 @@
 #include "PanadapterStream.h"
+#include "LogManager.h"
 #include "RadioConnection.h"
 
 #include <QNetworkDatagram>
 #include <QHostAddress>
 #include <QtEndian>
 #include <QSet>
-#include <QDebug>
 #include <cstring>
 
 namespace AetherSDR {
@@ -51,7 +51,7 @@ PanadapterStream::PanadapterStream(QObject* parent)
         const QString hex = QString::number(m_wanClientHandle, 16).toUpper();
         const QByteArray cmd = QStringLiteral("client ping handle=0x%1").arg(hex).toUtf8();
         m_socket.writeDatagram(cmd, m_radioAddress, m_radioPort);
-        qDebug() << "PanadapterStream: WAN ping keepalive"
+        qCDebug(lcVita49) << "PanadapterStream: WAN ping keepalive"
                  << "(totalRx:" << m_totalRxBytes << "bytes)";
     });
 }
@@ -69,20 +69,20 @@ bool PanadapterStream::start(RadioConnection* conn)
     bool bound = m_socket.bind(QHostAddress::AnyIPv4, LAN_VITA_PORT,
                                QAbstractSocket::ReuseAddressHint);
     if (bound)
-        qDebug() << "PanadapterStream: bound to LAN VITA-49 port" << LAN_VITA_PORT;
+        qCDebug(lcVita49) << "PanadapterStream: bound to LAN VITA-49 port" << LAN_VITA_PORT;
     else {
-        qDebug() << "PanadapterStream: port" << LAN_VITA_PORT
+        qCDebug(lcVita49) << "PanadapterStream: port" << LAN_VITA_PORT
                  << "unavailable, using OS-assigned port";
         bound = m_socket.bind(QHostAddress::AnyIPv4, 0);
     }
     if (!bound) {
-        qWarning() << "PanadapterStream: failed to bind UDP socket:"
+        qCWarning(lcVita49) << "PanadapterStream: failed to bind UDP socket:"
                    << m_socket.errorString();
         return false;
     }
 
     m_localPort = m_socket.localPort();
-    qDebug() << "PanadapterStream: bound to UDP port" << m_localPort;
+    qCDebug(lcVita49) << "PanadapterStream: bound to UDP port" << m_localPort;
 
     // Send a one-byte UDP registration datagram to the radio's VITA-49 port.
     // The radio learns our IP:port from the source address of this datagram.
@@ -93,13 +93,13 @@ bool PanadapterStream::start(RadioConnection* conn)
         const QByteArray reg(1, '\x00');
         const qint64 sent = m_socket.writeDatagram(reg, radioAddr, 4992);
         if (sent == 1)
-            qDebug() << "PanadapterStream: sent UDP registration to"
+            qCDebug(lcVita49) << "PanadapterStream: sent UDP registration to"
                      << radioAddr.toString() << ":4992";
         else
-            qWarning() << "PanadapterStream: UDP registration send failed:"
+            qCWarning(lcVita49) << "PanadapterStream: UDP registration send failed:"
                        << m_socket.errorString();
     } else {
-        qWarning() << "PanadapterStream: radio address unknown — skipping UDP registration";
+        qCWarning(lcVita49) << "PanadapterStream: radio address unknown — skipping UDP registration";
     }
 
     // Store radio address for sendToRadio (DAX TX path)
@@ -118,7 +118,7 @@ bool PanadapterStream::startWan(const QHostAddress& radioAddr, quint16 radioUdpP
     // in startWanUdpRegister() once the client handle is known.
     bool bound = m_socket.bind(QHostAddress::AnyIPv4, 0);
     if (!bound) {
-        qWarning() << "PanadapterStream: WAN — failed to bind UDP socket:"
+        qCWarning(lcVita49) << "PanadapterStream: WAN — failed to bind UDP socket:"
                    << m_socket.errorString();
         return false;
     }
@@ -129,7 +129,7 @@ bool PanadapterStream::startWan(const QHostAddress& radioAddr, quint16 radioUdpP
     m_isWanMode = true;
     m_wanRegistered = false;
 
-    qDebug() << "PanadapterStream: WAN — bound to UDP port" << m_localPort
+    qCDebug(lcVita49) << "PanadapterStream: WAN — bound to UDP port" << m_localPort
              << "radio=" << radioAddr.toString() << ":" << radioUdpPort;
 
     m_conn = nullptr;  // no RadioConnection in WAN mode
@@ -142,7 +142,7 @@ void PanadapterStream::startWanUdpRegister(quint32 clientHandle)
     m_wanRegistered = false;
 
     const QString hex = QString::number(clientHandle, 16).toUpper();
-    qDebug() << "PanadapterStream: WAN — starting UDP registration,"
+    qCDebug(lcVita49) << "PanadapterStream: WAN — starting UDP registration,"
              << "handle=0x" + hex
              << "sending to" << m_radioAddress.toString() << ":" << m_radioPort;
 
@@ -169,7 +169,7 @@ void PanadapterStream::setOwnedStreamIds(quint32 panStreamId, quint32 wfStreamId
 {
     m_ownedPanStreamId = panStreamId;
     m_ownedWfStreamId  = wfStreamId;
-    qDebug() << "PanadapterStream: filtering for pan=0x" + QString::number(panStreamId, 16)
+    qCDebug(lcVita49) << "PanadapterStream: filtering for pan=0x" + QString::number(panStreamId, 16)
              << "wf=0x" + QString::number(wfStreamId, 16);
 }
 
@@ -177,7 +177,7 @@ void PanadapterStream::setDbmRange(float minDbm, float maxDbm)
 {
     m_minDbm = minDbm;
     m_maxDbm = maxDbm;
-    qDebug() << "PanadapterStream: dBm range set to" << minDbm << "->" << maxDbm;
+    qCDebug(lcVita49) << "PanadapterStream: dBm range set to" << minDbm << "->" << maxDbm;
 }
 
 void PanadapterStream::onDatagramReady()
@@ -188,7 +188,7 @@ void PanadapterStream::onDatagramReady()
             // On first VITA-49 packet in WAN mode: registration confirmed.
             // Stop the rapid udp_register timer and switch to ping keepalive.
             if (m_isWanMode && !m_wanRegistered) {
-                qDebug() << "PanadapterStream: WAN — first VITA-49 packet received!"
+                qCDebug(lcVita49) << "PanadapterStream: WAN — first VITA-49 packet received!"
                          << dg.data().size() << "bytes from"
                          << dg.senderAddress().toString() << ":" << dg.senderPort()
                          << "— UDP registration confirmed";
@@ -219,7 +219,7 @@ void PanadapterStream::processDatagram(const QByteArray& data)
     static QSet<quint32> seenIds;
     if (!seenIds.contains(streamId)) {
         seenIds.insert(streamId);
-        qDebug() << "PanadapterStream: new stream" << data.size()
+        qCDebug(lcVita49) << "PanadapterStream: new stream" << data.size()
                  << "bytes, word0=0x" + QString::number(word0, 16)
                  << "streamId=0x" + QString::number(streamId, 16)
                  << "pcc=0x" + QString::number(pcc, 16)
@@ -418,7 +418,7 @@ void PanadapterStream::decodeWaterfallTile(const uchar* raw, int totalBytes, boo
 
     static bool loggedOnce = false;
     if (!loggedOnce) {
-        qDebug() << "WaterfallTile: width=" << tileWidth << "height=" << tileHeight
+        qCDebug(lcVita49) << "WaterfallTile: width=" << tileWidth << "height=" << tileHeight
                  << "totalBinsInFrame=" << totalBinsInFrame
                  << "firstBinIndex=" << firstBinIndex
                  << "timecode=" << timecode
@@ -465,7 +465,7 @@ void PanadapterStream::decodeNarrowAudio(const uchar* raw, int totalBytes, bool 
     if (!rxHeaderLogged && totalBytes >= 28) {
         rxHeaderLogged = true;
         const quint32* w = reinterpret_cast<const quint32*>(raw);
-        qDebug() << "VITA-49 RX audio header (host-order):"
+        qCDebug(lcVita49) << "VITA-49 RX audio header (host-order):"
                  << QString("w0=%1 w1=%2 w2=%3 w3=%4 w4=%5 w5=%6 w6=%7")
                     .arg(qFromBigEndian(w[0]), 8, 16, QChar('0'))
                     .arg(qFromBigEndian(w[1]), 8, 16, QChar('0'))
@@ -507,7 +507,7 @@ void PanadapterStream::decodeReducedBwAudio(const uchar* raw, int totalBytes, bo
     if (!rxReducedLogged && totalBytes >= 28) {
         rxReducedLogged = true;
         const quint32* w = reinterpret_cast<const quint32*>(raw);
-        qDebug() << "VITA-49 RX reduced-BW audio header (host-order):"
+        qCDebug(lcVita49) << "VITA-49 RX reduced-BW audio header (host-order):"
                  << QString("w0=%1 w1=%2 w2=%3 w3=%4 w4=%5 w5=%6 w6=%7")
                     .arg(qFromBigEndian(w[0]), 8, 16, QChar('0'))
                     .arg(qFromBigEndian(w[1]), 8, 16, QChar('0'))
@@ -587,13 +587,13 @@ int PanadapterStream::packetTotalCount() const
 void PanadapterStream::registerDaxStream(quint32 streamId, int channel)
 {
     m_daxStreamIds[streamId] = channel;
-    qDebug() << "PanadapterStream: registered DAX stream" << Qt::hex << streamId << "-> channel" << channel;
+    qCDebug(lcVita49) << "PanadapterStream: registered DAX stream" << Qt::hex << streamId << "-> channel" << channel;
 }
 
 void PanadapterStream::unregisterDaxStream(quint32 streamId)
 {
     m_daxStreamIds.remove(streamId);
-    qDebug() << "PanadapterStream: unregistered DAX stream" << Qt::hex << streamId;
+    qCDebug(lcVita49) << "PanadapterStream: unregistered DAX stream" << Qt::hex << streamId;
 }
 
 void PanadapterStream::sendToRadio(const QByteArray& packet)
@@ -601,7 +601,7 @@ void PanadapterStream::sendToRadio(const QByteArray& packet)
     if (m_radioAddress.isNull() || m_radioPort == 0) {
         static int dropCount = 0;
         if (++dropCount <= 5)
-            qWarning() << "PanadapterStream::sendToRadio: no dest! addr="
+            qCWarning(lcVita49) << "PanadapterStream::sendToRadio: no dest! addr="
                        << m_radioAddress.toString() << "port=" << m_radioPort;
         return;
     }
@@ -609,7 +609,7 @@ void PanadapterStream::sendToRadio(const QByteArray& packet)
     static int txCount = 0;
     ++txCount;
     if (txCount <= 5 || txCount % 1000 == 0) {
-        qDebug() << "PanadapterStream::sendToRadio #" << txCount
+        qCDebug(lcVita49) << "PanadapterStream::sendToRadio #" << txCount
                  << "bytes=" << packet.size()
                  << "sent=" << sent
                  << "to=" << m_radioAddress.toString() << ":" << m_radioPort
@@ -618,7 +618,7 @@ void PanadapterStream::sendToRadio(const QByteArray& packet)
     if (sent < 0) {
         static int errCount = 0;
         if (++errCount <= 10)
-            qWarning() << "PanadapterStream::sendToRadio ERROR:" << m_socket.errorString();
+            qCWarning(lcVita49) << "PanadapterStream::sendToRadio ERROR:" << m_socket.errorString();
     }
 }
 

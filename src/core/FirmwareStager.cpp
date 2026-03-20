@@ -1,4 +1,5 @@
 #include "FirmwareStager.h"
+#include "LogManager.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -114,12 +115,12 @@ void FirmwareStager::downloadAndStage(const QString& version, const QString& mod
             auto m = re.match(body);
             if (m.hasMatch()) {
                 m_expectedMd5 = m.captured(1).toLower();
-                qDebug() << "FirmwareStager: expected installer MD5:" << m_expectedMd5;
+                qCDebug(lcFirmware) << "FirmwareStager: expected installer MD5:" << m_expectedMd5;
             } else {
-                qWarning() << "FirmwareStager: could not parse MD5 from hash file";
+                qCWarning(lcFirmware) << "FirmwareStager: could not parse MD5 from hash file";
             }
         } else {
-            qWarning() << "FirmwareStager: MD5 hash file not available (non-fatal)";
+            qCWarning(lcFirmware) << "FirmwareStager: MD5 hash file not available (non-fatal)";
         }
 
         // Now download the installer
@@ -140,7 +141,7 @@ void FirmwareStager::downloadAndStage(const QString& version, const QString& mod
                     verifyAndExtract();
                     return;
                 }
-                qDebug() << "FirmwareStager: cached installer MD5 mismatch, re-downloading";
+                qCDebug(lcFirmware) << "FirmwareStager: cached installer MD5 mismatch, re-downloading";
             }
         }
 
@@ -295,7 +296,7 @@ void FirmwareStager::verifyAndExtract()
     if (size2 < 0) {
         // Fallback: use everything from off2 to EOF minus a reasonable trailer
         size2 = data.size() - off2;
-        qWarning() << "FirmwareStager: could not find LZMA boundary, using" << size2 << "bytes";
+        qCWarning(lcFirmware) << "FirmwareStager: could not find LZMA boundary, using" << size2 << "bytes";
     }
 
     emit stageProgress(80, "Extracting firmware files...");

@@ -1,4 +1,5 @@
 #include "TransmitModel.h"
+#include "core/LogManager.h"
 #include <QDebug>
 
 namespace AetherSDR {
@@ -537,7 +538,7 @@ ATUStatus TransmitModel::parseAtuTuneStatus(const QString& s)
     if (s == "TUNE_FAIL")          return ATUStatus::Fail;
     if (s == "TUNE_ABORTED")       return ATUStatus::Aborted;
     if (s == "TUNE_MANUAL_BYPASS") return ATUStatus::ManualBypass;
-    qDebug() << "TransmitModel: unknown ATU status:" << s;
+    qCDebug(lcTransmit) << "TransmitModel: unknown ATU status:" << s;
     return ATUStatus::None;
 }
 

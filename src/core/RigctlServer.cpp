@@ -1,8 +1,7 @@
 #include "RigctlServer.h"
+#include "LogManager.h"
 #include "RigctlProtocol.h"
 #include "models/RadioModel.h"
-
-#include <QDebug>
 
 namespace AetherSDR {
 
@@ -25,14 +24,14 @@ bool RigctlServer::start(quint16 port)
     connect(m_server, &QTcpServer::newConnection, this, &RigctlServer::onNewConnection);
 
     if (!m_server->listen(QHostAddress::Any, port)) {
-        qWarning() << "RigctlServer: failed to listen on port" << port
+        qCWarning(lcCat) << "RigctlServer: failed to listen on port" << port
                     << m_server->errorString();
         delete m_server;
         m_server = nullptr;
         return false;
     }
 
-    qInfo() << "RigctlServer: listening on port" << m_server->serverPort();
+    qCInfo(lcCat) << "RigctlServer: listening on port" << m_server->serverPort();
     return true;
 }
 
@@ -51,7 +50,7 @@ void RigctlServer::stop()
     delete m_server;
     m_server = nullptr;
 
-    qInfo() << "RigctlServer: stopped";
+    qCInfo(lcCat) << "RigctlServer: stopped";
 }
 
 bool RigctlServer::isRunning() const
@@ -80,7 +79,7 @@ void RigctlServer::onNewConnection()
         connect(socket, &QTcpSocket::readyRead, this, &RigctlServer::onClientData);
         connect(socket, &QTcpSocket::disconnected, this, &RigctlServer::onClientDisconnected);
 
-        qInfo() << "RigctlServer: client connected from" << socket->peerAddress().toString();
+        qCInfo(lcCat) << "RigctlServer: client connected from" << socket->peerAddress().toString();
         emit clientCountChanged(m_clients.size());
     }
 }
@@ -117,7 +116,7 @@ void RigctlServer::onClientData()
 
         QString response = cs.protocol->handleLine(line);
         if (!response.isEmpty()) {
-            qDebug() << "rigctld cmd:" << trimmed
+            qCDebug(lcCat) << "rigctld cmd:" << trimmed
                      << "-> resp:" << response.left(60).trimmed();
             socket->write(response.toUtf8());
         }
@@ -138,7 +137,7 @@ void RigctlServer::onClientDisconnected()
     }
 
     socket->deleteLater();
-    qInfo() << "RigctlServer: client disconnected," << m_clients.size() << "remaining";
+    qCInfo(lcCat) << "RigctlServer: client disconnected," << m_clients.size() << "remaining";
     emit clientCountChanged(m_clients.size());
 }
 

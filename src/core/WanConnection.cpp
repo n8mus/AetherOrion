@@ -1,6 +1,6 @@
 #include "WanConnection.h"
+#include "LogManager.h"
 #include <QSslConfiguration>
-#include <QDebug>
 
 namespace AetherSDR {
 
@@ -31,7 +31,7 @@ void WanConnection::connectToRadio(const QString& host, quint16 tlsPort,
                                     const QString& wanHandle)
 {
     if (m_connected) {
-        qWarning() << "WanConnection: already connected";
+        qCWarning(lcSmartLink) << "WanConnection: already connected";
         return;
     }
 
@@ -39,7 +39,7 @@ void WanConnection::connectToRadio(const QString& host, quint16 tlsPort,
     m_validated = false;
     m_handle    = 0;
 
-    qDebug() << "WanConnection: TLS connecting to" << host << ":" << tlsPort;
+    qCDebug(lcSmartLink) << "WanConnection: TLS connecting to" << host << ":" << tlsPort;
 
     // Radio uses self-signed certificate — disable verification
     // (matches FlexLib TlsCommandCommunication: validate_cert=false)
@@ -70,7 +70,7 @@ void WanConnection::disconnectFromRadio()
 quint32 WanConnection::sendCommand(const QString& command, ResponseCallback callback)
 {
     if (!m_connected) {
-        qWarning() << "WanConnection::sendCommand: not connected";
+        qCWarning(lcSmartLink) << "WanConnection::sendCommand: not connected";
         return 0;
     }
 
@@ -82,7 +82,7 @@ quint32 WanConnection::sendCommand(const QString& command, ResponseCallback call
     if (command.startsWith("ping")) {
         m_lastPingSeq = seq;
     } else {
-        qDebug() << "WAN TX:" << data.trimmed();
+        qCDebug(lcSmartLink) << "WAN TX:" << data.trimmed();
     }
     m_socket.write(data);
     return seq;
@@ -92,13 +92,13 @@ quint32 WanConnection::sendCommand(const QString& command, ResponseCallback call
 
 void WanConnection::onTlsConnected()
 {
-    qDebug() << "WanConnection: TLS handshake complete";
+    qCDebug(lcSmartLink) << "WanConnection: TLS handshake complete";
 
     // Send wan validate as a proper command (C<seq>|wan validate handle=...)
     // FlexLib uses SendCommand() for this, not raw write.
     const quint32 seq = m_seqCounter.fetch_add(1);
     const QByteArray data = CommandParser::buildCommand(seq, QString("wan validate handle=%1").arg(m_wanHandle));
-    qDebug() << "WAN TX: C" << seq << "|wan validate handle=***REDACTED***";
+    qCDebug(lcSmartLink) << "WAN TX: C" << seq << "|wan validate handle=***REDACTED***";
     m_socket.write(data);
     m_validated = true;
 
@@ -108,7 +108,7 @@ void WanConnection::onTlsConnected()
 
 void WanConnection::onTlsDisconnected()
 {
-    qDebug() << "WanConnection: TLS disconnected";
+    qCDebug(lcSmartLink) << "WanConnection: TLS disconnected";
     m_heartbeat.stop();
     m_connected = false;
     emit disconnected();
@@ -117,16 +117,16 @@ void WanConnection::onTlsDisconnected()
 void WanConnection::onSslErrors(const QList<QSslError>& errors)
 {
     // Radio uses self-signed cert — ignore SSL errors
-    qDebug() << "WanConnection: ignoring SSL errors (radio self-signed cert)";
+    qCDebug(lcSmartLink) << "WanConnection: ignoring SSL errors (radio self-signed cert)";
     for (const auto& err : errors)
-        qDebug() << "  " << err.errorString();
+        qCDebug(lcSmartLink) << "  " << err.errorString();
     m_socket.ignoreSslErrors();
 }
 
 void WanConnection::onSocketError(QAbstractSocket::SocketError /*error*/)
 {
     const QString msg = m_socket.errorString();
-    qWarning() << "WanConnection: socket error:" << msg;
+    qCWarning(lcSmartLink) << "WanConnection: socket error:" << msg;
     emit errorOccurred(msg);
 }
 
@@ -160,20 +160,20 @@ void WanConnection::processLine(const QString& line)
         isPingReply = line.startsWith(QString("R%1|").arg(m_lastPingSeq));
     }
     if (!isGps && !isPingReply)
-        qDebug() << "WAN RX:" << line;
+        qCDebug(lcSmartLink) << "WAN RX:" << line;
 
     ParsedMessage msg = CommandParser::parseLine(line);
     emit messageReceived(msg);
 
     switch (msg.type) {
     case MessageType::Version:
-        qDebug() << "WanConnection: firmware version:" << msg.object;
+        qCDebug(lcSmartLink) << "WanConnection: firmware version:" << msg.object;
         emit versionReceived(msg.object);
         break;
 
     case MessageType::Handle:
         m_handle = msg.handle;
-        qDebug() << "WanConnection: assigned handle 0x" << QString::number(m_handle, 16)
+        qCDebug(lcSmartLink) << "WanConnection: assigned handle 0x" << QString::number(m_handle, 16)
                  << "— WAN validated, starting heartbeat";
         m_connected = true;
         m_heartbeat.start();

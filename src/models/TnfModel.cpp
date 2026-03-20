@@ -1,4 +1,5 @@
 #include "TnfModel.h"
+#include "core/LogManager.h"
 #include <QDebug>
 
 namespace AetherSDR {
@@ -33,7 +34,7 @@ void TnfModel::applyTnfStatus(int id, const QMap<QString, QString>& kvs)
     if (kvs.contains("permanent"))
         t.permanent = kvs["permanent"] == "1";
 
-    qDebug() << "TnfModel: TNF" << id << "freq=" << t.freqMhz
+    qCDebug(lcProtocol) << "TnfModel: TNF" << id << "freq=" << t.freqMhz
              << "width=" << t.widthHz << "depth=" << t.depthDb;
     emit tnfChanged(id);
 }
@@ -41,7 +42,7 @@ void TnfModel::applyTnfStatus(int id, const QMap<QString, QString>& kvs)
 void TnfModel::removeTnf(int id)
 {
     if (m_tnfs.remove(id)) {
-        qDebug() << "TnfModel: removed TNF" << id;
+        qCDebug(lcProtocol) << "TnfModel: removed TNF" << id;
         emit tnfRemoved(id);
     }
 }

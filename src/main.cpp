@@ -1,5 +1,6 @@
 #include "gui/MainWindow.h"
 #include "core/AppSettings.h"
+#include "core/LogManager.h"
 
 #include <QApplication>
 #include <QSurfaceFormat>
@@ -64,6 +65,9 @@ int main(int argc, char* argv[])
 
     // Load XML settings (auto-migrates from QSettings on first run)
     AetherSDR::AppSettings::instance().load();
+
+    // Load per-module logging toggles (must be after AppSettings::load)
+    AetherSDR::LogManager::instance().loadSettings();
 
     qDebug() << "Starting AetherSDR" << app.applicationVersion();
 
