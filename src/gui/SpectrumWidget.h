@@ -290,9 +290,6 @@ private:
 
     bool     m_transmitting{false};
 
-    // Measured waterfall row interval (for time scale)
-    float    m_wfRowIntervalMs{40.0f};
-    qint64   m_wfLastRowMs{0};
 
     // Client-side row averaging (Rate slider)
     int      m_wfAvgTarget{1};   // how many tiles to average into one row

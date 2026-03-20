@@ -306,20 +306,11 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
         }
     }
 
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-
-    // Measure actual row interval for time scale
-    if (m_wfLastRowMs > 0) {
-        const float dt = static_cast<float>(now - m_wfLastRowMs);
-        m_wfRowIntervalMs = 0.98f * m_wfRowIntervalMs + 0.02f * dt;
-    }
-    m_wfLastRowMs = now;
-
     // One pixel row per tile — scroll speed determined by tile arrival rate.
     int rowsToPush = 1;
 
     m_hasNativeWaterfall = true;
-    m_lastNativeTileMs = now;
+    m_lastNativeTileMs = QDateTime::currentMSecsSinceEpoch();
 
     const int destWidth = m_waterfall.width();
     if (destWidth <= 0) return;
@@ -1026,14 +1017,7 @@ QRgb SpectrumWidget::intensityToRgb(float intensity) const
 void SpectrumWidget::pushWaterfallRow(const QVector<float>& bins, int destWidth,
                                       double tileLowMhz, double tileHighMhz)
 {
-    // Measure actual row interval for time scale
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (m_wfLastRowMs > 0) {
-        const float dt = static_cast<float>(now - m_wfLastRowMs);
-        // Exponential smoothing — heavy to prevent time scale jitter
-        m_wfRowIntervalMs = 0.98f * m_wfRowIntervalMs + 0.02f * dt;
-    }
-    m_wfLastRowMs = now;
+    // (time scale uses m_wfLineDuration from radio status — no measurement needed)
 
     if (m_waterfall.isNull() || destWidth <= 0) return;
 
@@ -1613,12 +1597,10 @@ void SpectrumWidget::drawTimeScale(QPainter& p, const QRect& wfRect)
     p.setPen(QColor(0x30, 0x40, 0x50));
     p.drawLine(stripX, wfRect.top(), stripX, wfRect.bottom());
 
-    // Total time depth: use measured row rate with heavy smoothing
-    // to prevent label jitter from tile arrival timing variance.
-    const float msPerRow = m_wfRowIntervalMs > 0 ? m_wfRowIntervalMs : 40.0f;
-    const float rawTotalSec = wfRect.height() * msPerRow / 1000.0f;
-    // Snap to nearest 5-second boundary to eliminate oscillation at edges
-    const float totalSec = std::max(5.0f, std::round(rawTotalSec / 5.0f) * 5.0f);
+    // Total time depth: use the radio's line_duration (ms per row) directly.
+    // This is authoritative and stable — no jitter from tile arrival timing.
+    const float msPerRow = static_cast<float>(m_wfLineDuration > 0 ? m_wfLineDuration : 100);
+    const float totalSec = wfRect.height() * msPerRow / 1000.0f;
     if (totalSec <= 0) return;
 
     QFont f = p.font();
