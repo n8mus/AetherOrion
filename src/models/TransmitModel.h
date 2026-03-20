@@ -179,6 +179,7 @@ signals:
     void micInputListChanged();
     void phoneStateChanged();       // VOX or CW property changed
     void apdStateChanged();
+    void maxPowerLevelChanged(int maxWatts);
     void commandReady(const QString& cmd);
 
 private:

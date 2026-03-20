@@ -48,6 +48,9 @@ public slots:
     void setTxMode(const QString& mode);
     void setRxMode(const QString& mode);
 
+    // Set TX power gauge scale: barefoot (120W), Aurora (600W), amplifier (2000W).
+    void setPowerScale(int maxWatts, bool hasAmplifier);
+
 protected:
     void paintEvent(QPaintEvent* event) override;
 
@@ -87,6 +90,10 @@ private:
     static constexpr float DB_PER_S = 6.0f;
 
     static constexpr float SMOOTH_ALPHA = 0.3f;
+
+    // TX Power gauge scale (dynamic)
+    float m_powerScaleMax{120.0f};
+    float m_powerRedStart{100.0f};
 
     // Arc geometry: shallow arc spanning ~70° (like SmartSDR)
     static constexpr float ARC_START_DEG = 55.0f;   // right end (degrees from +X axis)

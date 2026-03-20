@@ -31,8 +31,9 @@ public:
     // Store MeterModel pointer for reading SWR at tune completion.
     void setMeterModel(MeterModel* meter) { m_meter = meter; }
 
-    // Switch Fwd Power gauge between amplifier (0–2000W) and barefoot (0–200W).
-    void setAmplifierMode(bool hasAmp);
+    // Switch Fwd Power gauge scale: barefoot (0–200W), Aurora (0–600W), amplifier (0–2000W).
+    void setAmplifierMode(bool hasAmp);  // legacy — calls setPowerScale internally
+    void setPowerScale(int maxWatts, bool hasAmplifier);
 
 public slots:
     // Feed forward power (W) and SWR from MeterModel::txMetersChanged.

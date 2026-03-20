@@ -167,7 +167,7 @@ void TransmitModel::applyTransmitStatus(const QMap<QString, QString>& kvs)
 
     if (kvs.contains("max_power_level")) {
         int v = kvs["max_power_level"].toInt();
-        if (m_maxPowerLevel != v) { m_maxPowerLevel = v; changed = true; }
+        if (m_maxPowerLevel != v) { m_maxPowerLevel = v; changed = true; emit maxPowerLevelChanged(v); }
     }
     if (kvs.contains("tune_mode")) {
         QString v = kvs["tune_mode"];

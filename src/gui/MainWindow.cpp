@@ -695,9 +695,18 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_radioModel.tunerModel(), &TunerModel::presenceChanged,
             m_appletPanel, &AppletPanel::setTunerVisible);
 
-    // Switch Fwd Power gauge scale when a power amplifier (PGXL) is detected
-    connect(&m_radioModel, &RadioModel::amplifierChanged,
-            m_appletPanel->tunerApplet(), &TunerApplet::setAmplifierMode);
+    // Switch Fwd Power gauge scale based on radio max power and amplifier presence.
+    // All three power gauges (TxApplet, TunerApplet, SMeterWidget) update together.
+    auto updatePowerScale = [this]() {
+        int maxW = m_radioModel.transmitModel()->maxPowerLevel();
+        bool hasAmp = m_radioModel.hasAmplifier();
+        m_appletPanel->txApplet()->setPowerScale(maxW, hasAmp);
+        m_appletPanel->tunerApplet()->setPowerScale(maxW, hasAmp);
+        m_appletPanel->sMeterWidget()->setPowerScale(maxW, hasAmp);
+    };
+    connect(&m_radioModel, &RadioModel::amplifierChanged, this, updatePowerScale);
+    connect(m_radioModel.transmitModel(), &TransmitModel::maxPowerLevelChanged,
+            this, updatePowerScale);
 
     // ── TX applet: meters + model ───────────────────────────────────────────
     connect(m_radioModel.meterModel(), &MeterModel::txMetersChanged,

@@ -33,6 +33,7 @@ public:
 
 public slots:
     void updateMeters(float fwdPower, float swr);
+    void setPowerScale(int maxWatts, bool hasAmplifier);
 
 private:
     void buildUI();

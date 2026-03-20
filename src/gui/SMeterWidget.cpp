@@ -133,7 +133,7 @@ float SMeterWidget::txValueToFraction(float value) const
 {
     switch (m_txMode) {
     case TxMode::Power:
-        return qBound(0.0f, value / 120.0f, 1.0f);
+        return qBound(0.0f, value / m_powerScaleMax, 1.0f);
     case TxMode::SWR:
         // 1.0–3.0
         return qBound(0.0f, (value - 1.0f) / 2.0f, 1.0f);
@@ -218,7 +218,7 @@ void SMeterWidget::paintEvent(QPaintEvent*)
         // Determine where the arc color splits (fraction where red begins)
         float redFrac = -1.0f;  // -1 = no red zone
         switch (m_txMode) {
-        case TxMode::Power:       redFrac = 100.0f / 120.0f; break;
+        case TxMode::Power:       redFrac = m_powerRedStart / m_powerScaleMax; break;
         case TxMode::SWR:         redFrac = (2.5f - 1.0f) / 2.0f; break; // 0.75
         case TxMode::Level:       redFrac = (0.0f + 40.0f) / 45.0f; break; // ~0.89
         case TxMode::Compression: redFrac = -1.0f; break; // all blue
@@ -324,13 +324,25 @@ void SMeterWidget::paintEvent(QPaintEvent*)
     // ── Inside ticks (TX): scale depends on TX mode ──────────────────────
     switch (m_txMode) {
     case TxMode::Power: {
-        // 0–120 W, ticks every 10 W, labels at 0/40/80/100/120
-        const QSet<int> labeled = {0, 40, 80, 100, 120};
-        for (int w = 0; w <= 120; w += 10) {
-            const float frac = w / 120.0f;
-            const QColor& tc = (w >= 100) ? redColor : blueColor;
-            const QColor& lc = (w >= 100) ? redColor : whiteColor;
-            drawInsideTick(frac, QString::number(w), tc, lc, labeled.contains(w));
+        // Dynamic scale based on m_powerScaleMax
+        int maxW = static_cast<int>(m_powerScaleMax);
+        int redW = static_cast<int>(m_powerRedStart);
+        int tickStep, labelStep;
+        if (maxW >= 2000) {         // PGXL: ticks every 100W, labels every 500W
+            tickStep = 100; labelStep = 500;
+        } else if (maxW >= 600) {   // Aurora: ticks every 50W, labels every 100W
+            tickStep = 50; labelStep = 100;
+        } else {                    // Barefoot: ticks every 10W, labels every 40W
+            tickStep = 10; labelStep = 40;
+        }
+        for (int w = 0; w <= maxW; w += tickStep) {
+            const float frac = static_cast<float>(w) / m_powerScaleMax;
+            const QColor& tc = (w >= redW) ? redColor : blueColor;
+            const QColor& lc = (w >= redW) ? redColor : whiteColor;
+            bool isLabeled = (w % labelStep == 0) || w == maxW || w == redW;
+            QString label = (w >= 1000) ? QString("%1k").arg(w / 1000.0f, 0, 'f', (w % 1000) ? 1 : 0)
+                                        : QString::number(w);
+            drawInsideTick(frac, label, tc, lc, isLabeled);
         }
         break;
     }
@@ -482,6 +494,21 @@ void SMeterWidget::paintEvent(QPaintEvent*)
         p.setPen(QColor(0xc8, 0xd8, 0xe8));
         p.drawText(w - vfm.horizontalAdvance(dbmText) - 6, topY, dbmText);
     }
+}
+
+void SMeterWidget::setPowerScale(int maxWatts, bool hasAmplifier)
+{
+    if (hasAmplifier) {
+        m_powerScaleMax = 2000.0f;
+        m_powerRedStart = 1500.0f;
+    } else if (maxWatts > 100) {
+        m_powerScaleMax = 600.0f;
+        m_powerRedStart = 500.0f;
+    } else {
+        m_powerScaleMax = 120.0f;
+        m_powerRedStart = 100.0f;
+    }
+    update();
 }
 
 } // namespace AetherSDR

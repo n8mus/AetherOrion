@@ -42,11 +42,21 @@ TunerApplet::TunerApplet(QWidget* parent)
 
 void TunerApplet::setAmplifierMode(bool hasAmp)
 {
+    setPowerScale(100, hasAmp);
+}
+
+void TunerApplet::setPowerScale(int maxWatts, bool hasAmplifier)
+{
     auto* gauge = static_cast<HGauge*>(m_fwdGauge);
-    if (hasAmp) {
+    if (hasAmplifier) {
         // PGXL: 0–2000 W, red > 1500 W
         gauge->setRange(0.0f, 2000.0f, 1500.0f,
             {{0, "0"}, {500, "500"}, {1500, "1.5k"}, {2000, "2k"}});
+    } else if (maxWatts > 100) {
+        // Aurora (500 W): 0–600 W, red > 500 W
+        gauge->setRange(0.0f, 600.0f, 500.0f,
+            {{0, "0"}, {100, "100"}, {200, "200"}, {300, "300"},
+             {400, "400"}, {500, "500"}, {600, "600"}});
     } else {
         // Barefoot radio: 0–200 W, red > 125 W
         gauge->setRange(0.0f, 200.0f, 125.0f,
