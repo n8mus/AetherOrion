@@ -45,6 +45,11 @@ public:
     // DAX output gain (0.0–1.0). Default 0.25 (≈ -12 dB) to avoid
     // overloading digital-mode software like WSJT-X.
     void setGain(float g) { m_gain = std::clamp(g, 0.0f, 1.0f); }
+    void setChannelGain(int channel, float g) {
+        if (channel >= 1 && channel <= NUM_CHANNELS)
+            m_channelGain[channel - 1] = std::clamp(g, 0.0f, 1.0f);
+    }
+    void setTxGain(float g) { m_txGain = std::clamp(g, 0.0f, 1.0f); }
     float gain() const { return m_gain; }
 
     // Read TX audio from shared memory (apps → radio).
@@ -61,10 +66,14 @@ public slots:
 
 signals:
     void txAudioReady(const QByteArray& pcm);
+    void daxRxLevel(int channel, float rms);
+    void daxTxLevel(float rms);
 
 private:
     bool m_open{false};
     float m_gain{0.5f};  // -6 dB default
+    float m_channelGain[NUM_CHANNELS]{0.5f, 0.5f, 0.5f, 0.5f};
+    float m_txGain{0.5f};
 
     // RX channels (radio → apps)
     int  m_shmFds[NUM_CHANNELS]{-1, -1, -1, -1};

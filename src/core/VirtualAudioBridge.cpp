@@ -6,6 +6,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <cmath>
+#include <algorithm>
 
 namespace AetherSDR {
 
@@ -232,7 +234,8 @@ void VirtualAudioBridge::feedDaxAudio(int channel, const QByteArray& pcm)
     const auto* samples = reinterpret_cast<const int16_t*>(pcm.constData());
     const int numSamples = pcm.size() / 2;  // total int16 count (L,R,L,R,...)
 
-    const float scale = m_gain / 32768.0f;
+    const float chGain = m_channelGain[channel - 1];
+    const float scale = chGain / 32768.0f;
     uint32_t wp = block->writePos.load(std::memory_order_relaxed);
 
     for (int i = 0; i < numSamples; ++i) {
@@ -241,6 +244,16 @@ void VirtualAudioBridge::feedDaxAudio(int channel, const QByteArray& pcm)
     }
 
     block->writePos.store(wp, std::memory_order_release);
+
+    // RX level meter (every ~100ms)
+    static int meterCount[NUM_CHANNELS]{};
+    if (++meterCount[channel - 1] % 10 == 0) {
+        float sum = 0;
+        for (int i = 0; i < numSamples; i += 2)
+            sum += (samples[i] / 32768.0f) * (samples[i] / 32768.0f);
+        float rms = std::sqrt(sum / std::max(1, numSamples / 2));
+        emit daxRxLevel(channel, rms);
+    }
 }
 
 QByteArray VirtualAudioBridge::readTxAudio(int maxFrames)
@@ -276,6 +289,22 @@ QByteArray VirtualAudioBridge::readTxAudio(int maxFrames)
     }
 
     m_txBlock->readPos.store(rp, std::memory_order_release);
+
+    // Apply TX gain
+    if (m_txGain != 1.0f) {
+        for (uint32_t i = 0; i < totalSamples; ++i)
+            dst[i] *= m_txGain;
+    }
+
+    // TX level meter
+    static int txMeterCount = 0;
+    if (++txMeterCount % 10 == 0 && totalSamples > 0) {
+        float sum = 0;
+        for (uint32_t i = 0; i < totalSamples; i += 2)
+            sum += dst[i] * dst[i];
+        emit daxTxLevel(std::sqrt(sum / std::max(1u, totalSamples / 2)));
+    }
+
     return result;
 }
 
