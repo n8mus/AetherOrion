@@ -33,7 +33,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf`
 
-Current version: **0.4.14** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.4.15** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -400,7 +400,7 @@ and panadapter. The radio assigns these to our `client_handle`.
 
 ---
 
-## What's Implemented (v0.4.14)
+## What's Implemented (v0.4.15)
 
 - UDP radio discovery and TCP command/control
 - SmartSDR V/H/R/S/M protocol parsing
@@ -455,7 +455,9 @@ and panadapter. The radio assigns these to our `client_handle`.
 - CAT control: 4-channel rigctld TCP + PTY virtual serial ports
 - FM duplex: CTCSS, repeater offset, REV toggle
 - XVTR transverter band support with context-aware frequency entry
-- SmartLink remote operation (beta): Auth0 login, TLS command channel
+- **SmartLink remote operation**: Auth0 login, TLS command channel, VITA-49 UDP
+  streaming (FFT, waterfall, audio, meters) via `client udp_register` protocol,
+  5-second UDP ping keepalive for NAT pinhole maintenance
 - Multi-Flex support (independent operation alongside SmartSDR/Maestro)
 - Firmware upload from Linux (.ssdr files)
 - Radio setup dialog (9 tabs): Radio, Network, GPS, Audio, TX, Phone/CW, RX, Filters, XVTR
@@ -473,5 +475,8 @@ and panadapter. The radio assigns these to our `client_handle`.
 - Spot / DX cluster integration
 - Memory channels
 - Macro / voice keyer
-- SmartLink UDP streaming (FFT, waterfall, audio over WAN)
+- SmartLink Opus audio compression for low-bandwidth WAN
+- SmartLink NAT hole-punching (for radios without UPnP/port forwarding)
+- SmartLink WAN auto-reconnect
+- SmartLink jitter buffer for high-latency connections
 - Keyboard shortcuts and hotkeys

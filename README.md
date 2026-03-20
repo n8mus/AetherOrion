@@ -13,7 +13,7 @@
 
 AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
 
-**Current version: 0.4.14** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+**Current version: 0.4.15** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
 
 > **Cross-platform downloads available:** Linux AppImage, macOS universal DMG, and Windows ZIP.
 > Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
@@ -116,11 +116,14 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - Bundled with Opus (auto-downloaded at build time) — no separate installation
 - Available on Linux and macOS; Windows support tracked in #87
 
-### SmartLink Remote Operation (beta)
+### SmartLink Remote Operation
 - Log in with FlexRadio SmartSDR+ account (email/password via Auth0)
 - Radio auto-discovered via SmartLink relay server
 - Full TCP command channel over TLS — tune, change modes, all controls work remotely
-- UDP streaming (FFT, waterfall, audio) in progress
+- VITA-49 UDP streaming over WAN — FFT spectrum, waterfall, RX audio, and meters
+- WAN UDP registration via `client udp_register` protocol (matching FlexLib)
+- NAT pinhole keepalive (5-second UDP ping) for sustained remote sessions
+- Requires UPnP or port forwarding on the radio's network
 
 ### Connectivity
 - Auto-discovery of radios on the local network (UDP broadcast)
@@ -224,7 +227,7 @@ This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app laun
 
 ## Roadmap
 
-- [ ] SmartLink UDP streaming (FFT, waterfall, audio over WAN)
+- [ ] SmartLink Opus audio compression for low-bandwidth WAN
 - [ ] DAX audio channels — PipeWire virtual devices for digital mode apps (FreeDV, WSJT-X, fldigi, JS8Call)
 - [ ] Multi-slice support
 - [ ] Band stacking registers
