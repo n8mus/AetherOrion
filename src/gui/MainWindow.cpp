@@ -736,6 +736,14 @@ MainWindow::MainWindow(QWidget* parent)
             this, [this](bool active) {
         m_radioModel.setTransmit(active);
     });
+    connect(&m_serialPort, &SerialPortController::cwKeyChanged,
+            this, [this](bool down) {
+        m_radioModel.sendCwKey(down);
+    });
+    connect(&m_serialPort, &SerialPortController::cwPaddleChanged,
+            this, [this](bool dit, bool dah) {
+        m_radioModel.sendCwPaddle(dit, dah);
+    });
 #endif
 
     // ── P/CW applet: mic meters + ALC meter + model ────────────────────────

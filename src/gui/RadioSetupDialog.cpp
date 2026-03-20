@@ -1904,6 +1904,8 @@ QWidget* RadioSetupDialog::buildSerialTab()
             combo->addItem("None",         "None");
             combo->addItem("PTT Input",    "PttInput");
             combo->addItem("CW Key Input", "CwKeyInput");
+            combo->addItem("CW Dit Input", "CwDitInput");
+            combo->addItem("CW Dah Input", "CwDahInput");
             QString saved = AppSettings::instance().value(savedKey, "None").toString();
             for (int i = 0; i < combo->count(); ++i)
                 if (combo->itemData(i).toString() == saved) { combo->setCurrentIndex(i); break; }
@@ -1928,6 +1930,17 @@ QWidget* RadioSetupDialog::buildSerialTab()
         grid->addWidget(dsrLabel, 4, 0);
         grid->addWidget(makeInputFnCombo("SerialDsrFunction"), 4, 1);
         grid->addWidget(makePolCombo("SerialDsrPolarity"), 4, 2);
+
+        // Paddle swap
+        auto* swapCb = new QCheckBox("Paddle Swap (swap dit/dah)");
+        swapCb->setStyleSheet("QCheckBox { color: #c8d8e8; }");
+        swapCb->setChecked(AppSettings::instance().value("SerialPaddleSwap", "False").toString() == "True");
+        connect(swapCb, &QCheckBox::toggled, this, [](bool on) {
+            auto& s = AppSettings::instance();
+            s.setValue("SerialPaddleSwap", on ? "True" : "False");
+            s.save();
+        });
+        grid->addWidget(swapCb, 5, 0, 1, 3);
 
         vbox->addWidget(group);
     }

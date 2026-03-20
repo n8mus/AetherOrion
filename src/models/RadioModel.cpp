@@ -136,6 +136,16 @@ void RadioModel::setTransmit(bool tx)
     sendCmd(QString("xmit %1").arg(tx ? 1 : 0));
 }
 
+void RadioModel::sendCwKey(bool down)
+{
+    sendCmd(QString("cw key %1").arg(down ? 1 : 0));
+}
+
+void RadioModel::sendCwPaddle(bool dit, bool dah)
+{
+    sendCmd(QString("cw key %1 %2").arg(dit ? 1 : 0).arg(dah ? 1 : 0));
+}
+
 void RadioModel::addSlice()
 {
     if (m_panId.isEmpty()) {

@@ -12,10 +12,10 @@
 namespace AetherSDR {
 
 // Controls DTR/RTS lines on a USB-serial adapter for hardware PTT
-// and CW keying, and polls CTS/DSR for external PTT input.
+// and CW keying, and polls CTS/DSR for external PTT and CW key/paddle input.
 //
 // Output: Assert DTR/RTS when transmitting (amplifier keying, sequencer)
-// Input:  Poll CTS/DSR for external foot switch / PTT button
+// Input:  Poll CTS/DSR for foot switch PTT, straight key, or iambic paddle
 //
 // Requires Qt6::SerialPort. Compiles to a no-op stub without HAVE_SERIALPORT.
 
@@ -26,7 +26,7 @@ public:
     // Output functions (DTR/RTS)
     enum class PinFunction { None, PTT, CwKey, CwPTT };
     // Input functions (CTS/DSR)
-    enum class InputFunction { None, PttInput, CwKeyInput };
+    enum class InputFunction { None, PttInput, CwKeyInput, CwDitInput, CwDahInput };
 
     explicit SerialPortController(QObject* parent = nullptr);
     ~SerialPortController() override;
@@ -59,20 +59,22 @@ public:
     bool ctsPolarity() const { return m_ctsActiveHigh; }
     bool dsrPolarity() const { return m_dsrActiveHigh; }
 
+    // Paddle swap (swap dit/dah without rewiring)
+    void setPaddleSwap(bool swap) { m_paddleSwap = swap; }
+    bool paddleSwap() const { return m_paddleSwap; }
+
     // Load/save configuration from AppSettings
     void loadSettings();
     void saveSettings();
 
 public slots:
-    // Called when TX state changes — asserts pins configured for PTT
     void setTransmitting(bool tx);
-
-    // Called for CW keying — asserts pins configured for CwKey
     void setCwKeyDown(bool down);
 
 signals:
-    // Emitted when an external PTT input is detected via CTS/DSR polling
     void externalPttChanged(bool active);
+    void cwKeyChanged(bool down);                   // straight key
+    void cwPaddleChanged(bool dit, bool dah);       // iambic paddle
     void errorOccurred(const QString& msg);
 
 private:
@@ -88,14 +90,18 @@ private:
     // Input state
     InputFunction m_ctsFn{InputFunction::None};
     InputFunction m_dsrFn{InputFunction::None};
-    bool m_ctsActiveHigh{false};  // default active-low (foot switch to GND)
+    bool m_ctsActiveHigh{false};
     bool m_dsrActiveHigh{false};
+    bool m_paddleSwap{false};
 
 #ifdef HAVE_SERIALPORT
     QSerialPort m_port;
     QTimer      m_pollTimer;
     bool        m_lastCtsActive{false};
     bool        m_lastDsrActive{false};
+    bool        m_lastKeyDown{false};
+    bool        m_lastDitActive{false};
+    bool        m_lastDahActive{false};
     QElapsedTimer m_debounceTimer;
     static constexpr int POLL_INTERVAL_MS = 10;
     static constexpr int DEBOUNCE_MS = 20;

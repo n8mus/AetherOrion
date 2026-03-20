@@ -143,29 +143,50 @@ void SerialPortController::pollInputPins()
     bool cts = pinState.testFlag(QSerialPort::ClearToSendSignal);
     bool dsr = pinState.testFlag(QSerialPort::DataSetReadySignal);
 
+    // Resolve active state per polarity
+    bool ctsActive = m_ctsActiveHigh ? cts : !cts;
+    bool dsrActive = m_dsrActiveHigh ? dsr : !dsr;
+
     // Debounce: ignore changes within DEBOUNCE_MS of the last change
     bool debounceOk = m_debounceTimer.elapsed() >= DEBOUNCE_MS;
 
-    // Check CTS for PTT input
-    if (m_ctsFn == InputFunction::PttInput) {
-        bool active = m_ctsActiveHigh ? cts : !cts;
-        if (active != m_lastCtsActive && debounceOk) {
-            m_lastCtsActive = active;
-            m_debounceTimer.restart();
-            emit externalPttChanged(active);
-            qCDebug(lcCat) << "SerialPortController: CTS PTT" << (active ? "ON" : "OFF");
-        }
+    // ── PTT input ────────────────────────────────────────────────────────
+    if (m_ctsFn == InputFunction::PttInput && ctsActive != m_lastCtsActive && debounceOk) {
+        m_lastCtsActive = ctsActive;
+        m_debounceTimer.restart();
+        emit externalPttChanged(ctsActive);
+    }
+    if (m_dsrFn == InputFunction::PttInput && dsrActive != m_lastDsrActive && debounceOk) {
+        m_lastDsrActive = dsrActive;
+        m_debounceTimer.restart();
+        emit externalPttChanged(dsrActive);
     }
 
-    // Check DSR for PTT input
-    if (m_dsrFn == InputFunction::PttInput) {
-        bool active = m_dsrActiveHigh ? dsr : !dsr;
-        if (active != m_lastDsrActive && debounceOk) {
-            m_lastDsrActive = active;
-            m_debounceTimer.restart();
-            emit externalPttChanged(active);
-            qCDebug(lcCat) << "SerialPortController: DSR PTT" << (active ? "ON" : "OFF");
-        }
+    // ── CW straight key input ────────────────────────────────────────────
+    // Either CTS or DSR can be a straight key — whichever is configured
+    bool keyDown = false;
+    bool hasKey = false;
+    if (m_ctsFn == InputFunction::CwKeyInput) { keyDown = ctsActive; hasKey = true; }
+    if (m_dsrFn == InputFunction::CwKeyInput) { keyDown = dsrActive; hasKey = true; }
+    if (hasKey && keyDown != m_lastKeyDown) {
+        m_lastKeyDown = keyDown;
+        emit cwKeyChanged(keyDown);
+    }
+
+    // ── CW paddle (dit/dah) input ────────────────────────────────────────
+    bool ditActive = false, dahActive = false;
+    bool hasPaddle = false;
+    if (m_ctsFn == InputFunction::CwDitInput) { ditActive = ctsActive; hasPaddle = true; }
+    if (m_dsrFn == InputFunction::CwDitInput) { ditActive = dsrActive; hasPaddle = true; }
+    if (m_ctsFn == InputFunction::CwDahInput) { dahActive = ctsActive; hasPaddle = true; }
+    if (m_dsrFn == InputFunction::CwDahInput) { dahActive = dsrActive; hasPaddle = true; }
+
+    if (m_paddleSwap) std::swap(ditActive, dahActive);
+
+    if (hasPaddle && (ditActive != m_lastDitActive || dahActive != m_lastDahActive)) {
+        m_lastDitActive = ditActive;
+        m_lastDahActive = dahActive;
+        emit cwPaddleChanged(ditActive, dahActive);
     }
 }
 #endif
@@ -185,6 +206,8 @@ void SerialPortController::loadSettings()
     auto strToInputFn = [](const QString& str) -> InputFunction {
         if (str == "PttInput") return InputFunction::PttInput;
         if (str == "CwKeyInput") return InputFunction::CwKeyInput;
+        if (str == "CwDitInput") return InputFunction::CwDitInput;
+        if (str == "CwDahInput") return InputFunction::CwDahInput;
         return InputFunction::None;
     };
 
@@ -197,6 +220,7 @@ void SerialPortController::loadSettings()
     m_dsrFn = strToInputFn(s.value("SerialDsrFunction", "None").toString());
     m_ctsActiveHigh = s.value("SerialCtsPolarity", "ActiveLow").toString() == "ActiveHigh";
     m_dsrActiveHigh = s.value("SerialDsrPolarity", "ActiveLow").toString() == "ActiveHigh";
+    m_paddleSwap = s.value("SerialPaddleSwap", "False").toString() == "True";
 
     if (!port.isEmpty() && s.value("SerialAutoOpen", "False").toString() == "True") {
         int baud = s.value("SerialBaudRate", "9600").toInt();
@@ -224,6 +248,8 @@ void SerialPortController::saveSettings()
         switch (fn) {
         case InputFunction::PttInput:   return "PttInput";
         case InputFunction::CwKeyInput: return "CwKeyInput";
+        case InputFunction::CwDitInput: return "CwDitInput";
+        case InputFunction::CwDahInput: return "CwDahInput";
         default:                        return "None";
         }
     };
@@ -237,6 +263,7 @@ void SerialPortController::saveSettings()
     s.setValue("SerialDsrFunction", inputFnToStr(m_dsrFn));
     s.setValue("SerialCtsPolarity", m_ctsActiveHigh ? "ActiveHigh" : "ActiveLow");
     s.setValue("SerialDsrPolarity", m_dsrActiveHigh ? "ActiveHigh" : "ActiveLow");
+    s.setValue("SerialPaddleSwap", m_paddleSwap ? "True" : "False");
     s.setValue("SerialAutoOpen", isOpen() ? "True" : "False");
     s.save();
 }
