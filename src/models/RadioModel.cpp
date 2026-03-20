@@ -85,6 +85,10 @@ void RadioModel::connectToRadio(const RadioInfo& info)
 
 void RadioModel::connectViaWan(WanConnection* wan, const QString& publicIp, quint16 udpPort)
 {
+    qDebug() << "RadioModel: connectViaWan publicIp=" << publicIp
+             << "udpPort=" << udpPort
+             << "wanHandle=0x" << QString::number(wan->clientHandle(), 16);
+
     m_wanConn = wan;
     m_wanPublicIp = publicIp;
     m_wanUdpPort = udpPort;
@@ -101,8 +105,12 @@ void RadioModel::connectViaWan(WanConnection* wan, const QString& publicIp, quin
 
     // The WAN connection is already established (TLS + wan validate done)
     // and has already received V/H. Trigger onConnected manually.
-    if (wan->isConnected())
+    if (wan->isConnected()) {
+        qDebug() << "RadioModel: WAN already connected, triggering onConnected";
         onConnected();
+    } else {
+        qDebug() << "RadioModel: WAN not yet connected, waiting for connected signal";
+    }
 }
 
 void RadioModel::disconnectFromRadio()
@@ -330,6 +338,13 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                 m_panStream.start(&m_connection);  // also sends one-byte UDP registration
         }
 
+        // On WAN: use "client udp_register" via UDP (not TCP "client udpport").
+        // The radio only accepts udp_register on WAN connections.
+        if (m_wanConn) {
+            m_panStream.startWanUdpRegister(clientHandle());
+            qDebug() << "RadioModel: WAN — started UDP registration via udp_register";
+        }
+
         const quint16 udpPort = m_panStream.localPort();
         sendCmd(
             QString("client udpport %1").arg(udpPort),
@@ -337,7 +352,8 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                 if (code2 == 0)
                     qDebug() << "RadioModel: UDP port" << udpPort << "registered via client udpport";
                 else
-                    qDebug() << "RadioModel: client udpport returned error" << Qt::hex << code2;
+                    qDebug() << "RadioModel: client udpport returned error" << Qt::hex << code2
+                             << "(expected on WAN — using udp_register instead)";
 
                 // Query radio info (region, callsign, options, etc.)
                 // Response is comma-separated key=value pairs.
@@ -465,7 +481,10 @@ void RadioModel::onDisconnected()
     m_wfConfigured = false;
     emit connectionStateChanged(false);
 
-    if (!m_intentionalDisconnect && !m_lastInfo.address.isNull()) {
+    if (m_wanConn) {
+        qDebug() << "RadioModel: WAN disconnected (no auto-reconnect for SmartLink)";
+        m_wanConn = nullptr;
+    } else if (!m_intentionalDisconnect && !m_lastInfo.address.isNull()) {
         qDebug() << "RadioModel: unexpected disconnect — reconnecting in 3s";
         m_reconnectTimer.start();
     }

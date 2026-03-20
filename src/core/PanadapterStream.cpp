@@ -34,6 +34,26 @@ PanadapterStream::PanadapterStream(QObject* parent)
 {
     connect(&m_socket, &QUdpSocket::readyRead,
             this, &PanadapterStream::onDatagramReady);
+
+    // WAN UDP register: send "client udp_register handle=0x<handle>" every 50ms
+    // until first VITA-49 packet arrives (confirms radio knows our address).
+    connect(&m_wanRegisterTimer, &QTimer::timeout, this, [this] {
+        if (m_radioAddress.isNull() || m_wanClientHandle == 0) return;
+        const QString hex = QString::number(m_wanClientHandle, 16).toUpper();
+        const QByteArray cmd = QStringLiteral("client udp_register handle=0x%1").arg(hex).toUtf8();
+        m_socket.writeDatagram(cmd, m_radioAddress, m_radioPort);
+    });
+
+    // WAN ping keepalive: send "client ping handle=0x<handle>" every 5s
+    // to maintain NAT pinhole after registration is confirmed.
+    connect(&m_wanPingTimer, &QTimer::timeout, this, [this] {
+        if (m_radioAddress.isNull() || m_wanClientHandle == 0) return;
+        const QString hex = QString::number(m_wanClientHandle, 16).toUpper();
+        const QByteArray cmd = QStringLiteral("client ping handle=0x%1").arg(hex).toUtf8();
+        m_socket.writeDatagram(cmd, m_radioAddress, m_radioPort);
+        qDebug() << "PanadapterStream: WAN ping keepalive"
+                 << "(totalRx:" << m_totalRxBytes << "bytes)";
+    });
 }
 
 bool PanadapterStream::isRunning() const
@@ -94,7 +114,8 @@ bool PanadapterStream::startWan(const QHostAddress& radioAddr, quint16 radioUdpP
 {
     if (isRunning()) return true;
 
-    // For WAN: bind to any port, send registration to radio's public UDP port
+    // For WAN: bind to any port. The actual UDP registration happens later
+    // in startWanUdpRegister() once the client handle is known.
     bool bound = m_socket.bind(QHostAddress::AnyIPv4, 0);
     if (!bound) {
         qWarning() << "PanadapterStream: WAN — failed to bind UDP socket:"
@@ -103,24 +124,41 @@ bool PanadapterStream::startWan(const QHostAddress& radioAddr, quint16 radioUdpP
     }
 
     m_localPort = m_socket.localPort();
-    qDebug() << "PanadapterStream: WAN — bound to UDP port" << m_localPort;
+    m_radioAddress = radioAddr;
+    m_radioPort = radioUdpPort;
+    m_isWanMode = true;
+    m_wanRegistered = false;
 
-    // Send registration to radio's public UDP port
-    const QByteArray reg(1, '\x00');
-    const qint64 sent = m_socket.writeDatagram(reg, radioAddr, radioUdpPort);
-    if (sent == 1)
-        qDebug() << "PanadapterStream: WAN — sent UDP registration to"
-                 << radioAddr.toString() << ":" << radioUdpPort;
-    else
-        qWarning() << "PanadapterStream: WAN — UDP registration send failed:"
-                   << m_socket.errorString();
+    qDebug() << "PanadapterStream: WAN — bound to UDP port" << m_localPort
+             << "radio=" << radioAddr.toString() << ":" << radioUdpPort;
 
     m_conn = nullptr;  // no RadioConnection in WAN mode
     return true;
 }
 
+void PanadapterStream::startWanUdpRegister(quint32 clientHandle)
+{
+    m_wanClientHandle = clientHandle;
+    m_wanRegistered = false;
+
+    const QString hex = QString::number(clientHandle, 16).toUpper();
+    qDebug() << "PanadapterStream: WAN — starting UDP registration,"
+             << "handle=0x" + hex
+             << "sending to" << m_radioAddress.toString() << ":" << m_radioPort;
+
+    // Send first registration immediately, then every 50ms until confirmed
+    const QByteArray cmd = QStringLiteral("client udp_register handle=0x%1").arg(hex).toUtf8();
+    m_socket.writeDatagram(cmd, m_radioAddress, m_radioPort);
+    m_wanRegisterTimer.start(50);
+}
+
 void PanadapterStream::stop()
 {
+    m_wanRegisterTimer.stop();
+    m_wanPingTimer.stop();
+    m_isWanMode = false;
+    m_wanRegistered = false;
+    m_wanClientHandle = 0;
     m_socket.close();
     m_localPort = 0;
 }
@@ -147,6 +185,17 @@ void PanadapterStream::onDatagramReady()
     while (m_socket.hasPendingDatagrams()) {
         const QNetworkDatagram dg = m_socket.receiveDatagram();
         if (!dg.isNull()) {
+            // On first VITA-49 packet in WAN mode: registration confirmed.
+            // Stop the rapid udp_register timer and switch to ping keepalive.
+            if (m_isWanMode && !m_wanRegistered) {
+                qDebug() << "PanadapterStream: WAN — first VITA-49 packet received!"
+                         << dg.data().size() << "bytes from"
+                         << dg.senderAddress().toString() << ":" << dg.senderPort()
+                         << "— UDP registration confirmed";
+                m_wanRegistered = true;
+                m_wanRegisterTimer.stop();
+                m_wanPingTimer.start(5000);
+            }
             m_totalRxBytes += dg.data().size();
             processDatagram(dg.data());
         }

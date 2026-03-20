@@ -51,8 +51,10 @@ public:
     // Logout and disconnect from SmartLink server
     void logout();
 
-    // Request connection to a specific radio (by serial)
-    void requestConnect(const QString& serial);
+    // Request connection to a specific radio (by serial).
+    // holePunchPort is the local UDP port we've bound for VITA-49 reception;
+    // the SmartLink server tells the radio to send UDP to our public IP:port.
+    void requestConnect(const QString& serial, quint16 holePunchPort = 0);
     // Disconnect from SmartLink server
     void disconnect();
 

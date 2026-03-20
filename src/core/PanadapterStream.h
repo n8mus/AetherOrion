@@ -5,6 +5,7 @@
 #include <QHostAddress>
 #include <QVector>
 #include <QMap>
+#include <QTimer>
 
 namespace AetherSDR {
 
@@ -37,8 +38,15 @@ public:
     // Bind a local UDP port (OS-chosen) and register it with the radio.
     // conn must remain valid for the lifetime of this stream.
     bool start(RadioConnection* conn);
-    // Start for WAN: use explicit radio address and UDP port
+    // Start for WAN: use explicit radio address and UDP port.
+    // After calling startWan(), call startWanUdpRegister() once the client
+    // handle is known (after TLS + wan validate handshake).
     bool startWan(const QHostAddress& radioAddr, quint16 radioUdpPort);
+
+    // Begin WAN UDP registration: sends "client udp_register handle=0x<handle>"
+    // via UDP every 50ms until VITA-49 packets arrive, then switches to
+    // "client ping handle=0x<handle>" keepalive every 5 seconds.
+    void startWanUdpRegister(quint32 clientHandle);
     void stop();
 
     quint16 localPort() const { return m_localPort; }
@@ -166,6 +174,13 @@ private:
     QMap<quint32, int> m_daxStreamIds;
     QHostAddress m_radioAddress;
     quint16      m_radioPort{0};
+
+    // WAN UDP registration and keepalive
+    QTimer   m_wanRegisterTimer;   // 50ms: "client udp_register" until first packet
+    QTimer   m_wanPingTimer;       // 5s: "client ping" keepalive after registration
+    bool     m_isWanMode{false};
+    bool     m_wanRegistered{false};
+    quint32  m_wanClientHandle{0};
 };
 
 } // namespace AetherSDR

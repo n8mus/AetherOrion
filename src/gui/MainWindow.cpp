@@ -144,7 +144,21 @@ MainWindow::MainWindow(QWidget* parent)
         m_connPanel->setStatusText("Requesting SmartLink connection…");
         // Store WAN radio info for when connect_ready arrives
         m_pendingWanRadio = info;
-        m_smartLink.requestConnect(info.serial);
+
+        // Pre-bind UDP socket for VITA-49 reception BEFORE requesting
+        // connection, so we can pass our port to the SmartLink server.
+        // The server tells the radio our public IP:port for UDP streaming.
+        quint16 udpPort = m_radioModel.panStream()->localPort();
+        if (udpPort == 0) {
+            // Not yet bound — start WAN early to get a port
+            const quint16 radioUdpPort = static_cast<quint16>(
+                info.publicUdpPort > 0 ? info.publicUdpPort : 4993);
+            m_radioModel.panStream()->startWan(
+                QHostAddress(info.publicIp), radioUdpPort);
+            udpPort = m_radioModel.panStream()->localPort();
+        }
+        qDebug() << "MainWindow: pre-bound UDP port" << udpPort << "for WAN hole punch";
+        m_smartLink.requestConnect(info.serial, udpPort);
     });
 
     // SmartLink server says radio is ready — connect via TLS

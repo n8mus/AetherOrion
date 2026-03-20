@@ -39,9 +39,12 @@ int main(int argc, char* argv[])
     app.setOrganizationName("AetherSDR");
     app.setDesktopFileName("AetherSDR");  // matches .desktop file for taskbar icon
 
-    // Set up file logging in config directory (works inside AppImage where
-    // applicationDirPath() is read-only)
-    const QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    // Set up file logging in ~/.config/AetherSDR/ (works inside AppImage where
+    // applicationDirPath() is read-only).
+    // Use GenericConfigLocation + app name to avoid the double-nested
+    // ~/.config/AetherSDR/AetherSDR/ path that AppConfigLocation produces.
+    const QString logDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+                           + "/AetherSDR";
     QDir().mkpath(logDir);
     const QString logPath = logDir + "/aethersdr.log";
     s_logFile = new QFile(logPath);

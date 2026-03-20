@@ -52,7 +52,7 @@ working on it, comment again so someone else can pick it up.
 
 - Open a GitHub issue with a clear title and description.
 - Include your OS/distro, Qt version, radio model, and firmware version.
-- Attach relevant logs (`build/aethersdr.log`), screenshots, or Wireshark
+- Attach relevant logs (`~/.config/AetherSDR/aethersdr.log`), screenshots, or Wireshark
   captures if possible.
 - Check existing issues first to avoid duplicates.
 
@@ -276,7 +276,7 @@ sudo cmake --install build
 
 ### Logging
 
-Debug logs are written to `~/.config/AetherSDR/AetherSDR/aethersdr.log`
+Debug logs are written to `~/.config/AetherSDR/aethersdr.log`
 (overwritten each launch). Include relevant log excerpts in bug reports and PRs.
 
 ### Hardware

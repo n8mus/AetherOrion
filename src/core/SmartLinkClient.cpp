@@ -167,11 +167,13 @@ void SmartLinkClient::disconnect()
     m_serverConnected = false;
 }
 
-void SmartLinkClient::requestConnect(const QString& serial)
+void SmartLinkClient::requestConnect(const QString& serial, quint16 holePunchPort)
 {
     if (!m_serverConnected) return;
-    QString cmd = QString("application connect serial=%1 hole_punch_port=0\n").arg(serial);
-    qDebug() << "SmartLinkClient: requesting connection to" << serial;
+    QString cmd = QString("application connect serial=%1 hole_punch_port=%2\n")
+                      .arg(serial).arg(holePunchPort);
+    qDebug() << "SmartLinkClient: requesting connection to" << serial
+             << "hole_punch_port=" << holePunchPort;
     m_socket.write(cmd.toUtf8());
 }
 
@@ -183,12 +185,14 @@ void SmartLinkClient::onSslConnected()
     m_serverConnected = true;
 
     // Register with the server
+    qDebug() << "SmartLinkClient: sending application register (token length:" << m_idToken.length() << ")";
     QString cmd = QString("application register name=AetherSDR platform=Linux token=%1\n")
                       .arg(m_idToken);
     m_socket.write(cmd.toUtf8());
 
     // Start keepalive pings
     m_pingTimer.start();
+    qDebug() << "SmartLinkClient: keepalive ping timer started (10s interval)";
 
     emit serverConnected();
 }
@@ -254,6 +258,8 @@ void SmartLinkClient::parseMessage(const QString& msg)
         emit authFailed("SmartLink registration invalid — please re-login");
     } else if (msg.startsWith("radio test_connection")) {
         parseTestResults(msg);
+    } else if (!msg.startsWith("ping")) {
+        qDebug() << "SmartLinkClient: unhandled message:" << msg.left(80);
     }
 }
 
@@ -302,7 +308,9 @@ void SmartLinkClient::parseRadioList(const QString& msg)
     qDebug() << "SmartLinkClient: received" << radios.size() << "WAN radio(s)";
     for (const auto& r : radios)
         qDebug() << "  " << r.model << r.nickname << r.serial << r.status
-                 << "ip:" << r.publicIp << "tls:" << r.publicTlsPort;
+                 << "ip:" << r.publicIp << "tls:" << r.publicTlsPort
+                 << "udp:" << r.publicUdpPort << "upnp:" << r.upnpSupported
+                 << "holePunch:" << r.requiresHolePunch;
 
     emit radioListReceived(radios);
 }
@@ -360,6 +368,13 @@ void SmartLinkClient::parseTestResults(const QString& msg)
         if (eq > 0)
             kv[w.left(eq)] = w.mid(eq + 1);
     }
+
+    qDebug() << "SmartLinkClient: test_connection results for" << kv.value("serial")
+             << "upnpTcp:" << kv.value("upnp_tcp_port_working")
+             << "upnpUdp:" << kv.value("upnp_udp_port_working")
+             << "fwdTcp:" << kv.value("forward_tcp_port_working")
+             << "fwdUdp:" << kv.value("forward_udp_port_working")
+             << "holePunch:" << kv.value("nat_supports_hole_punch");
 
     emit testConnectionResult(
         kv.value("serial"),

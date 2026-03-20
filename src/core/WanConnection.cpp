@@ -167,12 +167,14 @@ void WanConnection::processLine(const QString& line)
 
     switch (msg.type) {
     case MessageType::Version:
+        qDebug() << "WanConnection: firmware version:" << msg.object;
         emit versionReceived(msg.object);
         break;
 
     case MessageType::Handle:
         m_handle = msg.handle;
-        qDebug() << "WanConnection: assigned handle" << QString::number(m_handle, 16);
+        qDebug() << "WanConnection: assigned handle 0x" << QString::number(m_handle, 16)
+                 << "— WAN validated, starting heartbeat";
         m_connected = true;
         m_heartbeat.start();
         emit connected();
