@@ -732,6 +732,10 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Serial port PTT/CW keying ───────────────────────────────────────
 #ifdef HAVE_SERIALPORT
     m_serialPort.loadSettings();
+    connect(&m_serialPort, &SerialPortController::externalPttChanged,
+            this, [this](bool active) {
+        m_radioModel.setTransmit(active);
+    });
 #endif
 
     // ── P/CW applet: mic meters + ALC meter + model ────────────────────────

@@ -1898,6 +1898,37 @@ QWidget* RadioSetupDialog::buildSerialTab()
         grid->addWidget(makeFnCombo("SerialRtsFunction"), 2, 1);
         grid->addWidget(makePolCombo("SerialRtsPolarity"), 2, 2);
 
+        // Input pin function combo (different options than output)
+        auto makeInputFnCombo = [this](const QString& savedKey) {
+            auto* combo = new QComboBox;
+            combo->addItem("None",         "None");
+            combo->addItem("PTT Input",    "PttInput");
+            combo->addItem("CW Key Input", "CwKeyInput");
+            QString saved = AppSettings::instance().value(savedKey, "None").toString();
+            for (int i = 0; i < combo->count(); ++i)
+                if (combo->itemData(i).toString() == saved) { combo->setCurrentIndex(i); break; }
+            connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [savedKey, combo]() {
+                auto& s = AppSettings::instance();
+                s.setValue(savedKey, combo->currentData().toString());
+                s.save();
+            });
+            return combo;
+        };
+
+        // CTS row (input)
+        auto* ctsLabel = new QLabel("CTS");
+        ctsLabel->setStyleSheet("QLabel { color: #60a0c0; }");
+        grid->addWidget(ctsLabel, 3, 0);
+        grid->addWidget(makeInputFnCombo("SerialCtsFunction"), 3, 1);
+        grid->addWidget(makePolCombo("SerialCtsPolarity"), 3, 2);
+
+        // DSR row (input)
+        auto* dsrLabel = new QLabel("DSR");
+        dsrLabel->setStyleSheet("QLabel { color: #60a0c0; }");
+        grid->addWidget(dsrLabel, 4, 0);
+        grid->addWidget(makeInputFnCombo("SerialDsrFunction"), 4, 1);
+        grid->addWidget(makePolCombo("SerialDsrPolarity"), 4, 2);
+
         vbox->addWidget(group);
     }
 

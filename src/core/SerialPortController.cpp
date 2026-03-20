@@ -11,6 +11,9 @@ namespace AetherSDR {
 SerialPortController::SerialPortController(QObject* parent)
     : QObject(parent)
 {
+#ifdef HAVE_SERIALPORT
+    connect(&m_pollTimer, &QTimer::timeout, this, &SerialPortController::pollInputPins);
+#endif
 }
 
 SerialPortController::~SerialPortController()
@@ -38,9 +41,17 @@ bool SerialPortController::open(const QString& portName, int baudRate,
         return false;
     }
 
-    // Start with all lines deasserted
+    // Start with all output lines deasserted
     m_port.setDataTerminalReady(!m_dtrActiveHigh);
     m_port.setRequestToSend(!m_rtsActiveHigh);
+
+    // Reset input state
+    m_lastCtsActive = false;
+    m_lastDsrActive = false;
+    m_debounceTimer.start();
+
+    // Start polling if any input function is configured
+    updatePolling();
 
     qCDebug(lcCat) << "SerialPortController: opened" << portName << "at" << baudRate;
     return true;
@@ -54,8 +65,9 @@ bool SerialPortController::open(const QString& portName, int baudRate,
 void SerialPortController::close()
 {
 #ifdef HAVE_SERIALPORT
+    m_pollTimer.stop();
     if (m_port.isOpen()) {
-        // Deassert all lines before closing
+        // Deassert all output lines before closing
         m_port.setDataTerminalReady(!m_dtrActiveHigh);
         m_port.setRequestToSend(!m_rtsActiveHigh);
         m_port.close();
@@ -111,10 +123,57 @@ void SerialPortController::applyPin(PinFunction targetFn, bool active)
 #endif
 }
 
+void SerialPortController::updatePolling()
+{
+#ifdef HAVE_SERIALPORT
+    bool needsPoll = (m_ctsFn != InputFunction::None || m_dsrFn != InputFunction::None);
+    if (needsPoll && m_port.isOpen() && !m_pollTimer.isActive())
+        m_pollTimer.start(POLL_INTERVAL_MS);
+    else if (!needsPoll && m_pollTimer.isActive())
+        m_pollTimer.stop();
+#endif
+}
+
+#ifdef HAVE_SERIALPORT
+void SerialPortController::pollInputPins()
+{
+    if (!m_port.isOpen()) return;
+
+    auto pinState = m_port.pinoutSignals();
+    bool cts = pinState.testFlag(QSerialPort::ClearToSendSignal);
+    bool dsr = pinState.testFlag(QSerialPort::DataSetReadySignal);
+
+    // Debounce: ignore changes within DEBOUNCE_MS of the last change
+    bool debounceOk = m_debounceTimer.elapsed() >= DEBOUNCE_MS;
+
+    // Check CTS for PTT input
+    if (m_ctsFn == InputFunction::PttInput) {
+        bool active = m_ctsActiveHigh ? cts : !cts;
+        if (active != m_lastCtsActive && debounceOk) {
+            m_lastCtsActive = active;
+            m_debounceTimer.restart();
+            emit externalPttChanged(active);
+            qCDebug(lcCat) << "SerialPortController: CTS PTT" << (active ? "ON" : "OFF");
+        }
+    }
+
+    // Check DSR for PTT input
+    if (m_dsrFn == InputFunction::PttInput) {
+        bool active = m_dsrActiveHigh ? dsr : !dsr;
+        if (active != m_lastDsrActive && debounceOk) {
+            m_lastDsrActive = active;
+            m_debounceTimer.restart();
+            emit externalPttChanged(active);
+            qCDebug(lcCat) << "SerialPortController: DSR PTT" << (active ? "ON" : "OFF");
+        }
+    }
+}
+#endif
+
 void SerialPortController::loadSettings()
 {
     auto& s = AppSettings::instance();
-    QString portName = s.value("SerialPortName", "").toString();
+    QString port = s.value("SerialPortName", "").toString();
 
     auto strToFn = [](const QString& str) -> PinFunction {
         if (str == "PTT") return PinFunction::PTT;
@@ -123,17 +182,28 @@ void SerialPortController::loadSettings()
         return PinFunction::None;
     };
 
+    auto strToInputFn = [](const QString& str) -> InputFunction {
+        if (str == "PttInput") return InputFunction::PttInput;
+        if (str == "CwKeyInput") return InputFunction::CwKeyInput;
+        return InputFunction::None;
+    };
+
     m_dtrFn = strToFn(s.value("SerialDtrFunction", "None").toString());
     m_rtsFn = strToFn(s.value("SerialRtsFunction", "None").toString());
     m_dtrActiveHigh = s.value("SerialDtrPolarity", "ActiveHigh").toString() == "ActiveHigh";
     m_rtsActiveHigh = s.value("SerialRtsPolarity", "ActiveHigh").toString() == "ActiveHigh";
 
-    if (!portName.isEmpty() && s.value("SerialAutoOpen", "False").toString() == "True") {
+    m_ctsFn = strToInputFn(s.value("SerialCtsFunction", "None").toString());
+    m_dsrFn = strToInputFn(s.value("SerialDsrFunction", "None").toString());
+    m_ctsActiveHigh = s.value("SerialCtsPolarity", "ActiveLow").toString() == "ActiveHigh";
+    m_dsrActiveHigh = s.value("SerialDsrPolarity", "ActiveLow").toString() == "ActiveHigh";
+
+    if (!port.isEmpty() && s.value("SerialAutoOpen", "False").toString() == "True") {
         int baud = s.value("SerialBaudRate", "9600").toInt();
         int data = s.value("SerialDataBits", "8").toInt();
         int par  = s.value("SerialParity", "0").toInt();
         int stop = s.value("SerialStopBits", "1").toInt();
-        open(portName, baud, data, par, stop);
+        open(port, baud, data, par, stop);
     }
 }
 
@@ -150,11 +220,23 @@ void SerialPortController::saveSettings()
         }
     };
 
+    auto inputFnToStr = [](InputFunction fn) -> QString {
+        switch (fn) {
+        case InputFunction::PttInput:   return "PttInput";
+        case InputFunction::CwKeyInput: return "CwKeyInput";
+        default:                        return "None";
+        }
+    };
+
     s.setValue("SerialPortName", portName());
     s.setValue("SerialDtrFunction", fnToStr(m_dtrFn));
     s.setValue("SerialRtsFunction", fnToStr(m_rtsFn));
     s.setValue("SerialDtrPolarity", m_dtrActiveHigh ? "ActiveHigh" : "ActiveLow");
     s.setValue("SerialRtsPolarity", m_rtsActiveHigh ? "ActiveHigh" : "ActiveLow");
+    s.setValue("SerialCtsFunction", inputFnToStr(m_ctsFn));
+    s.setValue("SerialDsrFunction", inputFnToStr(m_dsrFn));
+    s.setValue("SerialCtsPolarity", m_ctsActiveHigh ? "ActiveHigh" : "ActiveLow");
+    s.setValue("SerialDsrPolarity", m_dsrActiveHigh ? "ActiveHigh" : "ActiveLow");
     s.setValue("SerialAutoOpen", isOpen() ? "True" : "False");
     s.save();
 }
