@@ -21,7 +21,7 @@ class PipeWireAudioBridge : public QObject {
 public:
     static constexpr int NUM_CHANNELS = 4;
     static constexpr int SAMPLE_RATE  = 24000;
-    static constexpr int STEREO       = 2;
+    static constexpr int CHANNELS     = 1;  // mono — ham radio DAX is single-channel
 
     explicit PipeWireAudioBridge(QObject* parent = nullptr);
     ~PipeWireAudioBridge() override;
@@ -49,7 +49,7 @@ private:
     bool loadPipeSink();
     void unloadModules();
 
-    // RX: we write int16 stereo PCM to these pipes → PulseAudio reads them
+    // RX: we write int16 mono PCM to these pipes → PulseAudio reads them
     struct RxPipe {
         int fd{-1};
         uint32_t moduleIndex{0};

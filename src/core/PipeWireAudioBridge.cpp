@@ -147,7 +147,7 @@ bool PipeWireAudioBridge::loadPipeSource(int index)
         QStringLiteral("source_properties=device.description=\"%1\"").arg(sourceDesc),
         QStringLiteral("format=s16le"),
         QStringLiteral("rate=%1").arg(SAMPLE_RATE),
-        QStringLiteral("channels=%1").arg(STEREO),
+        QStringLiteral("channels=%1").arg(CHANNELS),
     });
 
     if (modIdx == 0) {
@@ -191,7 +191,7 @@ bool PipeWireAudioBridge::loadPipeSink()
         QStringLiteral("sink_properties=device.description=\"%1\"").arg(sinkDesc),
         QStringLiteral("format=s16le"),
         QStringLiteral("rate=%1").arg(SAMPLE_RATE),
-        QStringLiteral("channels=%1").arg(STEREO),
+        QStringLiteral("channels=%1").arg(CHANNELS),
     });
 
     if (modIdx == 0) {
@@ -259,27 +259,27 @@ void PipeWireAudioBridge::feedDaxAudio(int channel, const QByteArray& pcm)
     auto& rx = m_rx[channel - 1];
     if (rx.fd < 0) return;
 
+    // Input is int16 stereo — convert to mono (average L+R) with gain
     const auto* src = reinterpret_cast<const int16_t*>(pcm.constData());
-    int nSamples = pcm.size() / sizeof(int16_t);
+    int stereoSamples = pcm.size() / sizeof(int16_t);
+    int monoSamples = stereoSamples / 2;
     float chGain = m_channelGain[channel - 1];
 
-    if (chGain == 1.0f) {
-        ::write(rx.fd, pcm.constData(), pcm.size());
-    } else {
-        QByteArray scaled(nSamples * sizeof(int16_t), Qt::Uninitialized);
-        auto* dst = reinterpret_cast<int16_t*>(scaled.data());
-        for (int i = 0; i < nSamples; ++i)
-            dst[i] = static_cast<int16_t>(src[i] * chGain);
-        ::write(rx.fd, scaled.constData(), scaled.size());
+    QByteArray mono(monoSamples * sizeof(int16_t), Qt::Uninitialized);
+    auto* dst = reinterpret_cast<int16_t*>(mono.data());
+    for (int i = 0; i < monoSamples; ++i) {
+        float avg = (src[i * 2] + src[i * 2 + 1]) * 0.5f * chGain;
+        dst[i] = static_cast<int16_t>(std::clamp(avg, -32767.0f, 32767.0f));
     }
+    ::write(rx.fd, mono.constData(), mono.size());
 
     // Calculate RMS for meter display (every ~100ms = ~10 calls at 24kHz)
     static int meterCount[NUM_CHANNELS]{};
     if (++meterCount[channel - 1] % 10 == 0) {
         float sum = 0;
-        for (int i = 0; i < nSamples; i += 2)  // left channel only
-            sum += (src[i] / 32768.0f) * (src[i] / 32768.0f);
-        float rms = std::sqrt(sum / std::max(1, nSamples / 2));
+        for (int i = 0; i < monoSamples; ++i)
+            sum += (dst[i] / 32768.0f) * (dst[i] / 32768.0f);
+        float rms = std::sqrt(sum / std::max(1, monoSamples));
         emit daxRxLevel(channel, rms);
     }
 }
@@ -293,19 +293,22 @@ void PipeWireAudioBridge::readTxPipe()
 {
     if (m_tx.fd < 0) return;
 
-    // Read available data from the TX pipe (int16 stereo from apps)
+    // Read available data from the TX pipe (int16 mono from apps)
     // Convert to float32 stereo for AudioEngine::feedDaxTxAudio
     char buf[4096];
     ssize_t n = ::read(m_tx.fd, buf, sizeof(buf));
     if (n <= 0) return;
 
-    // Convert int16 → float32 with TX gain
-    int nSamples = n / sizeof(int16_t);
+    // Convert int16 mono → float32 stereo with TX gain
+    int monoSamples = n / sizeof(int16_t);
     const auto* src = reinterpret_cast<const int16_t*>(buf);
-    QByteArray out(nSamples * sizeof(float), Qt::Uninitialized);
+    QByteArray out(monoSamples * 2 * sizeof(float), Qt::Uninitialized);  // stereo
     auto* dst = reinterpret_cast<float*>(out.data());
-    for (int i = 0; i < nSamples; ++i)
-        dst[i] = (src[i] / 32768.0f) * m_txGain;
+    for (int i = 0; i < monoSamples; ++i) {
+        float v = (src[i] / 32768.0f) * m_txGain;
+        dst[i * 2]     = v;  // left
+        dst[i * 2 + 1] = v;  // right (duplicate)
+    }
 
     emit txAudioReady(out);
 
@@ -313,9 +316,9 @@ void PipeWireAudioBridge::readTxPipe()
     static int txMeterCount = 0;
     if (++txMeterCount % 10 == 0) {
         float sum = 0;
-        for (int i = 0; i < nSamples; i += 2)
-            sum += dst[i] * dst[i];
-        emit daxTxLevel(std::sqrt(sum / std::max(1, nSamples / 2)));
+        for (int i = 0; i < monoSamples; ++i)
+            sum += (src[i] / 32768.0f) * (src[i] / 32768.0f);
+        emit daxTxLevel(std::sqrt(sum / std::max(1, monoSamples)));
     }
 }
 
