@@ -33,7 +33,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf`
 
-Current version: **0.4.15** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.4.16** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -400,7 +400,7 @@ and panadapter. The radio assigns these to our `client_handle`.
 
 ---
 
-## What's Implemented (v0.4.15)
+## What's Implemented (v0.4.16)
 
 - UDP radio discovery and TCP command/control
 - SmartSDR V/H/R/S/M protocol parsing
@@ -462,6 +462,14 @@ and panadapter. The radio assigns these to our `client_handle`.
 - Firmware upload from Linux (.ssdr files)
 - Radio setup dialog (9 tabs): Radio, Network, GPS, Audio, TX, Phone/CW, RX, Filters, XVTR
 - VFO widget: mode-aware passband positioning (flips side for LSB/DIGL/CWL)
+- **Linux DAX virtual audio**: PulseAudio pipe modules (module-pipe-source/sink),
+  4 RX + 1 TX virtual devices visible in PulseAudio/PipeWire, MeterSlider
+  combo widget (level meter + gain slider), per-channel gain, persistent settings
+- **DAX TX audio routing**: mode-aware gating (mic vs DAX vs RADE), autostart
+- **Volume boost**: AF gain slider extends to 200% (+6 dB) with software gain
+- **Client-side waterfall auto-black**: measures noise floor from tiles, replaces
+  radio's auto_black which targeted SmartSDR's different rendering engine
+- **Memory name editing**: double-click Name column in memory dialog
 - TX button (sends `xmit 1` / `xmit 0`)
 - Persistent window geometry and display settings
 
@@ -471,7 +479,7 @@ and panadapter. The radio assigns these to our `client_handle`.
 - RADE on Windows (#87)
 - Band stacking / band map
 - CW keyer / memories
-- DAX PipeWire virtual devices for digital mode apps
+- DAX on Windows (virtual audio devices, #87)
 - Spot / DX cluster integration
 - Memory channels
 - Macro / voice keyer

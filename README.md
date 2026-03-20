@@ -13,7 +13,7 @@
 
 AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
 
-**Current version: 0.4.15** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+**Current version: 0.4.16** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
 
 > **Cross-platform downloads available:** Linux AppImage, macOS universal DMG, and Windows ZIP.
 > Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
@@ -81,6 +81,15 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - Mic metering with RX monitoring (met_in_rx)
 - PHONE applet: VOX, AM carrier, TX filter
 - 8-band graphic equalizer (RX and TX)
+- Volume boost up to +6 dB (200%) with software gain
+
+### DAX Virtual Audio (Digital Mode Integration)
+- 4 RX virtual capture devices + 1 TX virtual sink for WSJT-X, VARA, fldigi, JS8Call
+- Linux: PulseAudio/PipeWire pipe modules (works with both)
+- macOS: CoreAudio HAL plugin with shared memory
+- Per-channel gain sliders with real-time level meters (MeterSlider widget)
+- DAX TX audio routing: mode-aware gating (voice/digital/RADE)
+- Autostart DAX on connect with persistent settings
 
 ### Metering
 - Analog S-Meter gauge with peak hold
@@ -228,7 +237,8 @@ This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app laun
 ## Roadmap
 
 - [ ] SmartLink Opus audio compression for low-bandwidth WAN
-- [ ] DAX audio channels — PipeWire virtual devices for digital mode apps (FreeDV, WSJT-X, fldigi, JS8Call)
+- [x] DAX audio channels — Linux (PulseAudio/PipeWire pipe modules), macOS (CoreAudio HAL plugin)
+- [ ] DAX audio channels — Windows virtual audio devices
 - [ ] Multi-slice support
 - [ ] Band stacking registers
 - [ ] Spot / DX cluster integration
