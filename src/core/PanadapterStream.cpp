@@ -228,8 +228,9 @@ void PanadapterStream::processDatagram(const QByteArray& data)
 
     // Track packet sequence for network quality monitoring.
     // VITA-49 packet count is a 4-bit field (bits 19:16 of word0).
+    // Key by stream ID (not PCC) because each stream has its own sequence counter.
     const int seq = (word0 >> 16) & 0x0F;
-    auto& stats = m_streamStats[pcc];
+    auto& stats = m_streamStats[streamId];
     stats.totalCount++;
     if (stats.lastSeq >= 0) {
         const int expected = (stats.lastSeq + 1) & 0x0F;
