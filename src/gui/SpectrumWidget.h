@@ -106,6 +106,7 @@ public:
     void setWfBlackLevel(int level);
     void setWfAutoBlack(bool on);
     void setWfLineDuration(int ms);
+    void resetWfTimeScale();
     int   wfColorGain() const          { return m_wfColorGain; }
     int   wfBlackLevel() const         { return m_wfBlackLevel; }
     bool  wfAutoBlack() const          { return m_wfAutoBlack; }
@@ -291,11 +292,14 @@ private:
 
     bool     m_transmitting{false};
 
-    // Waterfall time scale: ms-per-row derived from radio tile timecodes
-    // combined with wall-clock timing. Updated on each native tile arrival.
-    float    m_wfMsPerRow{100.0f};     // smoothed ms per waterfall row
+    // Waterfall time scale: ms-per-row derived from tile timecodes + wall-clock.
+    // Calibrates over the first 50 tiles, then locks to prevent jitter.
+    // resetWfTimeScale() re-triggers calibration (called when rate slider changes).
+    float    m_wfMsPerRow{100.0f};     // calibrated ms per waterfall row
     quint32  m_wfPrevTimecode{0};      // previous tile timecode (frame counter)
     qint64   m_wfPrevTimecodeMs{0};    // wall-clock time of previous timecode
+    int      m_wfCalibrationCount{0};  // tiles measured so far
+    bool     m_wfTimeScaleLocked{false};
 
 
     // Client-side row averaging (Rate slider)

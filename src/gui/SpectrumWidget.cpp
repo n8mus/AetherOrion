@@ -117,6 +117,16 @@ void SpectrumWidget::setWfLineDuration(int ms) {
     auto& s = AppSettings::instance();
     s.setValue("DisplayWfLineDuration", QString::number(m_wfLineDuration));
     s.save();
+    // Re-calibrate the time scale for the new rate
+    resetWfTimeScale();
+}
+
+void SpectrumWidget::resetWfTimeScale() {
+    m_wfMsPerRow = static_cast<float>(m_wfLineDuration);  // start from radio's value
+    m_wfPrevTimecode = 0;
+    m_wfPrevTimecodeMs = 0;
+    m_wfCalibrationCount = 0;
+    m_wfTimeScaleLocked = false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -281,18 +291,21 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
     // Native waterfall tiles carry intensity values (int16/128.0f, ~96-120 on HF).
     if (binsIntensity.isEmpty() || m_waterfall.isNull()) return;
 
-    // Derive ms-per-row by combining wall-clock timing with timecode deltas.
-    // Timecodes are frame counters (not ms), so we measure: wallClockDelta / timecodeDelta
-    // to get the true ms per row. This handles tile bursts correctly and gives
-    // a stable result because both numerator and denominator grow together.
-    {
+    // Derive ms-per-row by measuring wall-clock / timecode delta.
+    // Collect data for the first 50 tiles to converge, then lock the value.
+    // Only re-measure when the user changes the waterfall rate slider
+    // (which calls resetWfTimeScale()).
+    if (!m_wfTimeScaleLocked) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (timecode > 0 && m_wfPrevTimecode > 0 && timecode > m_wfPrevTimecode && m_wfPrevTimecodeMs > 0) {
             const float wallDelta = static_cast<float>(now - m_wfPrevTimecodeMs);
             const float tcDelta = static_cast<float>(timecode - m_wfPrevTimecode);
             if (tcDelta > 0 && wallDelta > 0) {
                 const float measured = wallDelta / tcDelta;
-                m_wfMsPerRow = 0.95f * m_wfMsPerRow + 0.05f * measured;
+                m_wfMsPerRow = 0.9f * m_wfMsPerRow + 0.1f * measured;
+                if (++m_wfCalibrationCount >= 50) {
+                    m_wfTimeScaleLocked = true;  // lock — no more jitter
+                }
             }
         }
         if (timecode > 0) {
