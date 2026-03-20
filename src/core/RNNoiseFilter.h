@@ -24,6 +24,9 @@ public:
     // Returns the processed block (same format, same size).
     QByteArray process(const QByteArray& pcm24kStereo);
 
+    // Returns true if rnnoise_create() succeeded.
+    bool isValid() const { return m_state != nullptr; }
+
     // Reset internal state (e.g., on band change).
     void reset();
 

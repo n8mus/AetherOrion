@@ -1,5 +1,6 @@
 #include "SpectralNR.h"
 
+#include <QDebug>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -51,6 +52,10 @@ SpectralNR::SpectralNR(int fftSize, int sampleRate)
                                       m_fftOut, FFTW_MEASURE);
     m_planRev = fftw_plan_dft_c2r_1d(fftSize, m_ifftIn,
                                       m_ifftOut.data(), FFTW_MEASURE);
+    if (!m_planFwd || !m_planRev) {
+        qWarning() << "SpectralNR: FFTW plan creation failed — NR2 will not function";
+        m_planFailed = true;
+    }
 #else
     // Fallback: built-in radix-2 FFT
     m_fftScratchRe.resize(fftSize);
@@ -294,6 +299,8 @@ void SpectralNR::process(const int16_t* input, int16_t* output, int numSamples)
 void SpectralNR::processFrame()
 {
 #ifdef HAVE_FFTW3
+    if (m_planFailed) return;  // FFTW plans failed — pass audio through unmodified
+
     // Forward FFT via FFTW (real-to-complex, in-place from m_fftIn)
     fftw_execute(m_planFwd);
 

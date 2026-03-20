@@ -37,6 +37,7 @@ public:
     void reset();
 
     int fftSize() const { return m_fftSize; }
+    bool hasPlanFailed() const { return m_planFailed; }
 
     // Generate FFTW wisdom file for optimal FFT performance.
     // Call once on first use; subsequent runs load existing wisdom.
@@ -75,6 +76,7 @@ private:
     fftw_complex* m_ifftIn{nullptr};    // inverse FFT input  (FFTW-allocated)
     fftw_plan     m_planFwd{nullptr};
     fftw_plan     m_planRev{nullptr};
+    bool          m_planFailed{false};
 #else
     // Fallback: built-in radix-2 FFT scratch buffers
     std::vector<double> m_fftScratchRe;

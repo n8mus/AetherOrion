@@ -170,6 +170,13 @@ void AudioEngine::setNr2Enabled(bool on)
             wisdomLoaded = true;
         }
         m_nr2 = std::make_unique<SpectralNR>(256, DEFAULT_SAMPLE_RATE);
+        if (m_nr2->hasPlanFailed()) {
+            qWarning() << "AudioEngine: NR2 FFTW plan creation failed — disabling";
+            m_nr2.reset();
+            m_nr2Enabled = false;
+            emit nr2EnabledChanged(false);
+            return;
+        }
     } else {
         m_nr2.reset();
     }
@@ -183,6 +190,13 @@ void AudioEngine::setRn2Enabled(bool on)
     m_rn2Enabled = on;
     if (on) {
         m_rn2 = std::make_unique<RNNoiseFilter>();
+        if (!m_rn2->isValid()) {
+            qWarning() << "AudioEngine: RN2 rnnoise_create() failed — disabling";
+            m_rn2.reset();
+            m_rn2Enabled = false;
+            emit rn2EnabledChanged(false);
+            return;
+        }
         // Disable NR2 if it was on — they're mutually exclusive
         if (m_nr2Enabled) setNr2Enabled(false);
     } else {
