@@ -193,17 +193,18 @@ will be low priority until after v1.0.
 
 ```bash
 # Arch / CachyOS / Manjaro
-sudo pacman -S qt6-base qt6-multimedia cmake ninja pkgconf
+sudo pacman -S qt6-base qt6-multimedia cmake ninja pkgconf autoconf automake libtool
 
 # Ubuntu 24.04+ / Debian / Linux Mint
 sudo apt install qt6-base-dev qt6-multimedia-dev cmake ninja-build pkg-config \
-  gstreamer1.0-pulseaudio gstreamer1.0-plugins-base
+  autoconf automake libtool gstreamer1.0-pulseaudio gstreamer1.0-plugins-base
 
 # Fedora
-sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel cmake ninja-build
+sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel cmake ninja-build \
+  autoconf automake libtool
 
 # macOS (Homebrew)
-brew install qt@6 ninja cmake
+brew install qt@6 ninja cmake autoconf automake libtool
 ```
 
 > **Linux Mint / Ubuntu note:** If PC audio devices show as "Dummy Output" or empty,

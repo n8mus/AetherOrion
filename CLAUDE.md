@@ -31,7 +31,7 @@ cmake --build build -j$(nproc)
 ./build/AetherSDR
 ```
 
-Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf`
+Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf autoconf automake libtool`
 
 Current version: **0.4.16** (set in both `CMakeLists.txt` and `README.md`).
 
