@@ -37,7 +37,11 @@ public:
     void reset();
 
     int fftSize() const { return m_fftSize; }
+#ifdef HAVE_FFTW3
     bool hasPlanFailed() const { return m_planFailed; }
+#else
+    bool hasPlanFailed() const { return false; }
+#endif
 
     // Generate FFTW wisdom file for optimal FFT performance.
     // Call once on first use; subsequent runs load existing wisdom.
