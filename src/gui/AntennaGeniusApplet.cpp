@@ -34,7 +34,7 @@ static QWidget* appletTitleBar(const QString& text)
 
 static constexpr const char* kButtonBase =
     "QPushButton { background: #1a2a3a; border: 1px solid #203040; "
-    "border-radius: 3px; padding: 4px 6px; font-size: 10px; color: #c8d8e8; }"
+    "border-radius: 3px; padding: 2px 2px; font-size: 10px; color: #c8d8e8; }"
     "QPushButton:hover { background: #243848; }";
 
 static const QString kGreenActive =
@@ -61,7 +61,8 @@ AntennaGeniusApplet::AntennaGeniusApplet(QWidget* parent)
     : QWidget(parent)
 {
     hide();
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    setMaximumWidth(260);
     buildUI();
 }
 
@@ -91,11 +92,12 @@ void AntennaGeniusApplet::buildUI()
             "QComboBox::drop-down { border: none; }"
             "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8; "
             "selection-background-color: #0070c0; }");
-        m_deviceCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        row->addWidget(m_deviceCombo);
+        m_deviceCombo->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        m_deviceCombo->setMinimumWidth(0);
+        row->addWidget(m_deviceCombo, 1);
 
         m_connectBtn = new QPushButton("Connect");
-        m_connectBtn->setFixedWidth(60);
+        m_connectBtn->setFixedWidth(72);
         m_connectBtn->setStyleSheet(
             QString(kButtonBase) +
             "QPushButton { font-size: 10px; font-weight: bold; }");
@@ -133,7 +135,9 @@ void AntennaGeniusApplet::buildUI()
         m_portAAntLabel = new QLabel("—");
         m_portAAntLabel->setStyleSheet(
             "color: #00ff88; font-size: 11px; font-weight: bold;");
-        hdr->addWidget(m_portAAntLabel);
+        m_portAAntLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        m_portAAntLabel->setMinimumWidth(0);
+        hdr->addWidget(m_portAAntLabel, 1);
 
         pv->addLayout(hdr);
 
@@ -181,7 +185,9 @@ void AntennaGeniusApplet::buildUI()
         m_portBAntLabel = new QLabel("—");
         m_portBAntLabel->setStyleSheet(
             "color: #00ff88; font-size: 11px; font-weight: bold;");
-        hdr->addWidget(m_portBAntLabel);
+        m_portBAntLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        m_portBAntLabel->setMinimumWidth(0);
+        hdr->addWidget(m_portBAntLabel, 1);
 
         pv->addLayout(hdr);
 
@@ -226,7 +232,9 @@ void AntennaGeniusApplet::buildUI()
         if (!m_updatingFromModel && m_model && m_model->isConnected())
             m_model->setAutoMode(2, on);
     });
+
 }
+
 
 void AntennaGeniusApplet::setModel(AntennaGeniusModel* model)
 {
@@ -325,6 +333,8 @@ void AntennaGeniusApplet::rebuildAntennaButtons()
             btn->setStyleSheet(QString(kButtonBase) + kBlueActive);
             btn->setToolTip(QString("Antenna %1: %2").arg(ant.id).arg(ant.name));
             btn->setFixedHeight(24);
+            btn->setMinimumWidth(0);
+            btn->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
 
             int antId = ant.id;
             connect(btn, &QPushButton::clicked, this, [this, portId, antId]() {
@@ -403,7 +413,7 @@ void AntennaGeniusApplet::updatePortDisplay(int portId)
         if (inUseByOther) {
             btns[i]->setStyleSheet(
                 "QPushButton { background: #101820; border: 1px solid #182028; "
-                "border-radius: 3px; padding: 4px 6px; font-size: 10px; color: #404858; }"
+                "border-radius: 3px; padding: 2px 2px; font-size: 10px; color: #404858; }"
                 "QPushButton:checked { background: #202830; color: #606878; "
                 "border: 1px solid #303848; }");
             QString otherLabel = (portId == 1) ? "Port B" : "Port A";
@@ -427,7 +437,7 @@ void AntennaGeniusApplet::updatePortDisplay(int portId)
             // No permission on this band — dim the button
             btns[i]->setStyleSheet(
                 "QPushButton { background: #101820; border: 1px solid #182028; "
-                "border-radius: 3px; padding: 4px 6px; font-size: 10px; color: #404858; }"
+                "border-radius: 3px; padding: 2px 2px; font-size: 10px; color: #404858; }"
                 "QPushButton:checked { background: #202830; color: #606878; "
                 "border: 1px solid #303848; }");
             btns[i]->setToolTip(QString("%1 — no RX/TX on %2")
