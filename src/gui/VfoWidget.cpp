@@ -432,7 +432,7 @@ void VfoWidget::buildTabContent()
             " border: 1px solid #20a040; }");
         gainRow->addWidget(m_pcAudioBtn);
         m_afGainSlider = new QSlider(Qt::Horizontal);
-        m_afGainSlider->setRange(0, 200);  // 0–200% (up to +6 dB boost)
+        m_afGainSlider->setRange(0, 100);
         m_afGainSlider->setStyleSheet(kSliderStyle);
         gainRow->addWidget(m_afGainSlider, 1);
         m_muteBtn = new QPushButton(QString::fromUtf8("\xF0\x9F\x94\x8A")); // 🔊
@@ -1132,6 +1132,14 @@ void VfoWidget::showTab(int index)
 }
 
 // ── Positioning ───────────────────────────────────────────────────────────────
+
+void VfoWidget::setAfGain(int pct)
+{
+    if (m_afGainSlider) {
+        QSignalBlocker b(m_afGainSlider);
+        m_afGainSlider->setValue(pct);
+    }
+}
 
 void VfoWidget::updatePosition(int vfoX, int specTop)
 {

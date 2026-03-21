@@ -372,8 +372,8 @@ void SliceModel::setAudioGain(float gain)
     gain = qBound(0.0f, gain, 100.0f);
     if (m_audioGain == gain) return;
     m_audioGain = gain;
-    // Note: "audio gain" command not supported on fw v1.4.0.0.
-    // Volume is controlled client-side via AudioEngine::setRxVolume().
+    emit commandReady(QString("slice set %1 audio_level=%2")
+        .arg(m_id).arg(static_cast<int>(gain)));
     emit audioGainChanged(m_audioGain);
 }
 

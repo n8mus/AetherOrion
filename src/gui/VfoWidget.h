@@ -40,6 +40,7 @@ public:
 
     QPushButton* nr2Button() const { return m_nr2Btn; }
     QPushButton* rn2Button() const { return m_rn2Btn; }
+    void setAfGain(int pct);
 
 #ifdef HAVE_RADE
     void setRadeActive(bool on);

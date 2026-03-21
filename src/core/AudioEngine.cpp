@@ -102,9 +102,9 @@ void AudioEngine::stopRxStream()
 
 void AudioEngine::setRxVolume(float v)
 {
-    m_rxVolume = qBound(0.0f, v, 2.0f);  // allow up to +6 dB boost
+    m_rxVolume = qBound(0.0f, v, 1.0f);
     if (m_audioSink)
-        m_audioSink->setVolume(std::min(m_rxVolume, 1.0f));
+        m_audioSink->setVolume(m_muted ? 0.0f : m_rxVolume);
 }
 
 void AudioEngine::setMuted(bool muted)
@@ -132,11 +132,10 @@ void AudioEngine::feedAudioData(const QByteArray& pcm)
 
     auto writeAudio = [this](const QByteArray& data) {
         if (!m_audioDevice || !m_audioDevice->isOpen()) return;
-        const QByteArray& out = (m_rxVolume > 1.0f) ? applyBoost(data, m_rxVolume) : data;
         if (m_resampleTo48k)
-            m_audioDevice->write(resampleStereo(out));
+            m_audioDevice->write(resampleStereo(data));
         else
-            m_audioDevice->write(out);
+            m_audioDevice->write(data);
     };
 
     if (m_rn2Enabled && m_rn2) {

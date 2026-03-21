@@ -497,12 +497,12 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&m_cwDecoder, &CwDecoder::statsUpdated,
             m_panApplet, &PanadapterApplet::setCwStats);
 
-    // ── AF gain from applet panel → audio engine ──────────────────────────
+    // ── AF gain from applet panel → radio per-slice audio_level ─────────
     connect(m_appletPanel->rxApplet(), &RxApplet::afGainChanged, this, [this](int v) {
-        m_audio.setRxVolume(v / 100.0f);
+        if (auto* s = activeSlice()) s->setAudioGain(v);
     });
     connect(spectrum()->vfoWidget(), &VfoWidget::afGainChanged, this, [this](int v) {
-        m_audio.setRxVolume(v / 100.0f);
+        if (auto* s = activeSlice()) s->setAudioGain(v);
     });
 
     // ── PC Audio toggle: create/remove remote_audio_rx stream ───────────

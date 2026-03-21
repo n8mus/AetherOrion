@@ -37,6 +37,7 @@ public:
 
     // Attach to a slice; pass nullptr to detach.
     void setSlice(SliceModel* slice);
+    void setAfGain(int pct);
 
     // Connect to transmit model for QSK (break_in) indicator.
     void setTransmitModel(class TransmitModel* txModel);

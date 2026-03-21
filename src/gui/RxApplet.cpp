@@ -808,7 +808,7 @@ void RxApplet::buildUI()
         row->addWidget(m_muteBtn);
 
         m_afSlider = new QSlider(Qt::Horizontal);
-        m_afSlider->setRange(0, 200);  // 0–200% (up to +6 dB boost)
+        m_afSlider->setRange(0, 100);
         m_afSlider->setValue(70);
         m_afSlider->setStyleSheet(kSliderStyle);
         m_afSlider->setToolTip("70");
@@ -1090,6 +1090,12 @@ void RxApplet::setNrState(int state)
     }
 }
 
+void RxApplet::setAfGain(int pct)
+{
+    QSignalBlocker b(m_afSlider);
+    m_afSlider->setValue(pct);
+}
+
 // ─── Slice wiring ─────────────────────────────────────────────────────────────
 
 void RxApplet::setSlice(SliceModel* slice)
@@ -1303,8 +1309,11 @@ void RxApplet::connectSlice(SliceModel* s)
         m_sqlBtn->setChecked(s->squelchOn());
         m_sqlSlider->setValue(s->squelchLevel());
     }
-    // AF gain sync (volume is client-side, but model tracks the value)
-    m_afSlider->setValue(static_cast<int>(s->audioGain()));
+    // AF gain → radio's per-slice audio_level
+    {
+        QSignalBlocker sb(m_afSlider);
+        m_afSlider->setValue(static_cast<int>(s->audioGain()));
+    }
     connect(s, &SliceModel::audioGainChanged, this, [this](float g) {
         QSignalBlocker sb(m_afSlider);
         m_afSlider->setValue(static_cast<int>(g));
