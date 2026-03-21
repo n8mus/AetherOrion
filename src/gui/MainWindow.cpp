@@ -333,7 +333,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(tnf, &TnfModel::globalEnabledChanged,
             this, [this](bool on) {
         m_tnfIndicator->setStyleSheet(on
-            ? "QLabel { color: #00e060; font-weight: bold; font-size: 24px; }"
+            ? "QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 24px; }"
             : "QLabel { color: #404858; font-weight: bold; font-size: 24px; }");
     });
     connect(spectrum(), &SpectrumWidget::tnfCreateRequested,
@@ -935,6 +935,10 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         toggleConnectionDialog();
         return true;
     }
+    if (obj == m_tnfIndicator && event->type() == QEvent::MouseButtonPress) {
+        m_radioModel.tnfModel()->setGlobalEnabled(!m_radioModel.tnfModel()->globalEnabled());
+        return true;
+    }
     return QMainWindow::eventFilter(obj, event);
 }
 
@@ -1223,7 +1227,9 @@ void MainWindow::buildUI()
 
     // ── Left section ─────────────────────────────────────────────────────
     m_tnfIndicator = new QLabel("TNF");
-    m_tnfIndicator->setStyleSheet(greyIndLg);
+    m_tnfIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 24px; }");
+    m_tnfIndicator->setCursor(Qt::PointingHandCursor);
+    m_tnfIndicator->installEventFilter(this);
     hbox->addWidget(m_tnfIndicator);
 
     m_cwxIndicator = new QLabel("CWX");
