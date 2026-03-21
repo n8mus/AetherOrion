@@ -79,6 +79,32 @@ MainWindow::MainWindow(QWidget* parent)
 
     connect(m_connPanel, &ConnectionPanel::connectRequested,
             this, [this](const RadioInfo& info){
+        // If another client is connected, ask Multi-Flex vs SmartConnect
+        if (info.hasOtherClients()) {
+            const QString client = info.guiClientPrograms.first();
+            const QString station = info.guiClientStations.isEmpty()
+                ? "" : info.guiClientStations.first();
+            const QString desc = station.isEmpty() ? client
+                : QString("%1 (%2)").arg(client, station);
+
+            QMessageBox box(this);
+            box.setWindowTitle("Connection Mode");
+            box.setText(QString("Another client is connected:\n%1").arg(desc));
+            box.setInformativeText("How would you like to connect?");
+            box.addButton("Multi-Flex (Independent)", QMessageBox::NoRole);
+            auto* smartConn = box.addButton("SmartConnect (Mirror)", QMessageBox::YesRole);
+            box.setDefaultButton(smartConn);
+            box.exec();
+
+            bool sc = (box.clickedButton() == smartConn);
+            m_radioModel.setSmartConnect(sc);
+            auto& as = AppSettings::instance();
+            as.setValue("ConnectMode", sc ? "SmartConnect" : "MultiFlex");
+            as.save();
+        } else {
+            m_radioModel.setSmartConnect(false);
+        }
+
         m_connPanel->setStatusText("Connecting…");
         m_userDisconnected = false;
         m_radioModel.connectToRadio(info);
@@ -102,6 +128,10 @@ MainWindow::MainWindow(QWidget* parent)
             && !m_radioModel.isConnected()) {
             qDebug() << "Auto-connecting to" << info.displayName();
             m_connPanel->setStatusText("Auto-connecting…");
+            // Auto-connect uses SmartConnect if other clients present and last mode was SmartConnect
+            bool sc = info.hasOtherClients()
+                && AppSettings::instance().value("ConnectMode", "MultiFlEX").toString() == "SmartConnect";
+            m_radioModel.setSmartConnect(sc);
             m_radioModel.connectToRadio(info);
         }
     });

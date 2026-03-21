@@ -423,7 +423,13 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                         const QStringList ids = body.trimmed().split(' ', Qt::SkipEmptyParts);
                         qCDebug(lcProtocol) << "RadioModel: slice list ->" << (ids.isEmpty() ? "(empty)" : body);
 
-                        if (ids.isEmpty()) {
+                        if (m_smartConnect && !ids.isEmpty()) {
+                            // SmartConnect: adopt existing slices, never create
+                            qCDebug(lcProtocol) << "RadioModel: SmartConnect — adopting"
+                                     << ids.size() << "existing slice(s)";
+                            // Slices will arrive via status messages and be accepted
+                            // because m_smartConnect bypasses the client_handle filter
+                        } else if (ids.isEmpty()) {
                             // Radio has no slices at all — create one
                             qCDebug(lcProtocol) << "RadioModel: no slices on radio, creating default";
                             auto& settings = AppSettings::instance();
@@ -954,8 +960,8 @@ void RadioModel::onStatusReceived(const QString& object,
         if (m.hasMatch()) {
             const QString panId = m.captured(1);
             if (m_panId.isEmpty()) {
-                // Claim this pan only if it belongs to us
-                if (kvs.contains("client_handle")) {
+                // Claim this pan only if it belongs to us (or SmartConnect)
+                if (kvs.contains("client_handle") && !m_smartConnect) {
                     quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
                     if (owner == clientHandle()) {
                         m_panId = panId;
@@ -965,10 +971,20 @@ void RadioModel::onStatusReceived(const QString& object,
                         return;  // not our panadapter, ignore
                     }
                 } else {
-                    m_panId = panId;  // no client_handle field, assume ours
+                    m_panId = panId;  // SmartConnect or no client_handle — claim it
+                    updateStreamFilters();
+                    qCDebug(lcProtocol) << "RadioModel: claimed panadapter" << m_panId
+                             << (m_smartConnect ? "(SmartConnect)" : "");
                 }
             } else if (panId != m_panId) {
-                return;  // not our panadapter, ignore
+                if (m_smartConnect) {
+                    // In SmartConnect, accept the first pan we see — update if different
+                    m_panId = panId;
+                    updateStreamFilters();
+                    qCDebug(lcProtocol) << "RadioModel: SmartConnect — switched to panadapter" << m_panId;
+                } else {
+                    return;  // not our panadapter, ignore
+                }
             }
         }
         handlePanadapterStatus(kvs);
@@ -1261,7 +1277,8 @@ void RadioModel::handleSliceStatus(int id,
                                     bool removed)
 {
     // Track slice ownership via client_handle (only present in some messages)
-    if (kvs.contains("client_handle")) {
+    // In SmartConnect mode, accept ALL slices regardless of ownership.
+    if (kvs.contains("client_handle") && !m_smartConnect) {
         quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
         if (owner == clientHandle()) {
             m_ownedSliceIds.insert(id);
@@ -1278,10 +1295,13 @@ void RadioModel::handleSliceStatus(int id,
             }
             return;  // slice belongs to another client
         }
+    } else if (m_smartConnect && kvs.contains("client_handle")) {
+        // In SmartConnect mode, track all slices as "ours"
+        m_ownedSliceIds.insert(id);
     }
 
     // If we've seen client_handle info and this slice isn't ours, skip it
-    if (!m_ownedSliceIds.isEmpty() && !m_ownedSliceIds.contains(id)) {
+    if (!m_smartConnect && !m_ownedSliceIds.isEmpty() && !m_ownedSliceIds.contains(id)) {
         qCDebug(lcProtocol) << "RadioModel: ignoring slice" << id << "status (not in owned set)";
         return;
     }
