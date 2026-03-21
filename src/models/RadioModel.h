@@ -211,6 +211,7 @@ signals:
     void antListChanged(QStringList ants);
     // Emitted when a power amplifier (e.g. PGXL) is detected or lost.
     void amplifierChanged(bool present);
+    void memoryRemoved(int index);
     void audioOutputChanged();
     // Emitted when GPS status changes (from "sub gps all").
     void gpsStatusChanged(const QString& status, int tracked, int visible,

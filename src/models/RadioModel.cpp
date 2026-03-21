@@ -707,6 +707,7 @@ void RadioModel::handleMemoryStatus(int index, const QMap<QString, QString>& kvs
     // Check for removal — radio sends either "in_use=0" or "removed" (no value)
     if (kvs.value("in_use") == "0" || kvs.contains("removed")) {
         m_memories.remove(index);
+        emit memoryRemoved(index);
         return;
     }
 

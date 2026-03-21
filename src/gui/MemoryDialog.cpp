@@ -59,7 +59,11 @@ MemoryDialog::MemoryDialog(RadioModel* model, QWidget* parent)
     connect(model, &RadioModel::statusReceived,
             this, [this](const QString& object, const QMap<QString, QString>&) {
         if (object.startsWith("memory "))
-            populateTable();  // refresh from cache
+            QTimer::singleShot(50, this, [this]() { populateTable(); });
+    });
+    connect(model, &RadioModel::memoryRemoved,
+            this, [this](int) {
+        populateTable();
     });
 
     // Send edits to the radio when any cell changes
@@ -248,7 +252,6 @@ void MemoryDialog::onRemove()
     if (row < 0) return;
     const int idx = m_table->item(row, 0)->data(Qt::UserRole).toInt();
     m_model->sendCommand(QString("memory remove %1").arg(idx));
-    m_table->removeRow(row);
 }
 
 } // namespace AetherSDR
