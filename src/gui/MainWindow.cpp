@@ -351,8 +351,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(tnf, &TnfModel::globalEnabledChanged,
             this, [this](bool on) {
         m_tnfIndicator->setStyleSheet(on
-            ? "QLabel { color: #00e060; font-weight: bold; }"
-            : "QLabel { color: #404858; font-weight: bold; }");
+            ? "QLabel { color: #00e060; font-weight: bold; font-size: 30px; }"
+            : "QLabel { color: #404858; font-weight: bold; font-size: 30px; }");
     });
     connect(spectrum(), &SpectrumWidget::tnfCreateRequested,
             tnf, &TnfModel::createTnf);
@@ -1193,6 +1193,8 @@ void MainWindow::buildUI()
     const QString greyInd   = "QLabel { color: #404858; font-weight: bold; font-size: 21px; }";
     const QString greenInd  = "QLabel { color: #00e060; font-weight: bold; font-size: 21px; }";
     const QString redInd    = "QLabel { color: #e04040; font-weight: bold; font-size: 21px; }";
+    const QString greyIndLg = "QLabel { color: #404858; font-weight: bold; font-size: 30px; }";
+    const QString greenIndLg= "QLabel { color: #00e060; font-weight: bold; font-size: 30px; }";
 
     // Use a container with HBoxLayout for 3-section layout:
     // [left items] → stretch → [STATION centered] → stretch → [right items]
@@ -1213,19 +1215,19 @@ void MainWindow::buildUI()
 
     // ── Left section ─────────────────────────────────────────────────────
     m_tnfIndicator = new QLabel("TNF");
-    m_tnfIndicator->setStyleSheet(greyInd);
+    m_tnfIndicator->setStyleSheet(greyIndLg);
     hbox->addWidget(m_tnfIndicator);
 
     m_cwxIndicator = new QLabel("CWX");
-    m_cwxIndicator->setStyleSheet(greyInd);
+    m_cwxIndicator->setStyleSheet(greyIndLg);
     hbox->addWidget(m_cwxIndicator);
 
     m_dvkIndicator = new QLabel("DVK");
-    m_dvkIndicator->setStyleSheet(greyInd);
+    m_dvkIndicator->setStyleSheet(greyIndLg);
     hbox->addWidget(m_dvkIndicator);
 
     m_fdxIndicator = new QLabel("FDX");
-    m_fdxIndicator->setStyleSheet(greyInd);
+    m_fdxIndicator->setStyleSheet(greyIndLg);
     hbox->addWidget(m_fdxIndicator);
 
     addSep();
@@ -1494,7 +1496,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
         m_radioInfoLabel->setText("");
         m_radioVersionLabel->setText("");
         m_stationLabel->setText("");
-        m_tnfIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; }");
+        m_tnfIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; font-size: 30px; }");
         m_tunIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; }");
         m_txIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; }");
         m_txIndicator->setText("TX");
