@@ -333,8 +333,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(tnf, &TnfModel::globalEnabledChanged,
             this, [this](bool on) {
         m_tnfIndicator->setStyleSheet(on
-            ? "QLabel { color: #00e060; font-weight: bold; font-size: 30px; }"
-            : "QLabel { color: #404858; font-weight: bold; font-size: 30px; }");
+            ? "QLabel { color: #00e060; font-weight: bold; font-size: 24px; }"
+            : "QLabel { color: #404858; font-weight: bold; font-size: 24px; }");
     });
     connect(spectrum(), &SpectrumWidget::tnfCreateRequested,
             tnf, &TnfModel::createTnf);
@@ -1162,6 +1162,7 @@ void MainWindow::buildUI()
 {
     // ── Central splitter: [sidebar | spectrum | applets] ──────────────────
     m_splitter = new QSplitter(Qt::Horizontal, this);
+    m_splitter->setHandleWidth(0);
     setCentralWidget(m_splitter);
     auto* splitter = m_splitter;
 
@@ -1189,6 +1190,7 @@ void MainWindow::buildUI()
 
     // ── Status bar (SmartSDR-style, double height) ─────────────────────
     statusBar()->setFixedHeight(40);
+    statusBar()->setSizeGripEnabled(false);
     statusBar()->setStyleSheet(
         "QStatusBar { background: #0a0a14; border-top: 1px solid #203040; }"
         "QStatusBar::item { border: none; }"
@@ -1199,8 +1201,8 @@ void MainWindow::buildUI()
     const QString greyInd   = "QLabel { color: #404858; font-weight: bold; font-size: 21px; }";
     const QString greenInd  = "QLabel { color: #00e060; font-weight: bold; font-size: 21px; }";
     const QString redInd    = "QLabel { color: #e04040; font-weight: bold; font-size: 21px; }";
-    const QString greyIndLg = "QLabel { color: #404858; font-weight: bold; font-size: 30px; }";
-    const QString greenIndLg= "QLabel { color: #00e060; font-weight: bold; font-size: 30px; }";
+    const QString greyIndLg = "QLabel { color: #404858; font-weight: bold; font-size: 24px; }";
+    const QString greenIndLg= "QLabel { color: #00e060; font-weight: bold; font-size: 24px; }";
 
     // Use a container with HBoxLayout for 3-section layout:
     // [left items] → stretch → [STATION centered] → stretch → [right items]
@@ -1512,7 +1514,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
         m_radioInfoLabel->setText("");
         m_radioVersionLabel->setText("");
         m_stationLabel->setText("N0CALL");
-        m_tnfIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; font-size: 30px; }");
+        m_tnfIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; font-size: 24px; }");
         m_tgxlIndicator->setVisible(false);
         m_pgxlIndicator->setVisible(false);
         m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
