@@ -131,6 +131,10 @@ QString RigctlProtocol::processCommand(const QString& cmd)
         if (name == "dump_state")     return cmdDumpState();
         if (name == "quit")           return {};  // caller handles disconnect
         if (name == "chk_vfo")        return QStringLiteral("0\n");  // VFO mode disabled
+        if (name == "send_morse")    return cmdSendMorse(args);
+        if (name == "stop_morse")    return cmdStopMorse();
+        if (name == "set_level" && args.startsWith("KEYSPD"))
+            return cmdSetKeySpeed(args.mid(7).trimmed());
 
         return rprt(-4);  // RIG_EINVAL
     }
@@ -151,6 +155,7 @@ QString RigctlProtocol::processCommand(const QString& cmd)
     case '_': return cmdGetInfo();
     case 'S': return cmdGetSplitVfo();
     case '1': return cmdDumpState();       // \dump_state
+    case 'b': return cmdSendMorse(args);    // send morse
     case 'q': return {};                   // quit
     default:  return rprt(-4);             // RIG_EINVAL
     }
@@ -375,6 +380,38 @@ QString RigctlProtocol::cmdDumpState()
     dump += "done\n";                    // terminates the v1 extended fields
 
     return dump;
+}
+
+QString RigctlProtocol::cmdSendMorse(const QString& text)
+{
+    if (!m_model || text.isEmpty()) return rprt(-1);
+    QString cmd = QString("cwx send \"%1\"").arg(text);
+    QMetaObject::invokeMethod(m_model, [this, cmd]() {
+        m_model->sendCmdPublic(cmd, nullptr);
+    }, Qt::QueuedConnection);
+    return rprt(0);
+}
+
+QString RigctlProtocol::cmdStopMorse()
+{
+    if (!m_model) return rprt(-1);
+    QMetaObject::invokeMethod(m_model, [this]() {
+        m_model->sendCmdPublic("cwx clear", nullptr);
+    }, Qt::QueuedConnection);
+    return rprt(0);
+}
+
+QString RigctlProtocol::cmdSetKeySpeed(const QString& arg)
+{
+    if (!m_model) return rprt(-1);
+    bool ok = false;
+    int wpm = arg.toInt(&ok);
+    if (!ok || wpm < 5 || wpm > 100) return rprt(-1);
+    QString cmd = QString("cw wpm %1").arg(wpm);
+    QMetaObject::invokeMethod(m_model, [this, cmd]() {
+        m_model->sendCmdPublic(cmd, nullptr);
+    }, Qt::QueuedConnection);
+    return rprt(0);
 }
 
 } // namespace AetherSDR

@@ -45,6 +45,9 @@ private:
     QString cmdGetSplitVfo();
     QString cmdSetSplitVfo(const QString& args);
     QString cmdDumpState();
+    QString cmdSendMorse(const QString& text);  // b <text> / \send_morse
+    QString cmdStopMorse();                     // \stop_morse
+    QString cmdSetKeySpeed(const QString& arg); // \set_level KEYSPD <wpm>
 
     // Helpers
     SliceModel* currentSlice() const;
