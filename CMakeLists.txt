@@ -125,6 +125,7 @@ set(CORE_SOURCES
     src/core/LogManager.cpp
     src/core/SupportBundle.cpp
     src/core/SerialPortController.cpp
+    src/core/OpusCodec.cpp
 )
 
 if(APPLE)

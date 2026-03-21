@@ -10,6 +10,7 @@
 namespace AetherSDR {
 
 class RadioConnection;
+class OpusCodec;
 
 // Receives all VITA-49 UDP datagrams from the radio on the single "client udpport"
 // and routes them by PacketClassCode (bytes 14-15 of the VITA-49 class ID):
@@ -93,11 +94,13 @@ private:
     void decodeWaterfallTile(const uchar* raw, int totalBytes, bool hasTrailer);
     void decodeNarrowAudio(const uchar* raw, int totalBytes, bool hasTrailer);
     void decodeReducedBwAudio(const uchar* raw, int totalBytes, bool hasTrailer);
+    void decodeOpusAudio(const uchar* raw, int totalBytes, bool hasTrailer);
     void decodeMeterData(const uchar* raw, int totalBytes, bool hasTrailer);
 
     // PacketClassCodes (from FlexLib VitaFlex.cs)
     static constexpr quint16 PCC_IF_NARROW         = 0x03E3u; // float32 stereo, big-endian
     static constexpr quint16 PCC_IF_NARROW_REDUCED = 0x0123u; // int16 mono, big-endian
+    static constexpr quint16 PCC_OPUS              = 0x8005u; // Opus compressed audio
     static constexpr quint16 PCC_FFT               = 0x8003u; // panadapter FFT bins
     static constexpr quint16 PCC_WATERFALL         = 0x8004u; // waterfall tiles
     static constexpr quint16 PCC_METER             = 0x8002u; // meter data
@@ -170,6 +173,9 @@ public:
 
 private:
     qint64 m_totalRxBytes{0};
+
+    // Opus audio decoder (lazy-initialized on first Opus packet)
+    OpusCodec* m_opusCodec{nullptr};
 
     // DAX stream routing: stream ID → DAX channel (1-4)
     QMap<quint32, int> m_daxStreamIds;

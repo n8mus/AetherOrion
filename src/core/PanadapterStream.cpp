@@ -1,5 +1,6 @@
 #include "PanadapterStream.h"
 #include "LogManager.h"
+#include "OpusCodec.h"
 #include "RadioConnection.h"
 
 #include <QNetworkDatagram>
@@ -285,6 +286,9 @@ void PanadapterStream::processDatagram(const QByteArray& data)
     case PCC_IF_NARROW_REDUCED:
         decodeReducedBwAudio(raw, data.size(), hasTrailer);
         return;
+    case PCC_OPUS:
+        decodeOpusAudio(raw, data.size(), hasTrailer);
+        return;
     case PCC_FFT:
         // Filter: only process FFT from our panadapter
         if (m_ownedPanStreamId != 0 && streamId != m_ownedPanStreamId)
@@ -548,6 +552,31 @@ void PanadapterStream::decodeReducedBwAudio(const uchar* raw, int totalBytes, bo
 //
 // Raw values are converted by MeterModel based on the meter's unit type.
 // Reference: FlexLib VitaMeterPacket.cs
+
+void PanadapterStream::decodeOpusAudio(const uchar* raw, int totalBytes, bool hasTrailer)
+{
+    const int payloadStart = VITA49_HEADER_BYTES;
+    const int payloadBytes = totalBytes - payloadStart - (hasTrailer ? 4 : 0);
+    if (payloadBytes <= 0) return;
+
+    // Lazy-init Opus decoder on first packet
+    if (!m_opusCodec) {
+        m_opusCodec = new OpusCodec();
+        if (!m_opusCodec->isValid()) {
+            qCWarning(lcVita49) << "PanadapterStream: Opus codec init failed";
+            delete m_opusCodec;
+            m_opusCodec = nullptr;
+            return;
+        }
+        qCDebug(lcVita49) << "PanadapterStream: Opus decoder initialized";
+    }
+
+    // Opus payload is raw bytes — no byte-swapping needed
+    QByteArray opusFrame(reinterpret_cast<const char*>(raw + payloadStart), payloadBytes);
+    QByteArray pcm = m_opusCodec->decode(opusFrame);
+    if (!pcm.isEmpty())
+        emit audioDataReady(pcm);
+}
 
 void PanadapterStream::decodeMeterData(const uchar* raw, int totalBytes, bool hasTrailer)
 {

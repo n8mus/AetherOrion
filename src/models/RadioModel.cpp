@@ -136,6 +136,15 @@ void RadioModel::setTransmit(bool tx)
     sendCmd(QString("xmit %1").arg(tx ? 1 : 0));
 }
 
+QString RadioModel::audioCompressionParam() const
+{
+    QString setting = AppSettings::instance().value("AudioCompression", "Auto").toString();
+    if (setting == "Opus") return "opus";
+    if (setting == "None") return "none";
+    // Auto: use Opus on WAN, uncompressed on LAN
+    return isWan() ? "opus" : "none";
+}
+
 void RadioModel::sendCwKey(bool down)
 {
     sendCmd(QString("cw key %1").arg(down ? 1 : 0));
@@ -445,7 +454,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                         // outputs (line out, headphone, front speaker).
                         if (AppSettings::instance().value("PcAudioEnabled", "True").toString() == "True") {
                             sendCmd(
-                                "stream create type=remote_audio_rx compression=none",
+                                QString("stream create type=remote_audio_rx compression=%1").arg(audioCompressionParam()),
                                 [this](int code, const QString& body) {
                                     if (code == 0) {
                                         m_rxAudioStreamId = body.trimmed();
@@ -769,7 +778,7 @@ void RadioModel::sendCmdPublic(const QString& cmd, ResponseCallback cb)
 void RadioModel::createRxAudioStream()
 {
     if (!m_rxAudioStreamId.isEmpty()) return;  // already exists
-    sendCmd("stream create type=remote_audio_rx compression=none",
+    sendCmd(QString("stream create type=remote_audio_rx compression=%1").arg(audioCompressionParam()),
         [this](int code, const QString& body) {
             if (code == 0) {
                 m_rxAudioStreamId = body.trimmed();
@@ -1607,7 +1616,7 @@ void RadioModel::createAudioStream()
             [this](int, const QString&) {
                 // Old stream removed — now create the new one
                 sendCmd(
-                    "stream create type=remote_audio_rx compression=none",
+                    QString("stream create type=remote_audio_rx compression=%1").arg(audioCompressionParam()),
                     [this](int code, const QString& body) {
                         if (code == 0) {
                             m_rxAudioStreamId = body.trimmed();
@@ -1619,7 +1628,7 @@ void RadioModel::createAudioStream()
             });
     } else {
         sendCmd(
-            "stream create type=remote_audio_rx compression=none",
+            QString("stream create type=remote_audio_rx compression=%1").arg(audioCompressionParam()),
             [this](int code, const QString& body) {
                 if (code == 0) {
                     m_rxAudioStreamId = body.trimmed();

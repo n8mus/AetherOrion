@@ -169,6 +169,7 @@ public:
     void disconnectFromRadio();
     bool isWan() const { return m_wanConn != nullptr; }
     void setTransmit(bool tx);
+    QString audioCompressionParam() const;        // "none" or "opus" based on settings
     void sendCwKey(bool down);                    // straight key: cw key 0|1
     void sendCwPaddle(bool dit, bool dah);        // iambic paddle: cw key <dit> <dah>
     void cwAutoTune(int sliceId, bool intermittent); // slice auto_tune

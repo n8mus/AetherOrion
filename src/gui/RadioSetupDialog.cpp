@@ -1362,6 +1362,56 @@ QWidget* RadioSetupDialog::buildAudioTab()
 
     vbox->addWidget(outGroup);
 
+    // ── Audio Compression ────────────────────────────────────────────────
+    {
+        auto* compGroup = new QGroupBox("Audio Compression (SmartLink)");
+        compGroup->setStyleSheet(kGroupStyle);
+        auto* compLayout = new QHBoxLayout(compGroup);
+        compLayout->setSpacing(4);
+
+        QString current = AppSettings::instance().value("AudioCompression", "Auto").toString();
+
+        const QString btnStyle =
+            "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; "
+            "border-radius: 3px; padding: 2px 10px; font-size: 11px; }"
+            "QPushButton:checked { background: #00607a; color: #e0f0ff; border-color: #00b4d8; }";
+
+        auto* autoBtn = new QPushButton("Auto");
+        autoBtn->setCheckable(true); autoBtn->setChecked(current == "Auto");
+        autoBtn->setStyleSheet(btnStyle);
+        auto* noneBtn = new QPushButton("Uncompressed");
+        noneBtn->setCheckable(true); noneBtn->setChecked(current == "None");
+        noneBtn->setStyleSheet(btnStyle);
+        auto* opusBtn = new QPushButton("Opus");
+        opusBtn->setCheckable(true); opusBtn->setChecked(current == "Opus");
+        opusBtn->setStyleSheet(btnStyle);
+
+        auto setComp = [autoBtn, noneBtn, opusBtn](const QString& val) {
+            QSignalBlocker b1(autoBtn), b2(noneBtn), b3(opusBtn);
+            autoBtn->setChecked(val == "Auto");
+            noneBtn->setChecked(val == "None");
+            opusBtn->setChecked(val == "Opus");
+            auto& s = AppSettings::instance();
+            s.setValue("AudioCompression", val);
+            s.save();
+        };
+
+        connect(autoBtn, &QPushButton::clicked, this, [setComp]() { setComp("Auto"); });
+        connect(noneBtn, &QPushButton::clicked, this, [setComp]() { setComp("None"); });
+        connect(opusBtn, &QPushButton::clicked, this, [setComp]() { setComp("Opus"); });
+
+        compLayout->addWidget(autoBtn);
+        compLayout->addWidget(noneBtn);
+        compLayout->addWidget(opusBtn);
+        compLayout->addStretch();
+
+        auto* hint = new QLabel("Auto = Opus on SmartLink, uncompressed on LAN");
+        hint->setStyleSheet("QLabel { color: #607080; font-size: 10px; }");
+        compLayout->addWidget(hint);
+
+        vbox->addWidget(compGroup);
+    }
+
     // ── PC Audio Devices ────────────────────────────────────────────────
     auto* pcGroup = new QGroupBox("PC Audio Devices");
     pcGroup->setStyleSheet(kGroupStyle);
