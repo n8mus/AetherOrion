@@ -838,7 +838,7 @@ MainWindow::MainWindow(QWidget* parent)
         // Update station label (nickname arrives via status after connect)
         const QString nick = m_radioModel.nickname();
         if (!nick.isEmpty())
-            m_stationLabel->setText(QString("STATION: %1").arg(nick));
+            m_stationLabel->setText(nick);
     });
 
     connect(&m_radioModel, &RadioModel::gpsStatusChanged,
@@ -1249,6 +1249,10 @@ void MainWindow::buildUI()
     // ── Center stretch → STATION → stretch ───────────────────────────────
     hbox->addStretch(1);
 
+    auto* stationPrefix = new QLabel("STATION:");
+    stationPrefix->setStyleSheet(valStyle);
+    hbox->addWidget(stationPrefix);
+
     m_stationLabel = new QLabel("");
     m_stationLabel->setStyleSheet(
         "QLabel { color: #c8d8e8; font-size: 21px; background: #0a0a14; "
@@ -1420,7 +1424,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
     if (connected) {
         m_radioInfoLabel->setText(m_radioModel.model());
         m_radioVersionLabel->setText(m_radioModel.version());
-        m_stationLabel->setText(QString("STATION: %1").arg(m_radioModel.nickname()));
+        m_stationLabel->setText(m_radioModel.nickname());
         m_connStatusLabel->setText("Connected");
         m_connPanel->setStatusText("Connected");
         m_audio.startRxStream();
