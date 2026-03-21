@@ -1621,11 +1621,13 @@ void MainWindow::activateRADE(int sliceId)
     });
 
     // RX path: DAX RX audio -> RADEEngine -> decoded speech -> speaker
-    // Filter by the RADE slice's DAX channel so other slices' DAX audio is ignored
-    int daxCh = s->daxChannel();
+    // Filter by the RADE slice's DAX channel so other slices' DAX audio is ignored.
+    // Look up the channel live so it tracks if the user changes DAX assignment.
+    int sid = sliceId;
     connect(m_radioModel.panStream(), &PanadapterStream::daxAudioReady,
-            m_radeEngine, [this, daxCh](int channel, const QByteArray& pcm) {
-        if (channel == daxCh)
+            m_radeEngine, [this, sid](int channel, const QByteArray& pcm) {
+        auto* s = m_radioModel.slice(sid);
+        if (s && channel == s->daxChannel())
             m_radeEngine->feedRxAudio(channel, pcm);
     });
     connect(m_radeEngine, &RADEEngine::rxSpeechReady,
