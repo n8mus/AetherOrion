@@ -1,6 +1,7 @@
 #include "AudioEngine.h"
 #include "AppSettings.h"
 #include "LogManager.h"
+#include "OpusCodec.h"
 #include "SpectralNR.h"
 #include "RNNoiseFilter.h"
 #include "Resampler.h"
@@ -438,6 +439,51 @@ void AudioEngine::onTxAudioReady()
     // mic bleed into digital modes.
     if (!m_transmitting) return;
 
+    // ── Opus TX path: encode 20ms frames (480 stereo samples) ──────────
+    if (m_opusTxEnabled) {
+        m_opusTxAccumulator.append(data);
+        constexpr int OPUS_FRAME_BYTES = 480 * 2 * sizeof(int16_t);  // 480 stereo pairs
+
+        while (m_opusTxAccumulator.size() >= OPUS_FRAME_BYTES) {
+            if (!m_opusTxCodec) {
+                m_opusTxCodec = std::make_unique<OpusCodec>();
+                if (!m_opusTxCodec->isValid()) {
+                    qCWarning(lcAudio) << "AudioEngine: Opus TX codec init failed, falling back to uncompressed";
+                    m_opusTxEnabled = false;
+                    m_opusTxCodec.reset();
+                    break;
+                }
+            }
+
+            QByteArray frame = m_opusTxAccumulator.left(OPUS_FRAME_BYTES);
+            m_opusTxAccumulator.remove(0, OPUS_FRAME_BYTES);
+
+            QByteArray opus = m_opusTxCodec->encode(frame);
+            if (opus.isEmpty()) continue;
+
+            // Build VITA-49 Opus packet (raw bytes, no byte-swap)
+            // Header: 28 bytes + opus payload + 4 byte trailer
+            int words = (28 + opus.size() + 4 + 3) / 4;  // round up to 32-bit words
+            QByteArray pkt(words * 4, '\0');
+            auto* p = reinterpret_cast<quint32*>(pkt.data());
+
+            // Word 0: type=3 (ExtDataWithStream), C=1, T=1, TSI=01, TSF=01, count, size
+            p[0] = qToBigEndian<quint32>(
+                (3u << 28) | (1u << 27) | (1u << 26) | (1u << 22) | (1u << 20)
+                | ((m_txPacketCount & 0x0F) << 16) | words);
+            m_txPacketCount = (m_txPacketCount + 1) & 0x0F;
+            p[1] = qToBigEndian(m_txStreamId);
+            p[2] = qToBigEndian<quint32>(0x00001C2D);  // OUI
+            p[3] = qToBigEndian<quint32>(0x80050000 | 0x8005);  // ICC=0x8005, PCC=0x8005
+            p[4] = 0; p[5] = 0; p[6] = 0;  // timestamps
+
+            memcpy(pkt.data() + 28, opus.constData(), opus.size());
+            emit txPacketReady(pkt);
+        }
+        return;
+    }
+
+    // ── Uncompressed TX path ─────────────────────────────────────────────
     m_txAccumulator.append(data);
 
     // Process complete packets (128 stereo pairs = 512 bytes of int16 PCM)

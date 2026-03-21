@@ -220,6 +220,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&m_radioModel, &RadioModel::txAudioStreamReady,
             this, [this](quint32 streamId) {
         m_audio.setTxStreamId(streamId);
+        m_audio.setOpusTxEnabled(m_radioModel.audioCompressionParam() == "opus");
         qDebug() << "MainWindow: DAX TX stream ID set to" << Qt::hex << streamId;
         // Start PC audio TX if mic_selection is PC
         if (m_radioModel.transmitModel()->micSelection() == "PC") {

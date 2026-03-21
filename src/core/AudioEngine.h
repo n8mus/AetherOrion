@@ -64,6 +64,10 @@ public:
     void setMuted(bool m);
     bool isTxStreaming() const { return m_audioSource != nullptr; }
 
+    // Opus TX encoding for SmartLink compressed audio
+    void setOpusTxEnabled(bool on) { m_opusTxEnabled = on; }
+    bool isOpusTxEnabled() const { return m_opusTxEnabled; }
+
     // RADE digital voice mode
     void setRadeMode(bool on);
     bool isRadeMode() const { return m_radeMode; }
@@ -146,6 +150,9 @@ private:
     bool          m_radeMode{false};     // RADE digital voice mode active
     bool          m_daxTxMode{false};    // DAX TX mode: VirtualAudioBridge handles TX
     bool          m_transmitting{false}; // true when radio is in TX (MOX on)
+    bool          m_opusTxEnabled{false}; // Opus TX encoding for SmartLink
+    std::unique_ptr<class OpusCodec> m_opusTxCodec; // lazy-init on first TX with Opus
+    QByteArray    m_opusTxAccumulator;  // accumulate 480 stereo samples for Opus frame
 
     QAudioDevice m_outputDevice;
     QAudioDevice m_inputDevice;
