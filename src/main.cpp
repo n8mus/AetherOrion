@@ -47,12 +47,30 @@ int main(int argc, char* argv[])
     const QString logDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
                            + "/AetherSDR";
     QDir().mkpath(logDir);
-    const QString logPath = logDir + "/aethersdr.log";
+
+    // Timestamped log file — keep last 5 sessions
+    const QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss");
+    const QString logPath = logDir + "/aethersdr-" + timestamp + ".log";
+
+    // Prune old log files (keep newest 4 + the one we're about to create = 5)
+    {
+        QDir dir(logDir);
+        QStringList logs = dir.entryList({"aethersdr-*.log"}, QDir::Files, QDir::Name);
+        while (logs.size() >= 5) {
+            dir.remove(logs.takeFirst());
+        }
+    }
+
     s_logFile = new QFile(logPath);
     if (s_logFile->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
         // Restrict log file to owner-only (may contain session identifiers)
         s_logFile->setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         qInstallMessageHandler(messageHandler);
+
+        // Symlink aethersdr.log → latest timestamped file (for Support dialog)
+        const QString symlink = logDir + "/aethersdr.log";
+        QFile::remove(symlink);
+        QFile::link(logPath, symlink);
     } else {
         fprintf(stderr, "Warning: could not open log file %s\n", logPath.toLocal8Bit().constData());
         delete s_logFile;
