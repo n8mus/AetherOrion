@@ -8,6 +8,7 @@
 #include <QIODevice>
 #include <QUdpSocket>
 #include <QTimer>
+#include <atomic>
 #include <QBuffer>
 #include <QByteArray>
 
@@ -147,7 +148,7 @@ private:
     quint8        m_txPacketCount{0};    // 4-bit, mod 16
     QByteArray    m_txAccumulator;       // accumulate PCM until 128 stereo pairs
     QByteArray    m_txFloatAccumulator;  // accumulate float32 PCM for RADE modem TX
-    bool          m_radeMode{false};     // RADE digital voice mode active
+    std::atomic<bool> m_radeMode{false}; // RADE digital voice mode active (atomic: cross-thread)
     bool          m_daxTxMode{false};    // DAX TX mode: VirtualAudioBridge handles TX
     bool          m_transmitting{false}; // true when radio is in TX (MOX on)
     bool          m_opusTxEnabled{false}; // Opus TX encoding for SmartLink

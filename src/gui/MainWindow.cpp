@@ -1835,26 +1835,34 @@ void MainWindow::activateRADE(int sliceId)
     m_radePrevMute = s->audioMute();
     s->setAudioMute(true);
 
-    // Create and start RADE engine
+    // Create RADE engine on a worker thread for multi-core utilization
     if (!m_radeEngine) {
-        m_radeEngine = new RADEEngine(this);
+        m_radeEngine = new RADEEngine;  // no parent — will be moved to worker thread
+        m_radeThread = new QThread(this);
+        m_radeThread->setObjectName("RADEEngine");
+        m_radeEngine->moveToThread(m_radeThread);
+        connect(m_radeThread, &QThread::finished, m_radeEngine, &QObject::deleteLater);
+        m_radeThread->start();
     }
-    if (!m_radeEngine->start()) {
+    // start() must be invoked on the worker thread
+    bool ok = false;
+    QMetaObject::invokeMethod(m_radeEngine, [this, &ok]() {
+        ok = m_radeEngine->start();
+    }, Qt::BlockingQueuedConnection);
+    if (!ok) {
         qWarning() << "MainWindow: failed to start RADE engine";
         return;
     }
 
     m_audio.setRadeMode(true);
 
-    // TX path: mic -> RADEEngine -> sendModemTxAudio
+    // TX path: mic -> RADEEngine (worker) -> sendModemTxAudio (main)
     connect(&m_audio, &AudioEngine::txRawPcmReady,
-            m_radeEngine, &RADEEngine::feedTxAudio);
+            m_radeEngine, &RADEEngine::feedTxAudio, Qt::QueuedConnection);
     connect(m_radeEngine, &RADEEngine::txModemReady,
-            this, [this](const QByteArray& pcm) {
-        m_audio.sendModemTxAudio(pcm);
-    });
+            &m_audio, &AudioEngine::sendModemTxAudio, Qt::QueuedConnection);
 
-    // RX path: DAX RX audio -> RADEEngine -> decoded speech -> speaker
+    // RX path: DAX RX audio -> RADEEngine (worker) -> decoded speech -> speaker (main)
     // Filter by the RADE slice's DAX channel so other slices' DAX audio is ignored.
     // Look up the channel live so it tracks if the user changes DAX assignment.
     int sid = sliceId;
@@ -1863,9 +1871,9 @@ void MainWindow::activateRADE(int sliceId)
         auto* s = m_radioModel.slice(sid);
         if (s && channel == s->daxChannel())
             m_radeEngine->feedRxAudio(channel, pcm);
-    });
+    }, Qt::QueuedConnection);
     connect(m_radeEngine, &RADEEngine::rxSpeechReady,
-            &m_audio, &AudioEngine::feedDecodedSpeech);
+            &m_audio, &AudioEngine::feedDecodedSpeech, Qt::QueuedConnection);
 
     // Start mic capture if not already running
     if (!m_audio.isTxStreaming()) {
@@ -1904,12 +1912,21 @@ void MainWindow::deactivateRADE()
         disconnect(&m_audio, &AudioEngine::txRawPcmReady,
                    m_radeEngine, nullptr);
         disconnect(m_radeEngine, &RADEEngine::txModemReady,
-                   this, nullptr);
+                   &m_audio, nullptr);
         disconnect(m_radioModel.panStream(), &PanadapterStream::daxAudioReady,
                    m_radeEngine, nullptr);
         disconnect(m_radeEngine, &RADEEngine::rxSpeechReady,
                    &m_audio, nullptr);
-        m_radeEngine->stop();
+        // Stop on the worker thread, then shut down the thread
+        QMetaObject::invokeMethod(m_radeEngine, &RADEEngine::stop,
+                                  Qt::BlockingQueuedConnection);
+        if (m_radeThread) {
+            m_radeThread->quit();
+            m_radeThread->wait(2000);
+            m_radeThread->deleteLater();
+            m_radeThread = nullptr;
+        }
+        m_radeEngine = nullptr;  // deleteLater handles actual deletion
     }
 
     qInfo() << "MainWindow: RADE mode deactivated";
