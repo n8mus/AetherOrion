@@ -1202,27 +1202,32 @@ void RadioModel::handleRadioStatus(const QMap<QString, QString>& kvs)
 void RadioModel::setLineoutGain(int v)
 {
     v = std::clamp(v, 0, 100);
+    qCDebug(lcAudio) << "setLineoutGain:" << v;
     sendCmd(QString("mixer lineout gain %1").arg(v));
 }
 
 void RadioModel::setLineoutMute(bool m)
 {
+    qCDebug(lcAudio) << "setLineoutMute:" << m;
     sendCmd(QString("mixer lineout mute %1").arg(m ? 1 : 0));
 }
 
 void RadioModel::setHeadphoneGain(int v)
 {
     v = std::clamp(v, 0, 100);
+    qCDebug(lcAudio) << "setHeadphoneGain:" << v;
     sendCmd(QString("mixer headphone gain %1").arg(v));
 }
 
 void RadioModel::setHeadphoneMute(bool m)
 {
+    qCDebug(lcAudio) << "setHeadphoneMute:" << m;
     sendCmd(QString("mixer headphone mute %1").arg(m ? 1 : 0));
 }
 
 void RadioModel::setFrontSpeakerMute(bool m)
 {
+    qCDebug(lcAudio) << "setFrontSpeakerMute:" << m;
     sendCmd(QString("mixer front_speaker mute %1").arg(m ? 1 : 0));
 }
 

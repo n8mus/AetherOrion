@@ -30,8 +30,8 @@ LogManager::LogManager()
     // Register categories with human-readable labels and descriptions
     m_categories = {
         {"aether.discovery",  "Discovery",    "UDP radio discovery broadcasts"},
-        {"aether.connection", "Connection",   "TCP command channel, protocol parsing"},
-        {"aether.protocol",   "Protocol",     "Status message parsing, slice/pan/wf updates"},
+        {"aether.connection", "Commands",     "TCP commands sent (TX) and responses received (RX)"},
+        {"aether.protocol",   "Status",       "Parsed status messages (slice, pan, transmit, meter)"},
         {"aether.audio",      "Audio",        "RX/TX audio, device negotiation, volume"},
         {"aether.vita49",     "VITA-49",      "UDP packet routing: FFT, waterfall, meters, DAX"},
         {"aether.dsp",        "DSP",          "NR2, RN2, CW decoder processing"},

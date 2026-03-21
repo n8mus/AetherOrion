@@ -1325,39 +1325,41 @@ QWidget* RadioSetupDialog::buildAudioTab()
     });
     connect(hpMute, &QPushButton::toggled, m_model, &RadioModel::setHeadphoneMute);
 
-    // Front Speaker (mute only, no gain control)
-    auto* spkRow = new QHBoxLayout;
-    auto* spkLabel = new QLabel("Front Speaker:");
-    spkLabel->setStyleSheet(kLabelStyle);
-    spkLabel->setFixedWidth(90);
-    auto* spkMute = new QPushButton("Mute");
-    spkMute->setCheckable(true);
-    spkMute->setChecked(m_model->frontSpeakerMute());
-    spkMute->setFixedWidth(50);
-    spkMute->setStyleSheet(
-        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
-        "border-radius: 3px; color: #c8d8e8; font-size: 11px; padding: 2px; }"
-        "QPushButton:checked { background: #8b0000; color: #fff; }");
-    spkRow->addWidget(spkLabel);
-    spkRow->addStretch(1);
-    spkRow->addWidget(spkMute);
-    outLayout->addLayout(spkRow);
-
-    connect(spkMute, &QPushButton::toggled, m_model, &RadioModel::setFrontSpeakerMute);
+    // Front Speaker (mute only) — only on M-suffix models with built-in speaker
+    // M-suffix models have a built-in front speaker (6400M, 6600M, 8400M, 8600M, AU-510M, AU-520M)
+    bool hasFrontSpeaker = m_model->model().endsWith("M", Qt::CaseInsensitive);
+    if (hasFrontSpeaker) {
+        auto* spkRow = new QHBoxLayout;
+        auto* spkLabel = new QLabel("Front Speaker:");
+        spkLabel->setStyleSheet(kLabelStyle);
+        spkLabel->setFixedWidth(90);
+        auto* spkMute = new QPushButton("Mute");
+        spkMute->setCheckable(true);
+        spkMute->setChecked(m_model->frontSpeakerMute());
+        spkMute->setFixedWidth(50);
+        spkMute->setStyleSheet(
+            "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+            "border-radius: 3px; color: #c8d8e8; font-size: 11px; padding: 2px; }"
+            "QPushButton:checked { background: #8b0000; color: #fff; }");
+        spkRow->addWidget(spkLabel);
+        spkRow->addStretch(1);
+        spkRow->addWidget(spkMute);
+        outLayout->addLayout(spkRow);
+        connect(spkMute, &QPushButton::toggled, m_model, &RadioModel::setFrontSpeakerMute);
+    }
 
     // Update from radio status
     connect(m_model, &RadioModel::audioOutputChanged, this,
             [this, lineoutSlider, lineoutValue, lineoutMute,
-             hpSlider, hpValue, hpMute, spkMute] {
+             hpSlider, hpValue, hpMute] {
         QSignalBlocker b1(lineoutSlider), b2(lineoutMute),
-                       b3(hpSlider), b4(hpMute), b5(spkMute);
+                       b3(hpSlider), b4(hpMute);
         lineoutSlider->setValue(m_model->lineoutGain());
         lineoutValue->setText(QString::number(m_model->lineoutGain()));
         lineoutMute->setChecked(m_model->lineoutMute());
         hpSlider->setValue(m_model->headphoneGain());
         hpValue->setText(QString::number(m_model->headphoneGain()));
         hpMute->setChecked(m_model->headphoneMute());
-        spkMute->setChecked(m_model->frontSpeakerMute());
     });
 
     vbox->addWidget(outGroup);
