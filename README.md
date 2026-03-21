@@ -204,7 +204,7 @@ sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel cmake ninja-build \
   autoconf automake libtool
 
 # macOS (Homebrew)
-brew install qt@6 ninja cmake autoconf automake libtool
+brew install qt@6 ninja cmake pkgconf autoconf automake libtool
 ```
 
 > **Linux Mint / Ubuntu note:** If PC audio devices show as "Dummy Output" or empty,
