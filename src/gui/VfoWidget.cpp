@@ -443,9 +443,16 @@ void VfoWidget::buildTabContent()
         gainRow->addWidget(m_muteBtn);
         vb->addLayout(gainRow);
 
-        // Pan row: L + slider (with center marker) + R
+        // Pan row: DIV button + L + slider (with center marker) + R
         auto* panRow = new QHBoxLayout;
         panRow->setSpacing(3);
+        m_divBtn = new QPushButton("DIV");
+        m_divBtn->setCheckable(true);
+        m_divBtn->setFixedHeight(20);
+        m_divBtn->setFixedWidth(60);
+        m_divBtn->setStyleSheet(kDspToggle);
+        m_divBtn->setVisible(false);  // shown only on dual-SCU radios
+        panRow->addWidget(m_divBtn);
         auto* panL = new QLabel("L");
         panL->setStyleSheet(kLabelStyle);
         panL->setFixedWidth(10);
@@ -482,7 +489,7 @@ void VfoWidget::buildTabContent()
             emit pcAudioToggled(on);
         });
 
-        // SQL row: toggle + slider
+        // SQL row
         auto* sqlRow = new QHBoxLayout;
         sqlRow->setSpacing(3);
         m_sqlBtn = new QPushButton("SQL");
@@ -496,6 +503,11 @@ void VfoWidget::buildTabContent()
         m_sqlSlider->setStyleSheet(kSliderStyle);
         sqlRow->addWidget(m_sqlSlider, 1);
         vb->addLayout(sqlRow);
+
+        connect(m_divBtn, &QPushButton::toggled, this, [this](bool on) {
+            if (!m_updatingFromModel && m_slice)
+                m_slice->setDiversity(on);
+        });
 
         connect(m_sqlBtn, &QPushButton::toggled, this, [this](bool on) {
             if (!m_updatingFromModel && m_slice)
@@ -1133,6 +1145,11 @@ void VfoWidget::showTab(int index)
 
 // ── Positioning ───────────────────────────────────────────────────────────────
 
+void VfoWidget::setDiversityAllowed(bool allowed)
+{
+    if (m_divBtn) m_divBtn->setVisible(allowed);
+}
+
 void VfoWidget::setAfGain(int pct)
 {
     if (m_afGainSlider) {
@@ -1423,6 +1440,15 @@ void VfoWidget::setSlice(SliceModel* slice)
         m_muteBtn->setText(mute ? QString::fromUtf8("\xF0\x9F\x94\x87")
                                 : QString::fromUtf8("\xF0\x9F\x94\x8A"));
         m_updatingFromModel = false;
+    });
+    // Diversity sync
+    {
+        QSignalBlocker sb(m_divBtn);
+        m_divBtn->setChecked(m_slice->diversity());
+    }
+    connect(m_slice, &SliceModel::diversityChanged, this, [this](bool on) {
+        QSignalBlocker sb(m_divBtn);
+        m_divBtn->setChecked(on);
     });
     // DSP toggles
     auto connectDsp = [this](auto signal, QPushButton* btn) {

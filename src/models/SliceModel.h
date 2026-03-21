@@ -89,6 +89,8 @@ public:
     void setRfGain(float gain);
     void setAudioPan(int pan);
     void setAudioMute(bool mute);
+    void setDiversity(bool on);
+    bool diversity() const { return m_diversity; }
     void setRxAntenna(const QString& ant);
     void setTxAntenna(const QString& ant);
     void setLocked(bool locked);
@@ -171,6 +173,7 @@ signals:
     void agcModeChanged(const QString& mode);
     void agcThresholdChanged(int value);
     void audioMuteChanged(bool mute);
+    void diversityChanged(bool on);
     void rfGainChanged(float gain);
     void squelchChanged(bool on, int level);
     void ritChanged(bool on, int hz);
@@ -211,6 +214,7 @@ private:
     bool    m_locked{false};
     bool    m_qsk{false};
     bool    m_audioMute{false};
+    bool    m_diversity{false};
     bool    m_nb{false};
     bool    m_nr{false};
     bool    m_anf{false};

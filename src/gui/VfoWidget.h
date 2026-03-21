@@ -115,7 +115,11 @@ private:
     QSlider* m_panSlider{nullptr};
     QPushButton* m_muteBtn{nullptr};
     QPushButton* m_pcAudioBtn{nullptr};
+    QPushButton* m_divBtn{nullptr};
     QPushButton* m_sqlBtn{nullptr};
+public:
+    void setDiversityAllowed(bool allowed);
+private:
     QSlider* m_sqlSlider{nullptr};
     QComboBox* m_agcCmb{nullptr};
     QSlider* m_agcTSlider{nullptr};

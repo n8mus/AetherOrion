@@ -391,6 +391,14 @@ void SliceModel::setAudioMute(bool mute)
     emit audioMuteChanged(mute);
 }
 
+void SliceModel::setDiversity(bool on)
+{
+    if (m_diversity == on) return;
+    m_diversity = on;
+    sendCommand(QString("slice set %1 diversity=%2").arg(m_id).arg(on ? 1 : 0));
+    emit diversityChanged(on);
+}
+
 void SliceModel::setAudioPan(int pan)
 {
     pan = qBound(0, pan, 100);
@@ -464,6 +472,13 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
         if (mute != m_audioMute) {
             m_audioMute = mute;
             emit audioMuteChanged(mute);
+        }
+    }
+    if (kvs.contains("diversity")) {
+        bool div = kvs["diversity"] == "1";
+        if (div != m_diversity) {
+            m_diversity = div;
+            emit diversityChanged(div);
         }
     }
 
