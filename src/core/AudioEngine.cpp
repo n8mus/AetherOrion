@@ -1,4 +1,5 @@
 #include "AudioEngine.h"
+#include "AppSettings.h"
 #include "LogManager.h"
 #include "SpectralNR.h"
 #include "RNNoiseFilter.h"
@@ -15,7 +16,23 @@ namespace AetherSDR {
 
 AudioEngine::AudioEngine(QObject* parent)
     : QObject(parent)
-{}
+{
+    // Restore saved audio device selections
+    auto& s = AppSettings::instance();
+    QByteArray savedOutId = s.value("AudioOutputDeviceId", "").toByteArray();
+    QByteArray savedInId  = s.value("AudioInputDeviceId",  "").toByteArray();
+
+    if (!savedOutId.isEmpty()) {
+        for (const auto& dev : QMediaDevices::audioOutputs()) {
+            if (dev.id() == savedOutId) { m_outputDevice = dev; break; }
+        }
+    }
+    if (!savedInId.isEmpty()) {
+        for (const auto& dev : QMediaDevices::audioInputs()) {
+            if (dev.id() == savedInId) { m_inputDevice = dev; break; }
+        }
+    }
+}
 
 AudioEngine::~AudioEngine()
 {
@@ -504,6 +521,12 @@ void AudioEngine::setOutputDevice(const QAudioDevice& dev)
 {
     m_outputDevice = dev;
     qCDebug(lcAudio) << "AudioEngine: output device set to" << dev.description();
+
+    // Persist selection
+    auto& s = AppSettings::instance();
+    s.setValue("AudioOutputDeviceId", dev.id());
+    s.save();
+
     // Restart RX stream if running
     if (m_audioSink) {
         stopRxStream();
@@ -515,6 +538,12 @@ void AudioEngine::setInputDevice(const QAudioDevice& dev)
 {
     m_inputDevice = dev;
     qCDebug(lcAudio) << "AudioEngine: input device set to" << dev.description();
+
+    // Persist selection
+    auto& s = AppSettings::instance();
+    s.setValue("AudioInputDeviceId", dev.id());
+    s.save();
+
     // Restart TX stream if running
     if (m_audioSource) {
         QHostAddress addr = m_txAddress;
