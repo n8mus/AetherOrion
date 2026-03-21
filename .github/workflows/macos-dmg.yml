@@ -89,11 +89,11 @@ jobs:
           # Sign all frameworks and dylibs first, then the app bundle
           find build/AetherSDR.app -name "*.dylib" -o -name "*.framework" -type d | while read item; do
             codesign --force --options runtime --timestamp \
-              --sign "Developer ID Application: ($APPLE_TEAM_ID)" "$item" 2>/dev/null || true
+              --sign "Developer ID Application" "$item" 2>/dev/null || true
           done
           # Sign the main executable and app bundle
           codesign --force --deep --options runtime --timestamp \
-            --sign "Developer ID Application: ($APPLE_TEAM_ID)" \
+            --sign "Developer ID Application" \
             build/AetherSDR.app
           # Verify
           codesign --verify --deep --strict build/AetherSDR.app
@@ -119,7 +119,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           codesign --force --timestamp \
-            --sign "Developer ID Application: ($APPLE_TEAM_ID)" \
+            --sign "Developer ID Application" \
             AetherSDR-${{ github.ref_name }}-macOS-universal.dmg
 
       - name: Notarize DMG
