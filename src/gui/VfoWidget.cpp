@@ -1807,39 +1807,44 @@ void VfoWidget::rebuildFilterButtons()
         m_filterGrid->addWidget(btn, i / 4, i % 4);
     }
 
-    // Add CW autotune buttons in the second row when in CW mode
+    // Add CW autotune row spanning all 4 columns when in CW mode
     if (m_slice && (m_slice->mode() == "CW" || m_slice->mode() == "CWL")) {
-        int row = (m_filterWidths.size() + 3) / 4;  // next row after filter buttons
+        int row = (m_filterWidths.size() + 3) / 4;
+
+        auto* container = new QWidget;
+        auto* hbox = new QHBoxLayout(container);
+        hbox->setContentsMargins(0, 0, 0, 0);
+        hbox->setSpacing(4);
 
         auto* label = new QLabel("Autotune:");
-        label->setStyleSheet("QLabel { color: #8898a8; font-size: 10px; }");
-        m_filterGrid->addWidget(label, row, 0);
-        // We'll track this via filterBtns for cleanup (it's a QLabel but parented to grid)
+        label->setStyleSheet("QLabel { color: #8898a8; font-size: 11px; }");
+        hbox->addWidget(label);
 
-        m_autotuneOnceBtn = new QPushButton("Once");
-        m_autotuneOnceBtn->setFixedHeight(26);
-        m_autotuneOnceBtn->setStyleSheet(
+        const QString btnStyle =
             "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; "
             "border-radius: 3px; font-size: 10px; padding: 0 8px; }"
             "QPushButton:hover { background: #253545; }"
-            "QPushButton:pressed { background: #00607a; }");
+            "QPushButton:pressed { background: #00607a; }"
+            "QPushButton:checked { background: #00607a; color: #e0f0ff; border-color: #00b4d8; }";
+
+        m_autotuneOnceBtn = new QPushButton("Once");
+        m_autotuneOnceBtn->setFixedHeight(26);
+        m_autotuneOnceBtn->setStyleSheet(btnStyle);
         connect(m_autotuneOnceBtn, &QPushButton::clicked, this, [this]() {
             emit autotuneRequested(false);
         });
-        m_filterGrid->addWidget(m_autotuneOnceBtn, row, 1);
+        hbox->addWidget(m_autotuneOnceBtn, 1);
 
         m_autotuneLoopBtn = new QPushButton("Loop");
         m_autotuneLoopBtn->setCheckable(true);
         m_autotuneLoopBtn->setFixedHeight(26);
-        m_autotuneLoopBtn->setStyleSheet(
-            "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; "
-            "border-radius: 3px; font-size: 10px; padding: 0 8px; }"
-            "QPushButton:hover { background: #253545; }"
-            "QPushButton:checked { background: #00607a; color: #e0f0ff; border-color: #00b4d8; }");
+        m_autotuneLoopBtn->setStyleSheet(btnStyle);
         connect(m_autotuneLoopBtn, &QPushButton::toggled, this, [this](bool on) {
             emit autotuneRequested(on);
         });
-        m_filterGrid->addWidget(m_autotuneLoopBtn, row, 2);
+        hbox->addWidget(m_autotuneLoopBtn, 1);
+
+        m_filterGrid->addWidget(container, row, 0, 1, 4);
     }
 
     updateFilterHighlight();
