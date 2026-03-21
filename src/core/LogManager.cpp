@@ -9,9 +9,9 @@
 namespace AetherSDR {
 
 // Define all logging categories (disabled by default)
-Q_LOGGING_CATEGORY(lcDiscovery,  "aether.discovery",  QtWarningMsg)
-Q_LOGGING_CATEGORY(lcConnection, "aether.connection",  QtWarningMsg)
-Q_LOGGING_CATEGORY(lcProtocol,   "aether.protocol",    QtWarningMsg)
+Q_LOGGING_CATEGORY(lcDiscovery,  "aether.discovery",  QtDebugMsg)
+Q_LOGGING_CATEGORY(lcConnection, "aether.connection",  QtDebugMsg)
+Q_LOGGING_CATEGORY(lcProtocol,   "aether.protocol",    QtDebugMsg)
 Q_LOGGING_CATEGORY(lcAudio,      "aether.audio",       QtWarningMsg)
 Q_LOGGING_CATEGORY(lcVita49,     "aether.vita49",      QtWarningMsg)
 Q_LOGGING_CATEGORY(lcDsp,        "aether.dsp",         QtWarningMsg)
