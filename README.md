@@ -280,6 +280,8 @@ See the full [issue tracker](https://github.com/ten9876/AetherSDR/issues) for al
 
 PRs, bug reports, and feature requests welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+**Development environment:** AetherSDR is developed using [Claude Code](https://claude.com/claude-code) as the primary development tool. The entire codebase — architecture, conventions, and patterns — is built and maintained through AI-assisted development. To ensure consistency and minimize integration issues, **we strongly encourage all contributors to use Claude Code for development**. PRs must follow the project's established conventions, pass CI, and integrate cleanly with the existing architecture.
+
 **Not a developer?** You can still contribute great feature requests using AI. See the [AI-Assisted Feature Requests](CONTRIBUTING.md#ai-assisted-feature-requests) section in our contributing guide — it walks you through using Claude.ai to turn your idea into a well-structured request that's easy for us to implement.
 
 The codebase is modular — each subsystem (core protocol, models, GUI widgets) can be worked on independently. Check [Issues](https://github.com/ten9876/AetherSDR/issues) for current tasks.

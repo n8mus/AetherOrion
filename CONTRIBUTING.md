@@ -66,12 +66,24 @@ working on it, comment again so someone else can pick it up.
 
 ### Submitting Code
 
+**Development tool:** AetherSDR is developed using [Claude Code](https://claude.com/claude-code)
+as the primary development environment. The entire codebase — its architecture, naming
+conventions, signal/slot patterns, and code style — has been built and maintained through
+AI-assisted development. To ensure consistency and minimize integration friction, we
+**strongly encourage all contributors to use Claude Code** for writing and modifying code.
+
+PRs that don't follow the project's established patterns (naming, RAII, signal/slot wiring,
+`AppSettings` instead of `QSettings`, etc.) will require significant rework before merging.
+Using Claude Code with the project's `CLAUDE.md` context naturally produces code that
+integrates cleanly.
+
 1. **Fork the repo** and create a feature branch from `main`.
-2. **One issue per PR.** Keep changes focused and reviewable.
-3. **Follow the coding conventions** outlined below.
-4. **Test your changes** against a real FlexRadio if possible, or describe
+2. **Use Claude Code** for development — it has full context of the codebase via `CLAUDE.md`.
+3. **One issue per PR.** Keep changes focused and reviewable.
+4. **Follow the coding conventions** outlined below.
+5. **Test your changes** against a real FlexRadio if possible, or describe
    how you tested without hardware.
-5. **Open a pull request** against `main` with a clear description of what
+6. **Open a pull request** against `main` with a clear description of what
    changed and why. Reference the issue: `Fixes #42`.
 
 ---
