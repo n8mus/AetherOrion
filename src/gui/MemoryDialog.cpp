@@ -248,6 +248,7 @@ void MemoryDialog::onRemove()
     if (row < 0) return;
     const int idx = m_table->item(row, 0)->data(Qt::UserRole).toInt();
     m_model->sendCommand(QString("memory remove %1").arg(idx));
+    m_table->removeRow(row);
 }
 
 } // namespace AetherSDR
