@@ -163,10 +163,6 @@ public:
     QList<SliceModel*> slices() const { return m_slices; }
     SliceModel* slice(int id) const;
 
-    // SmartControl mode: mirror existing client's slices instead of creating own
-    void setSmartControl(bool on) { m_smartControl = on; }
-    bool isSmartControl() const { return m_smartControl; }
-
     // High-level actions
     void connectToRadio(const RadioInfo& info);
     void connectViaWan(WanConnection* wan, const QString& publicIp, quint16 udpPort);
@@ -404,7 +400,6 @@ private:
 
     RadioInfo m_lastInfo;               // stored for auto-reconnect
     bool      m_intentionalDisconnect{false};
-    bool      m_smartControl{false};
     QTimer    m_reconnectTimer;
 
     // ── Network quality monitor (matches FlexLib MonitorNetworkQuality) ──

@@ -368,8 +368,6 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
             else
                 m_panStream.start(&m_connection);  // also sends one-byte UDP registration
         }
-        // SmartControl: accept all VITA-49 streams (FFT/waterfall from master client)
-        m_panStream.setAcceptAllStreams(m_smartControl);
 
         // On WAN: use "client udp_register" via UDP (not TCP "client udpport").
         // The radio only accepts udp_register on WAN connections.
@@ -425,13 +423,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                         const QStringList ids = body.trimmed().split(' ', Qt::SkipEmptyParts);
                         qCDebug(lcProtocol) << "RadioModel: slice list ->" << (ids.isEmpty() ? "(empty)" : body);
 
-                        if (m_smartControl && !ids.isEmpty()) {
-                            // SmartControl: adopt existing slices, never create
-                            qCDebug(lcProtocol) << "RadioModel: SmartControl — adopting"
-                                     << ids.size() << "existing slice(s)";
-                            // Slices will arrive via status messages and be accepted
-                            // because m_smartControl bypasses the client_handle filter
-                        } else if (ids.isEmpty()) {
+                        if (ids.isEmpty()) {
                             // Radio has no slices at all — create one
                             qCDebug(lcProtocol) << "RadioModel: no slices on radio, creating default";
                             auto& settings = AppSettings::instance();
@@ -470,7 +462,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                                 }
                             });
                         } else {
-                            qCDebug(lcProtocol) << "RadioModel: SmartControl — using our pan"
+                            qCDebug(lcProtocol) << "RadioModel: SmartConnect — using our pan"
                                      << m_panId << "and" << m_slices.size() << "slice(s)";
                         }
 
@@ -962,8 +954,8 @@ void RadioModel::onStatusReceived(const QString& object,
         if (m.hasMatch()) {
             const QString panId = m.captured(1);
             if (m_panId.isEmpty()) {
-                // Claim this pan only if it belongs to us (or SmartControl)
-                if (kvs.contains("client_handle") && !m_smartControl) {
+                // Claim this pan only if it belongs to us
+                if (kvs.contains("client_handle")) {
                     quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
                     if (owner == clientHandle()) {
                         m_panId = panId;
@@ -973,10 +965,7 @@ void RadioModel::onStatusReceived(const QString& object,
                         return;  // not our panadapter, ignore
                     }
                 } else {
-                    m_panId = panId;  // SmartControl or no client_handle — claim it
-                    updateStreamFilters();
-                    qCDebug(lcProtocol) << "RadioModel: claimed panadapter" << m_panId
-                             << (m_smartControl ? "(SmartControl)" : "");
+                    m_panId = panId;  // no client_handle field, assume ours
                 }
             } else if (panId != m_panId) {
                 return;  // not our panadapter, ignore
@@ -1272,8 +1261,7 @@ void RadioModel::handleSliceStatus(int id,
                                     bool removed)
 {
     // Track slice ownership via client_handle (only present in some messages)
-    // In SmartControl mode, accept ALL slices regardless of ownership.
-    if (kvs.contains("client_handle") && !m_smartControl) {
+    if (kvs.contains("client_handle")) {
         quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
         if (owner == clientHandle()) {
             m_ownedSliceIds.insert(id);
@@ -1290,13 +1278,10 @@ void RadioModel::handleSliceStatus(int id,
             }
             return;  // slice belongs to another client
         }
-    } else if (m_smartControl && kvs.contains("client_handle")) {
-        // In SmartControl mode, track all slices as "ours"
-        m_ownedSliceIds.insert(id);
     }
 
     // If we've seen client_handle info and this slice isn't ours, skip it
-    if (!m_smartControl && !m_ownedSliceIds.isEmpty() && !m_ownedSliceIds.contains(id)) {
+    if (!m_ownedSliceIds.isEmpty() && !m_ownedSliceIds.contains(id)) {
         qCDebug(lcProtocol) << "RadioModel: ignoring slice" << id << "status (not in owned set)";
         return;
     }

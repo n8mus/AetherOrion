@@ -79,32 +79,6 @@ MainWindow::MainWindow(QWidget* parent)
 
     connect(m_connPanel, &ConnectionPanel::connectRequested,
             this, [this](const RadioInfo& info){
-        // If another client is connected, ask Multi-Flex vs SmartControl
-        if (info.hasOtherClients()) {
-            const QString client = info.guiClientPrograms.first();
-            const QString station = info.guiClientStations.isEmpty()
-                ? "" : info.guiClientStations.first();
-            const QString desc = station.isEmpty() ? client
-                : QString("%1 (%2)").arg(client, station);
-
-            QMessageBox box(this);
-            box.setWindowTitle("Connection Mode");
-            box.setText(QString("Another client is connected:\n%1").arg(desc));
-            box.setInformativeText("How would you like to connect?");
-            box.addButton("Multi-Flex (Independent)", QMessageBox::NoRole);
-            auto* smartConn = box.addButton("SmartControl (Mirror)", QMessageBox::YesRole);
-            box.setDefaultButton(smartConn);
-            box.exec();
-
-            bool sc = (box.clickedButton() == smartConn);
-            m_radioModel.setSmartControl(sc);
-            auto& as = AppSettings::instance();
-            as.setValue("ConnectMode", sc ? "SmartControl" : "MultiFlex");
-            as.save();
-        } else {
-            m_radioModel.setSmartControl(false);
-        }
-
         m_connPanel->setStatusText("Connecting…");
         m_userDisconnected = false;
         m_radioModel.connectToRadio(info);
@@ -127,17 +101,7 @@ MainWindow::MainWindow(QWidget* parent)
         if (!lastSerial.isEmpty() && info.serial == lastSerial
             && !m_radioModel.isConnected()) {
             qDebug() << "Auto-connecting to" << info.displayName();
-            const QString savedMode = AppSettings::instance()
-                .value("ConnectMode", "").toString();
-
-            if (info.hasOtherClients() && savedMode.isEmpty()) {
-                // First time with other clients — show connection panel for user to choose
-                m_connPanel->show();
-                return;
-            }
             m_connPanel->setStatusText("Auto-connecting…");
-            bool sc = info.hasOtherClients() && savedMode == "SmartControl";
-            m_radioModel.setSmartControl(sc);
             m_radioModel.connectToRadio(info);
         }
     });
@@ -1546,7 +1510,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
         m_displaySettingsPushed = false;
 
 #if defined(Q_OS_MAC) || defined(HAVE_PIPEWIRE)
-        // Delay DAX bridge start until RadioModel's SmartControl sequence
+        // Delay DAX bridge start until RadioModel's SmartConnect sequence
         // is fully complete (streams created, UDP bound, slices discovered).
         // Auto-start DAX bridge if enabled in settings.
         // Starting too early causes our mic_selection=PC and dax=1 to be
