@@ -317,8 +317,9 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
     // Client-side auto-black: track the noise floor from tile data and adjust
     // the black threshold to sit just above it. This replaces the radio's
     // auto_black which targets SmartSDR's different rendering engine.
-    if (m_wfAutoBlack) {
-        // Estimate noise floor as the 25th percentile of intensity values.
+    if (m_wfAutoBlack && !m_transmitting) {
+        // Estimate noise floor from incoming tiles.
+        // Freeze during TX; threshold is restored to pre-TX value on TX→RX transition.
         // Cheaper than full sort: sample every 8th bin.
         float sum = 0;
         float minVal = 1e9f, maxVal = -1e9f;

@@ -142,7 +142,13 @@ public:
     };
     void setTnfMarkers(const QVector<TnfMarker>& markers);
     void setTnfGlobalEnabled(bool on);
-    void setTransmitting(bool tx) { m_transmitting = tx; }
+    void setTransmitting(bool tx) {
+        if (tx && !m_transmitting)
+            m_preTxAutoBlack = m_autoBlackThresh;  // save before TX
+        if (!tx && m_transmitting)
+            m_autoBlackThresh = m_preTxAutoBlack;  // restore after TX
+        m_transmitting = tx;
+    }
 
 signals:
     // Emitted when user clicks on an inactive slice marker.
@@ -292,6 +298,7 @@ private:
     int  m_rfGainValue{0};
 
     bool     m_transmitting{false};
+    float    m_preTxAutoBlack{145.0f}; // auto-black threshold saved before TX
 
     // Waterfall time scale: ms-per-row derived from tile timecodes + wall-clock.
     // Calibrates over the first 50 tiles, then locks to prevent jitter.
