@@ -836,6 +836,11 @@ MainWindow::MainWindow(QWidget* parent)
         m_paTempLabel->setText(QString("PA %1\u00B0C  |  %2 V")
             .arg(paTemp, 0, 'f', 0)
             .arg(supplyVolts, 0, 'f', 1));
+
+        // Update station label (nickname arrives via status after connect)
+        const QString nick = m_radioModel.nickname();
+        if (!nick.isEmpty())
+            m_stationLabel->setText(QString("STATION: %1").arg(nick));
     });
 
     connect(&m_radioModel, &RadioModel::gpsStatusChanged,
