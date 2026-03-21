@@ -105,14 +105,21 @@ private:
     // Pending WAN radio (between requestConnect and connectReady)
     WanRadioInfo     m_pendingWanRadio;
 
-    // Status bar labels
-    QLabel* m_connStatusLabel{nullptr};
+    // Status bar labels (SmartSDR-style)
+    QLabel* m_connStatusLabel{nullptr};   // hidden, used for connection state logic
+    QLabel* m_tnfIndicator{nullptr};
+    QLabel* m_cwxIndicator{nullptr};
+    QLabel* m_dvkIndicator{nullptr};
+    QLabel* m_fdxIndicator{nullptr};
     QLabel* m_radioInfoLabel{nullptr};
-    QLabel* m_gpsTimeLabel{nullptr};
-    QLabel* m_networkLabel{nullptr};
-    QLabel* m_paTempLabel{nullptr};
+    QLabel* m_stationLabel{nullptr};
     QLabel* m_gpsLabel{nullptr};
     QLabel* m_gridLabel{nullptr};
+    QLabel* m_paTempLabel{nullptr};
+    QLabel* m_networkLabel{nullptr};
+    QLabel* m_tunIndicator{nullptr};
+    QLabel* m_txIndicator{nullptr};
+    QLabel* m_gpsTimeLabel{nullptr};
 
     // Active slice tracking for multi-slice support
     int m_activeSliceId{-1};

@@ -249,6 +249,15 @@ MainWindow::MainWindow(QWidget* parent)
             this, [this](bool tx) {
         spectrum()->setTransmitting(tx);
         m_audio.setTransmitting(tx);
+
+        // Update TX status bar indicator
+        if (tx) {
+            m_txIndicator->setText("TX");
+            m_txIndicator->setStyleSheet("QLabel { color: #e04040; font-weight: bold; }");
+        } else {
+            m_txIndicator->setText("TX");
+            m_txIndicator->setStyleSheet("QLabel { color: #00e060; font-weight: bold; }");
+        }
         // On RX resume, native tiles will restart and m_hasNativeWaterfall
         // will be set again by the first arriving tile.
 #ifdef HAVE_RADE
@@ -339,6 +348,12 @@ MainWindow::MainWindow(QWidget* parent)
     connect(tnf, &TnfModel::tnfRemoved,           this, rebuildTnfMarkers);
     connect(tnf, &TnfModel::globalEnabledChanged,
             spectrum(), &SpectrumWidget::setTnfGlobalEnabled);
+    connect(tnf, &TnfModel::globalEnabledChanged,
+            this, [this](bool on) {
+        m_tnfIndicator->setStyleSheet(on
+            ? "QLabel { color: #00e060; font-weight: bold; }"
+            : "QLabel { color: #404858; font-weight: bold; }");
+    });
     connect(spectrum(), &SpectrumWidget::tnfCreateRequested,
             tnf, &TnfModel::createTnf);
     connect(spectrum(), &SpectrumWidget::tnfMoveRequested,
@@ -706,6 +721,18 @@ MainWindow::MainWindow(QWidget* parent)
     // Show/hide TUNE button + applet based on TGXL presence
     connect(m_radioModel.tunerModel(), &TunerModel::presenceChanged,
             m_appletPanel, &AppletPanel::setTunerVisible);
+    connect(m_radioModel.tunerModel(), &TunerModel::presenceChanged,
+            this, [this](bool present) {
+        m_tunIndicator->setStyleSheet(present
+            ? "QLabel { color: #00e060; font-weight: bold; }"
+            : "QLabel { color: #404858; font-weight: bold; }");
+    });
+    connect(m_radioModel.tunerModel(), &TunerModel::tuningChanged,
+            this, [this](bool tuning) {
+        m_tunIndicator->setStyleSheet(tuning
+            ? "QLabel { color: #e0e040; font-weight: bold; }"  // yellow while tuning
+            : "QLabel { color: #00e060; font-weight: bold; }");
+    });
 
     // Switch Fwd Power gauge scale based on radio max power and amplifier presence.
     // All three power gauges (TxApplet, TunerApplet, SMeterWidget) update together.
@@ -1137,37 +1164,109 @@ void MainWindow::buildUI()
     const int centerWidth = qMax(400, width() - 260 - 310);
     splitter->setSizes({260, centerWidth, 310});
 
-    // ── Status bar ─────────────────────────────────────────────────────────
-    const QString statusStyle = "QLabel { color: #8aa8c0; font-size: 11px; background: transparent; }";
+    // ── Status bar (SmartSDR-style) ──────────────────────────────────────
+    statusBar()->setStyleSheet(
+        "QStatusBar { background: #0a0a14; border-top: 1px solid #203040; }"
+        "QStatusBar::item { border: none; }"
+        "QLabel { font-size: 11px; background: transparent; }");
 
-    m_connStatusLabel = new QLabel("Disconnected", this);
-    m_connStatusLabel->setStyleSheet(statusStyle);
+    const QString valStyle  = "QLabel { color: #8aa8c0; }";
+    const QString sepStyle  = "QLabel { color: #304050; }";
+    const QString greyInd   = "QLabel { color: #404858; font-weight: bold; }";
+    const QString greenInd  = "QLabel { color: #00e060; font-weight: bold; }";
+    const QString redInd    = "QLabel { color: #e04040; font-weight: bold; }";
+
+    auto addSep = [&]() {
+        auto* sep = new QLabel(" · ", this);
+        sep->setStyleSheet(sepStyle);
+        statusBar()->addWidget(sep);
+    };
+
+    // Hidden connection state label (used by connect/disconnect logic)
+    m_connStatusLabel = new QLabel("", this);
+    m_connStatusLabel->hide();
     statusBar()->addWidget(m_connStatusLabel);
 
-    m_networkLabel = new QLabel("", this);
-    m_networkLabel->setStyleSheet(statusStyle);
-    statusBar()->addWidget(m_networkLabel);
+    // Feature indicators: TNF CWX DVK FDX
+    m_tnfIndicator = new QLabel("TNF", this);
+    m_tnfIndicator->setStyleSheet(greyInd);
+    statusBar()->addWidget(m_tnfIndicator);
 
+    m_cwxIndicator = new QLabel("CWX", this);
+    m_cwxIndicator->setStyleSheet(greyInd);
+    statusBar()->addWidget(m_cwxIndicator);
+
+    m_dvkIndicator = new QLabel("DVK", this);
+    m_dvkIndicator->setStyleSheet(greyInd);
+    statusBar()->addWidget(m_dvkIndicator);
+
+    m_fdxIndicator = new QLabel("FDX", this);
+    m_fdxIndicator->setStyleSheet(greyInd);
+    statusBar()->addWidget(m_fdxIndicator);
+
+    addSep();
+
+    // Radio model + firmware
     m_radioInfoLabel = new QLabel("", this);
-    m_radioInfoLabel->setStyleSheet(statusStyle);
+    m_radioInfoLabel->setStyleSheet(valStyle);
     statusBar()->addWidget(m_radioInfoLabel);
 
-    m_gpsTimeLabel = new QLabel("", this);
-    m_gpsTimeLabel->setStyleSheet(statusStyle);
-    m_gpsTimeLabel->setAlignment(Qt::AlignCenter);
-    statusBar()->addWidget(m_gpsTimeLabel, 1);
+    addSep();
 
-    m_paTempLabel = new QLabel("", this);
-    m_paTempLabel->setStyleSheet(statusStyle);
-    statusBar()->addPermanentWidget(m_paTempLabel);
+    // Station name
+    m_stationLabel = new QLabel("", this);
+    m_stationLabel->setStyleSheet(valStyle);
+    statusBar()->addWidget(m_stationLabel);
 
+    addSep();
+
+    // GPS + grid
     m_gpsLabel = new QLabel("", this);
-    m_gpsLabel->setStyleSheet(statusStyle);
-    statusBar()->addPermanentWidget(m_gpsLabel);
+    m_gpsLabel->setStyleSheet(valStyle);
+    statusBar()->addWidget(m_gpsLabel);
 
     m_gridLabel = new QLabel("", this);
-    m_gridLabel->setStyleSheet(statusStyle);
-    statusBar()->addPermanentWidget(m_gridLabel);
+    m_gridLabel->setStyleSheet(valStyle);
+    statusBar()->addWidget(m_gridLabel);
+
+    addSep();
+
+    // PA temp + voltage
+    m_paTempLabel = new QLabel("", this);
+    m_paTempLabel->setStyleSheet(valStyle);
+    statusBar()->addWidget(m_paTempLabel);
+
+    addSep();
+
+    // Network quality
+    m_networkLabel = new QLabel("", this);
+    m_networkLabel->setStyleSheet(valStyle);
+    m_networkLabel->setTextFormat(Qt::RichText);
+    statusBar()->addWidget(m_networkLabel);
+
+    addSep();
+
+    // Tuner status
+    m_tunIndicator = new QLabel("TUN", this);
+    m_tunIndicator->setStyleSheet(greyInd);
+    statusBar()->addWidget(m_tunIndicator);
+
+    addSep();
+
+    // TX state
+    m_txIndicator = new QLabel("TX", this);
+    m_txIndicator->setStyleSheet(greenInd);
+    statusBar()->addWidget(m_txIndicator);
+
+    // Spacer
+    auto* spacer = new QLabel("", this);
+    statusBar()->addWidget(spacer, 1);
+
+    // Date/time (right-aligned)
+    m_gpsTimeLabel = new QLabel("", this);
+    m_gpsTimeLabel->setStyleSheet(valStyle);
+    m_gpsTimeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    statusBar()->addPermanentWidget(m_gpsTimeLabel);
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -1245,10 +1344,11 @@ void MainWindow::onConnectionStateChanged(bool connected)
 {
     m_connPanel->setConnected(connected);
     if (connected) {
-        const QString info = QString("%1  %2")
-            .arg(m_radioModel.model(), m_radioModel.version());
+        m_radioInfoLabel->setText(QString("%1  %2")
+            .arg(m_radioModel.model(), m_radioModel.version()));
+        m_stationLabel->setText(QString("STATION: %1").arg(
+            m_radioModel.callsign().isEmpty() ? m_radioModel.nickname() : m_radioModel.callsign()));
         m_connStatusLabel->setText("Connected");
-        m_radioInfoLabel->setText(info);
         m_connPanel->setStatusText("Connected");
         m_audio.startRxStream();
         // TX audio stream will start when the radio assigns a stream ID
@@ -1315,6 +1415,11 @@ void MainWindow::onConnectionStateChanged(bool connected)
     } else {
         m_connStatusLabel->setText("Disconnected");
         m_radioInfoLabel->setText("");
+        m_stationLabel->setText("");
+        m_tnfIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; }");
+        m_tunIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; }");
+        m_txIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; }");
+        m_txIndicator->setText("TX");
         m_connPanel->setStatusText("Not connected");
 #if defined(Q_OS_MAC) || defined(HAVE_PIPEWIRE)
         stopDax();
