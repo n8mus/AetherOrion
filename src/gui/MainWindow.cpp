@@ -824,9 +824,8 @@ MainWindow::MainWindow(QWidget* parent)
         if (quality == "Fair") color = "#cc9900";
         else if (quality == "Poor") color = "#cc3333";
         else if (quality == "Good") color = "#00b4d8";
-        m_networkLabel->setText(QString("Network: [<span style='color:%1'>%2</span>]")
+        m_networkLabel->setText(QString("[<span style='color:%1'>%2</span>]")
             .arg(color, quality));
-        m_networkLabel->setTextFormat(Qt::RichText);
         m_networkLabel->setToolTip(QString("Network: %1\nLatency (RTT): %2")
             .arg(quality, pingMs < 1 ? "< 1 ms" : QString("%1 ms").arg(pingMs)));
     });
@@ -1292,12 +1291,23 @@ void MainWindow::buildUI()
 
     addSep();
 
+    // Network label (top) + quality (bottom) stacked
+    auto* netStack = new QWidget;
+    netStack->setCursor(Qt::PointingHandCursor);
+    auto* netVbox = new QVBoxLayout(netStack);
+    netVbox->setContentsMargins(0, 0, 0, 0);
+    netVbox->setSpacing(0);
+    auto* netTitle = new QLabel("Network:");
+    netTitle->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
+    netTitle->setAlignment(Qt::AlignCenter);
+    netVbox->addWidget(netTitle);
     m_networkLabel = new QLabel("");
-    m_networkLabel->setStyleSheet(valStyle);
+    m_networkLabel->setStyleSheet("QLabel { color: #607080; font-size: 12px; }");
     m_networkLabel->setTextFormat(Qt::RichText);
-    m_networkLabel->setCursor(Qt::PointingHandCursor);
+    m_networkLabel->setAlignment(Qt::AlignCenter);
     m_networkLabel->installEventFilter(this);
-    hbox->addWidget(m_networkLabel);
+    netVbox->addWidget(m_networkLabel);
+    hbox->addWidget(netStack);
 
     addSep();
 
