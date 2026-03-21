@@ -239,16 +239,40 @@ This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app laun
 
 ## Roadmap
 
-- [ ] SmartLink Opus audio compression for low-bandwidth WAN
+### Shipped
 - [x] DAX audio channels — Linux (PulseAudio/PipeWire pipe modules), macOS (CoreAudio HAL plugin)
-- [ ] DAX audio channels — Windows virtual audio devices
-- [ ] Multi-slice support
+- [x] SmartLink Opus audio compression with Auto/None/Opus toggle
+- [x] Multi-slice support with color-coded markers and independent TX assignment
+- [x] CW decoder (ggmorse) with confidence-colored text
+- [x] CW auto-tune (Once / Loop) via `slice auto_tune`
+- [x] CW morse commands in rigctld for contest loggers (N1MM+, Win-Test)
+- [x] Serial port PTT/CW keying (straight key, paddle, foot switch)
+- [x] NR2 spectral noise reduction (Ephraim-Malah, FFTW3)
+- [x] RN2 neural noise suppression (RNNoise, AVX2/SSE4.1)
+- [x] RADE digital voice (FreeDV Radio Autoencoder) on worker thread
+- [x] Opus compressed audio for SmartLink WAN
+- [x] Per-module diagnostic logging (Help → Support)
+- [x] macOS code signing and notarization
+- [x] Windows Inno Setup installer
+- [x] Digital mode frequency markers (FT8/FT4/WSPR/JS8Call/PSK31/RTTY, verified against WSJT-X)
+- [x] 3-tier TX power meters (barefoot/Aurora/PGXL)
+- [x] Memory channel editor (all columns editable)
+- [x] SmartSDR-style status bar with clickable TNF toggle
+
+### In Progress
+- [ ] Diversity mode (DIV) — toggle implemented, ESC phase/gain controls planned (#20, #38)
+- [ ] DAX IQ streaming for SDR apps (#124)
+- [ ] SmartLink own Auth0 credentials (pending FlexRadio developer support)
+
+### Planned
+- [ ] DAX audio channels — Windows virtual audio devices (#87)
 - [ ] Band stacking registers
 - [ ] Spot / DX cluster integration
-- [ ] CW keyer and memory support
+- [ ] CW keyer memories and CWX macros (#18)
 - [ ] Keyboard shortcuts and hotkeys
+- [ ] Master PC volume control (#137)
 
-See the full [issue tracker](https://github.com/ten9876/AetherSDR/issues) for 45+ tracked features and enhancements.
+See the full [issue tracker](https://github.com/ten9876/AetherSDR/issues) for all tracked features and enhancements.
 
 ---
 
