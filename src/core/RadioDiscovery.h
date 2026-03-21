@@ -25,13 +25,22 @@ struct RadioInfo {
     bool inUse{false};
     bool isRouted{false};
 
+    // Connected GUI client stations (from discovery broadcast)
+    QStringList guiClientStations;
+
     QString displayName() const {
-        const QString connType = isRouted ? "routed" : "local";
+        QString suffix;
+        if (!guiClientStations.isEmpty()) {
+            const QString& station = guiClientStations.first();
+            suffix = QString("Multi-Flex: %1").arg(station.isEmpty() ? "unknown" : station);
+        } else {
+            suffix = isRouted ? "routed" : "Local";
+        }
         if (nickname.isEmpty() && callsign.isEmpty())
             return QString("%1 @ %2\nAvailable (%3)")
-                .arg(model, address.toString(), connType);
+                .arg(model, address.toString(), suffix);
         return QString("%1  %2  %3\nAvailable (%4)")
-            .arg(model, nickname, callsign, connType);
+            .arg(model, nickname, callsign, suffix);
     }
 };
 
