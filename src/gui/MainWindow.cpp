@@ -1181,7 +1181,7 @@ void MainWindow::buildUI()
     splitter->setSizes({260, centerWidth, 310});
 
     // ── Status bar (SmartSDR-style, double height) ─────────────────────
-    statusBar()->setFixedHeight(56);
+    statusBar()->setFixedHeight(40);
     statusBar()->setStyleSheet(
         "QStatusBar { background: #0a0a14; border-top: 1px solid #203040; }"
         "QStatusBar::item { border: none; }"
