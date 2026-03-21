@@ -253,7 +253,7 @@ MainWindow::MainWindow(QWidget* parent)
         // Update TX status bar indicator
         if (tx) {
             m_txIndicator->setText("TX");
-            m_txIndicator->setStyleSheet("QLabel { color: #e04040; font-weight: bold; font-size: 21px; }");
+            m_txIndicator->setStyleSheet("QLabel { color: white; background: #c03030; font-weight: bold; font-size: 21px; border-radius: 4px; padding: 0px 1px; }");
         } else {
             m_txIndicator->setText("TX");
             m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
@@ -1327,6 +1327,8 @@ void MainWindow::buildUI()
     addSep();
 
     m_txIndicator = new QLabel("TX");
+    m_txIndicator->setFixedSize(36, 36);
+    m_txIndicator->setAlignment(Qt::AlignCenter);
     m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
     hbox->addWidget(m_txIndicator);
 
