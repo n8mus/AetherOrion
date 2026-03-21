@@ -62,15 +62,39 @@ MemoryDialog::MemoryDialog(RadioModel* model, QWidget* parent)
             populateTable();  // refresh from cache
     });
 
-    // Send name edits to the radio
+    // Send edits to the radio when any cell changes
     connect(m_table, &QTableWidget::cellChanged, this, [this](int row, int col) {
-        if (col != 3) return;  // only Name column
         auto* indexItem = m_table->item(row, 0);
         if (!indexItem) return;
         int memIdx = indexItem->data(Qt::UserRole).toInt();
-        QString name = m_table->item(row, col)->text().replace(' ', '\x7f');
-        m_model->sendCommand(
-            QString("memory set %1 name=%2").arg(memIdx).arg(name));
+        auto* item = m_table->item(row, col);
+        if (!item) return;
+        QString val = item->text();
+        QString base = QString("memory set %1 ").arg(memIdx);
+
+        // Map column index to memory set parameter
+        switch (col) {
+        case 0:  m_model->sendCommand(base + "group=" + val.replace(' ', '\x7f')); break;
+        case 1:  m_model->sendCommand(base + "owner=" + val.replace(' ', '\x7f')); break;
+        case 2:  m_model->sendCommand(base + "freq=" + val); break;
+        case 3:  m_model->sendCommand(base + "name=" + val.replace(' ', '\x7f')); break;
+        case 4:  m_model->sendCommand(base + "mode=" + val); break;
+        case 5:  m_model->sendCommand(base + "step=" + val); break;
+        case 6:  m_model->sendCommand(base + "repeater=" + val); break;
+        case 7:  m_model->sendCommand(base + "repeater_offset=" + val); break;
+        case 8:  m_model->sendCommand(base + "tone_mode=" + val); break;
+        case 9:  m_model->sendCommand(base + "tone_value=" + val); break;
+        case 10: m_model->sendCommand(base + QString("squelch=%1")
+                     .arg(item->checkState() == Qt::Checked ? 1 : 0)); break;
+        case 11: m_model->sendCommand(base + "squelch_level=" + val); break;
+        case 12: m_model->sendCommand(base + "rx_filter_low=" + val); break;
+        case 13: m_model->sendCommand(base + "rx_filter_high=" + val); break;
+        case 14: m_model->sendCommand(base + "rtty_mark=" + val); break;
+        case 15: m_model->sendCommand(base + "rtty_shift=" + val); break;
+        case 16: m_model->sendCommand(base + "digl_offset=" + val); break;
+        case 17: m_model->sendCommand(base + "digu_offset=" + val); break;
+        default: break;
+        }
     });
 
     // The radio doesn't support "sub memory all" or "memory list".
@@ -130,11 +154,12 @@ void MemoryDialog::populateTable()
         // Store memory index in first column's data for retrieval
         m_table->item(row, 0)->setData(Qt::UserRole, m.index);
 
-        // Make all columns read-only except Name (column 3)
+        // All columns are editable (double-click to edit).
+        // Squelch column (10) uses checkbox — keep it user-checkable.
         for (int c = 0; c < m_table->columnCount(); ++c) {
             auto* item = m_table->item(row, c);
-            if (item && c != 3)
-                item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+            if (item && c != 10)
+                item->setFlags(item->flags() | Qt::ItemIsEditable);
         }
     }
 
