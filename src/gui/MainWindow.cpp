@@ -1273,10 +1273,6 @@ void MainWindow::buildUI()
     gpsVbox->addWidget(m_gpsStatusLabel);
     hbox->addWidget(gpsStack);
 
-    m_gridLabel = new QLabel("");
-    m_gridLabel->setStyleSheet(valStyle);
-    hbox->addWidget(m_gridLabel);
-
     addSep();
 
     // PA temp (top) + supply voltage (bottom) stacked
@@ -1317,9 +1313,20 @@ void MainWindow::buildUI()
 
     addSep();
 
+    // Grid square (top) + UTC time (bottom) stacked, right-aligned
+    auto* timeStack = new QWidget;
+    auto* timeVbox = new QVBoxLayout(timeStack);
+    timeVbox->setContentsMargins(0, 0, 0, 0);
+    timeVbox->setSpacing(0);
+    m_gridLabel = new QLabel("");
+    m_gridLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
+    m_gridLabel->setAlignment(Qt::AlignRight);
     m_gpsTimeLabel = new QLabel("");
-    m_gpsTimeLabel->setStyleSheet(valStyle);
-    hbox->addWidget(m_gpsTimeLabel);
+    m_gpsTimeLabel->setStyleSheet("QLabel { color: #607080; font-size: 12px; }");
+    m_gpsTimeLabel->setAlignment(Qt::AlignRight);
+    timeVbox->addWidget(m_gridLabel);
+    timeVbox->addWidget(m_gpsTimeLabel);
+    hbox->addWidget(timeStack);
 
     statusBar()->addWidget(container, 1);
 }
