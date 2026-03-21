@@ -423,11 +423,9 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                         const QStringList ids = body.trimmed().split(' ', Qt::SkipEmptyParts);
                         qCDebug(lcProtocol) << "RadioModel: slice list ->" << (ids.isEmpty() ? "(empty)" : body);
 
-                        if (ids.isEmpty() || m_slices.isEmpty()) {
-                            // No slices at all, or no slices belonging to us
-                            qCDebug(lcProtocol) << "RadioModel: creating own slice (total on radio:"
-                                     << ids.size() << ", ours:" << m_slices.size() << ")";
-                            // Use saved frequency/mode from last session if available
+                        if (ids.isEmpty()) {
+                            // Radio has no slices at all — create one
+                            qCDebug(lcProtocol) << "RadioModel: no slices on radio, creating default";
                             auto& settings = AppSettings::instance();
                             double lastFreq = settings.value("LastFrequency", "0").toDouble();
                             QString lastMode = settings.value("LastMode", "").toString();
@@ -438,6 +436,31 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                             } else {
                                 createDefaultSlice();
                             }
+                        } else if (m_slices.isEmpty()) {
+                            // Radio has slices but we haven't matched any to our
+                            // client_handle yet (status messages still in flight).
+                            // Defer the decision to give status messages time to
+                            // arrive and populate m_slices via handleSliceStatus.
+                            qCDebug(lcProtocol) << "RadioModel: radio has" << ids.size()
+                                     << "slice(s) but none matched yet — deferring 500ms";
+                            QTimer::singleShot(500, this, [this]() {
+                                if (m_slices.isEmpty() && isConnected()) {
+                                    qCDebug(lcProtocol) << "RadioModel: deferred check — still no owned slices, creating default";
+                                    auto& settings = AppSettings::instance();
+                                    double lastFreq = settings.value("LastFrequency", "0").toDouble();
+                                    QString lastMode = settings.value("LastMode", "").toString();
+                                    if (lastFreq > 0.0) {
+                                        createDefaultSlice(
+                                            QString::number(lastFreq, 'f', 6),
+                                            lastMode.isEmpty() ? "USB" : lastMode);
+                                    } else {
+                                        createDefaultSlice();
+                                    }
+                                } else if (!m_slices.isEmpty()) {
+                                    qCDebug(lcProtocol) << "RadioModel: deferred check — adopted"
+                                             << m_slices.size() << "existing slice(s)";
+                                }
+                            });
                         } else {
                             qCDebug(lcProtocol) << "RadioModel: SmartConnect — using our pan"
                                      << m_panId << "and" << m_slices.size() << "slice(s)";
