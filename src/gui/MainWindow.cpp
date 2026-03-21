@@ -70,24 +70,6 @@ MainWindow::MainWindow(QWidget* parent)
     buildUI();
 
     // ── Wire up discovery ──────────────────────────────────────────────────
-    // ── Collapsible connection panel ─────────────────────────────────────
-    connect(m_connPanel, &ConnectionPanel::collapsedChanged,
-            this, [this](bool collapsed) {
-        auto sizes = m_splitter->sizes();
-        if (collapsed) {
-            sizes[1] += sizes[0] - 28;
-            sizes[0] = 28;
-        } else {
-            m_userExpandedPanel = true;
-            sizes[1] -= (260 - sizes[0]);
-            sizes[0] = 260;
-        }
-        m_splitter->setSizes(sizes);
-        auto& ss = AppSettings::instance();
-        ss.setValue("ConnPanelCollapsed", collapsed ? "True" : "False");
-        ss.save();
-    });
-
     connect(&m_discovery, &RadioDiscovery::radioDiscovered,
             m_connPanel, &ConnectionPanel::onRadioDiscovered);
     connect(&m_discovery, &RadioDiscovery::radioUpdated,
@@ -904,13 +886,18 @@ MainWindow::MainWindow(QWidget* parent)
     const QString stateB64 = s.value("MainWindowState").toString();
     if (!stateB64.isEmpty())
         restoreState(QByteArray::fromBase64(stateB64.toLatin1()));
-    const QString splitB64 = s.value("SplitterState").toString();
-    if (!splitB64.isEmpty())
-        m_splitter->restoreState(QByteArray::fromBase64(splitB64.toLatin1()));
+    // Clear stale 3-pane splitter state — now 2-pane layout.
+    s.remove("SplitterState");
+    // Force 2-pane sizing: spectrum gets all remaining width, applet panel fixed at 260px
+    QTimer::singleShot(0, this, [this]() {
+        m_splitter->setSizes({width() - 260, 260});
+    });
 
-    // Restore connection panel state
-    if (s.value("ConnPanelCollapsed", "False").toString() == "True")
-        m_connPanel->setCollapsed(true);
+    // Auto-popup connection dialog if no saved radio
+    QString lastSerial = s.value("LastConnectedRadioSerial", "").toString();
+    if (lastSerial.isEmpty()) {
+        QTimer::singleShot(500, this, [this]() { toggleConnectionDialog(); });
+    }
 }
 
 MainWindow::~MainWindow() = default;
@@ -920,8 +907,8 @@ void MainWindow::closeEvent(QCloseEvent* event)
     auto& s = AppSettings::instance();
     s.setValue("MainWindowGeometry", saveGeometry().toBase64());
     s.setValue("MainWindowState",   saveState().toBase64());
-    s.setValue("SplitterState",     m_splitter->saveState().toBase64());
-    s.setValue("ConnPanelCollapsed", m_connPanel->isCollapsed() ? "True" : "False");
+    // SplitterState no longer saved (2-pane layout uses stretch factors)
+    // ConnPanelCollapsed removed — panel is now a popup dialog
 
     // Save active slice frequency/mode for restore on next launch
     auto* sl = activeSlice();
@@ -944,7 +931,30 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         dlg.exec();
         return true;
     }
+    if (obj == m_stationNickLabel && event->type() == QEvent::MouseButtonDblClick) {
+        toggleConnectionDialog();
+        return true;
+    }
     return QMainWindow::eventFilter(obj, event);
+}
+
+void MainWindow::toggleConnectionDialog()
+{
+    if (m_connPanel->isVisible()) {
+        m_connPanel->hide();
+        return;
+    }
+    // Position above the status bar, centered on station label
+    QPoint statusBarTop = statusBar()->mapToGlobal(QPoint(0, 0));
+    QPoint labelCenter = m_stationNickLabel->mapToGlobal(
+        QPoint(m_stationNickLabel->width() / 2, 0));
+    int dlgW = m_connPanel->width();
+    int dlgH = m_connPanel->height();
+    QPoint pos(labelCenter.x() - dlgW / 2,
+               statusBarTop.y() - dlgH - 4);
+    m_connPanel->move(pos);
+    m_connPanel->show();
+    m_connPanel->raise();
 }
 
 // ─── UI Construction ──────────────────────────────────────────────────────────
@@ -996,7 +1006,7 @@ void MainWindow::buildMenuBar()
 
     auto* chooseRadio = settingsMenu->addAction("Choose Radio / SmartLink Setup...");
     connect(chooseRadio, &QAction::triggered, this, [this] {
-        m_connPanel->setCollapsed(false);
+        toggleConnectionDialog();
     });
 
     settingsMenu->addAction("FlexControl...");
@@ -1155,21 +1165,22 @@ void MainWindow::buildUI()
     setCentralWidget(m_splitter);
     auto* splitter = m_splitter;
 
-    // Left sidebar — connection panel
-    m_connPanel = new ConnectionPanel(splitter);
-    m_connPanel->setFixedWidth(260);
-    splitter->addWidget(m_connPanel);
+    // Connection panel — floating popup (not in splitter)
+    m_connPanel = new ConnectionPanel(this);
+    m_connPanel->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+    m_connPanel->setFixedSize(300, 420);
+    m_connPanel->hide();
 
     // Centre — panadapter applet (title bar + FFT spectrum + waterfall)
     m_panApplet = new PanadapterApplet(splitter);
     splitter->addWidget(m_panApplet);
-    splitter->setStretchFactor(1, 1);
+    splitter->setStretchFactor(0, 1);
 
     // Right — applet panel (includes S-Meter)
     m_appletPanel = new AppletPanel(splitter);
     splitter->addWidget(m_appletPanel);
-    splitter->setStretchFactor(2, 0);
-    splitter->setCollapsible(2, false);
+    splitter->setStretchFactor(1, 0);
+    splitter->setCollapsible(1, false);
 
     // Set initial splitter sizes: left=260, center=stretch, right=310
     // The center pane gets whatever is left after the fixed-width sidebars.
@@ -1250,12 +1261,15 @@ void MainWindow::buildUI()
     stationPrefix->setStyleSheet(valStyle);
     hbox->addWidget(stationPrefix);
 
-    m_stationLabel = new QLabel("");
-    m_stationLabel->setStyleSheet(
+    m_stationNickLabel = new QLabel("N0CALL");
+    m_stationNickLabel->setStyleSheet(
         "QLabel { color: #c8d8e8; font-size: 21px; background: #0a0a14; "
         "border: 1px solid rgba(255,255,255,128); padding: 2px 12px; }");
-    m_stationLabel->setAlignment(Qt::AlignCenter);
-    hbox->addWidget(m_stationLabel);
+    m_stationNickLabel->setAlignment(Qt::AlignCenter);
+    m_stationNickLabel->setCursor(Qt::PointingHandCursor);
+    m_stationNickLabel->installEventFilter(this);
+    hbox->addWidget(m_stationNickLabel);
+    m_stationLabel = m_stationNickLabel;  // alias for existing references
 
     hbox->addStretch(1);
 
@@ -1434,9 +1448,8 @@ void MainWindow::onConnectionStateChanged(bool connected)
         m_connPanel->setStatusText("Connected");
         m_audio.startRxStream();
         // TX audio stream will start when the radio assigns a stream ID
-        // Auto-collapse the connection panel unless the user manually expanded it
-        if (!m_userExpandedPanel)
-            m_connPanel->setCollapsed(true);
+        // Auto-hide the connection dialog on successful connect
+        m_connPanel->hide();
 
         // Auto-start 4-channel rigctld TCP servers if enabled
         auto& as = AppSettings::instance();
@@ -1498,7 +1511,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
         m_connStatusLabel->setText("Disconnected");
         m_radioInfoLabel->setText("");
         m_radioVersionLabel->setText("");
-        m_stationLabel->setText("");
+        m_stationLabel->setText("N0CALL");
         m_tnfIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; font-size: 30px; }");
         m_tgxlIndicator->setVisible(false);
         m_pgxlIndicator->setVisible(false);

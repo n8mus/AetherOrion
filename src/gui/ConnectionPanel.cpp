@@ -4,6 +4,8 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QEvent>
+#include <QPainter>
+#include <QPainterPath>
 #include <QDebug>
 
 namespace AetherSDR {
@@ -11,32 +13,18 @@ namespace AetherSDR {
 ConnectionPanel::ConnectionPanel(QWidget* parent)
     : QWidget(parent)
 {
+    setAttribute(Qt::WA_TranslucentBackground);
+    setStyleSheet("ConnectionPanel { background: transparent; }");
+
     auto* vbox = new QVBoxLayout(this);
-    vbox->setContentsMargins(4, 4, 4, 4);
+    vbox->setContentsMargins(8, 8, 8, 8);
     vbox->setSpacing(6);
 
-    // Status row
-    auto* statusRow = new QHBoxLayout;
-    m_indicatorLabel = new QLabel("●", this);
-    m_indicatorLabel->setFixedWidth(20);
-    m_indicatorLabel->setAlignment(Qt::AlignCenter);
-    m_indicatorLabel->setCursor(Qt::PointingHandCursor);
-    m_indicatorLabel->installEventFilter(this);
-
+    // Status label (shows connection state text)
     m_statusLabel = new QLabel("Not connected", this);
-
-    m_collapseBtn = new QPushButton("\u25C0", this);  // ◀ left-pointing triangle
-    m_collapseBtn->setFixedSize(16, 16);
-    m_collapseBtn->setStyleSheet(
-        "QPushButton { background: transparent; border: none; "
-        "color: #6a8090; font-size: 10px; padding: 0; }"
-        "QPushButton:hover { color: #c8d8e8; }");
-    m_collapseBtn->setCursor(Qt::PointingHandCursor);
-
-    statusRow->addWidget(m_indicatorLabel);
-    statusRow->addWidget(m_statusLabel, 1);
-    statusRow->addWidget(m_collapseBtn);
-    vbox->addLayout(statusRow);
+    m_statusLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 11px; }");
+    m_statusLabel->setAlignment(Qt::AlignCenter);
+    vbox->addWidget(m_statusLabel);
 
     // Discovered radios list
     m_radioGroup = new QGroupBox("Discovered Radios", this);
@@ -128,9 +116,6 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
         emit smartLinkLoginRequested(email, pass);
     });
 
-    // Stretch at the bottom keeps the indicator at the top when collapsed
-    vbox->addStretch();
-
     // All widgets now exist — safe to call setConnected for initial state
     setConnected(false);
 
@@ -138,16 +123,11 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
             this, &ConnectionPanel::onListSelectionChanged);
     connect(m_connectBtn, &QPushButton::clicked,
             this, &ConnectionPanel::onConnectClicked);
-    connect(m_collapseBtn, &QPushButton::clicked,
-            this, [this]{ setCollapsed(true); });
 }
 
 void ConnectionPanel::setConnected(bool connected)
 {
     m_connected = connected;
-    m_indicatorLabel->setStyleSheet(
-        connected ? "color: #00e5ff; font-size: 18px;"
-                  : "color: #404040; font-size: 18px;");
     m_connectBtn->setText(connected ? "Disconnect" : "Connect");
     m_connectBtn->setEnabled(connected || m_radioList->currentItem() != nullptr);
 }
@@ -301,36 +281,15 @@ void ConnectionPanel::setSmartLinkClient(SmartLinkClient* client)
     });
 }
 
-void ConnectionPanel::setCollapsed(bool collapsed)
+void ConnectionPanel::paintEvent(QPaintEvent*)
 {
-    m_collapsed = collapsed;
-    m_radioGroup->setVisible(!collapsed);
-    m_connectBtn->setVisible(!collapsed);
-    m_statusLabel->setVisible(!collapsed);
-    m_collapseBtn->setVisible(!collapsed);
-    m_smartLinkGroup->setVisible(!collapsed);
-    m_manualGroup->setVisible(!collapsed);
-
-    if (collapsed) {
-        m_expandedWidth = width();
-        setMinimumWidth(28);
-        setMaximumWidth(28);
-    } else {
-        setMinimumWidth(m_expandedWidth);
-        setMaximumWidth(m_expandedWidth);
-    }
-
-    emit collapsedChanged(collapsed);
-}
-
-bool ConnectionPanel::eventFilter(QObject* obj, QEvent* event)
-{
-    if (obj == m_indicatorLabel && event->type() == QEvent::MouseButtonPress) {
-        if (m_collapsed)
-            setCollapsed(false);
-        return true;
-    }
-    return QWidget::eventFilter(obj, event);
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    QPainterPath path;
+    path.addRoundedRect(rect().adjusted(1, 1, -1, -1), 8, 8);
+    p.fillPath(path, QColor(15, 15, 26));
+    p.setPen(QPen(QColor(255, 255, 255, 128), 1));
+    p.drawPath(path);
 }
 
 void ConnectionPanel::probeRadio(const QString& ip)

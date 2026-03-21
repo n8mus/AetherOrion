@@ -115,6 +115,7 @@ private:
     QLabel* m_radioInfoLabel{nullptr};
     QLabel* m_radioVersionLabel{nullptr};
     QLabel* m_stationLabel{nullptr};
+    QLabel* m_stationNickLabel{nullptr};
     QLabel* m_gpsLabel{nullptr};
     QLabel* m_gpsStatusLabel{nullptr};
     QLabel* m_gridLabel{nullptr};
@@ -132,7 +133,7 @@ private:
     // Guard: set true while updating controls from the model, so that
     // onFrequencyChanged doesn't echo the change back to the radio.
     bool m_updatingFromModel{false};
-    bool m_userExpandedPanel{false};
+    void toggleConnectionDialog();
     bool m_useSystemClock{true};     // true when no GPS installed
     bool m_userDisconnected{false};  // true after explicit disconnect, blocks auto-connect
     bool m_displaySettingsPushed{false};  // one-shot: push saved display settings after pan created
