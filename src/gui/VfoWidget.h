@@ -57,6 +57,7 @@ Q_SIGNALS:
     void pcAudioToggled(bool on);
 #ifdef HAVE_RADE
     void radeActivated(bool on);
+    void autotuneRequested(bool intermittent);  // CW auto-tune: false=once, true=loop
 #endif
 
 protected:
@@ -157,6 +158,9 @@ private:
     QGridLayout* m_filterGrid{nullptr};
     QVector<QPushButton*> m_filterBtns;
     QVector<int> m_filterWidths;
+    // CW autotune buttons (only visible in CW mode)
+    QPushButton* m_autotuneOnceBtn{nullptr};
+    QPushButton* m_autotuneLoopBtn{nullptr};
     // RIT/XIT tab
     QPushButton* m_ritBtn{nullptr};
     QPushButton* m_xitBtn{nullptr};

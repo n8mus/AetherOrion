@@ -146,6 +146,14 @@ void RadioModel::sendCwPaddle(bool dit, bool dah)
     sendCmd(QString("cw key %1 %2").arg(dit ? 1 : 0).arg(dah ? 1 : 0));
 }
 
+void RadioModel::cwAutoTune(int sliceId, bool intermittent)
+{
+    if (intermittent)
+        sendCmd(QString("slice auto_tune %1 int=1").arg(sliceId));
+    else
+        sendCmd(QString("slice auto_tune %1").arg(sliceId));
+}
+
 void RadioModel::addSlice()
 {
     if (m_panId.isEmpty()) {

@@ -171,6 +171,7 @@ public:
     void setTransmit(bool tx);
     void sendCwKey(bool down);                    // straight key: cw key 0|1
     void sendCwPaddle(bool dit, bool dah);        // iambic paddle: cw key <dit> <dah>
+    void cwAutoTune(int sliceId, bool intermittent); // slice auto_tune
     void addSlice();   // Create a new slice on the current panadapter
     void setPanBandwidth(double bandwidthMhz);
     void setPanCenter(double centerMhz);

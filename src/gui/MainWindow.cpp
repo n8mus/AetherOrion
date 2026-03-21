@@ -651,6 +651,13 @@ MainWindow::MainWindow(QWidget* parent)
         spectrum()->vfoWidget()->rn2Button()->setChecked(on);
     });
 
+    // CW autotune
+    connect(spectrum()->vfoWidget(), &VfoWidget::autotuneRequested,
+            this, [this](bool intermittent) {
+        auto* s = activeSlice();
+        if (s) m_radioModel.cwAutoTune(s->sliceId(), intermittent);
+    });
+
     // ── RxApplet RNN 3-state cycle → RN2 enable/disable ────────────────────
     connect(m_appletPanel->rxApplet(), &RxApplet::rn2CycleToggled,
             this, [this](bool on) {

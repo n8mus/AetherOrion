@@ -1747,7 +1747,7 @@ static const ModeFilterPresets& filterPresetsFor(const QString& mode)
     // From docs/vfo_mode_filters.csv — 8 presets per mode, 4x2 grid
     static const ModeFilterPresets usb{{1800, 2100, 2400, 2700, 2900, 3300, 4000, 6000}};
     static const ModeFilterPresets am {{5600, 6000, 8000, 10000, 12000, 14000, 16000, 20000}};
-    static const ModeFilterPresets cw {{50, 100, 250, 400, 500, 800, 1000, 3000}};
+    static const ModeFilterPresets cw {{50, 100, 250, 400}};
     static const ModeFilterPresets dig{{100, 300, 600, 1000, 1500, 2000, 3000, 6000}};
     static const ModeFilterPresets rtty{{250, 300, 350, 400, 500, 1000, 1500, 3000}};
     static const ModeFilterPresets dfm{{6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000}};
@@ -1790,6 +1790,9 @@ void VfoWidget::rebuildFilterButtons()
 {
     for (auto* btn : m_filterBtns) delete btn;
     m_filterBtns.clear();
+    // Remove autotune buttons if they exist (they'll be re-added for CW)
+    if (m_autotuneOnceBtn) { delete m_autotuneOnceBtn; m_autotuneOnceBtn = nullptr; }
+    if (m_autotuneLoopBtn) { delete m_autotuneLoopBtn; m_autotuneLoopBtn = nullptr; }
 
     for (int i = 0; i < m_filterWidths.size(); ++i) {
         const int w = m_filterWidths[i];
@@ -1803,6 +1806,42 @@ void VfoWidget::rebuildFilterButtons()
         m_filterBtns.append(btn);
         m_filterGrid->addWidget(btn, i / 4, i % 4);
     }
+
+    // Add CW autotune buttons in the second row when in CW mode
+    if (m_slice && (m_slice->mode() == "CW" || m_slice->mode() == "CWL")) {
+        int row = (m_filterWidths.size() + 3) / 4;  // next row after filter buttons
+
+        auto* label = new QLabel("Autotune:");
+        label->setStyleSheet("QLabel { color: #8898a8; font-size: 10px; }");
+        m_filterGrid->addWidget(label, row, 0);
+        // We'll track this via filterBtns for cleanup (it's a QLabel but parented to grid)
+
+        m_autotuneOnceBtn = new QPushButton("Once");
+        m_autotuneOnceBtn->setFixedHeight(26);
+        m_autotuneOnceBtn->setStyleSheet(
+            "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; "
+            "border-radius: 3px; font-size: 10px; padding: 0 8px; }"
+            "QPushButton:hover { background: #253545; }"
+            "QPushButton:pressed { background: #00607a; }");
+        connect(m_autotuneOnceBtn, &QPushButton::clicked, this, [this]() {
+            emit autotuneRequested(false);
+        });
+        m_filterGrid->addWidget(m_autotuneOnceBtn, row, 1);
+
+        m_autotuneLoopBtn = new QPushButton("Loop");
+        m_autotuneLoopBtn->setCheckable(true);
+        m_autotuneLoopBtn->setFixedHeight(26);
+        m_autotuneLoopBtn->setStyleSheet(
+            "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; "
+            "border-radius: 3px; font-size: 10px; padding: 0 8px; }"
+            "QPushButton:hover { background: #253545; }"
+            "QPushButton:checked { background: #00607a; color: #e0f0ff; border-color: #00b4d8; }");
+        connect(m_autotuneLoopBtn, &QPushButton::toggled, this, [this](bool on) {
+            emit autotuneRequested(on);
+        });
+        m_filterGrid->addWidget(m_autotuneLoopBtn, row, 2);
+    }
+
     updateFilterHighlight();
 }
 
