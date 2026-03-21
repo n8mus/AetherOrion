@@ -64,6 +64,41 @@ jobs:
             -verbose=1 \
             -always-overwrite
 
+      - name: Import code signing certificate
+        env:
+          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          # Decode certificate
+          echo "$APPLE_CERT_BASE64" | base64 --decode > cert.p12
+          # Create temporary keychain
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security set-keychain-settings build.keychain
+          # Import certificate
+          security import cert.p12 -k build.keychain -P "$APPLE_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          rm cert.p12
+
+      - name: Code sign application
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Sign all frameworks and dylibs first, then the app bundle
+          find build/AetherSDR.app -name "*.dylib" -o -name "*.framework" -type d | while read item; do
+            codesign --force --options runtime --timestamp \
+              --sign "Developer ID Application: ($APPLE_TEAM_ID)" "$item" 2>/dev/null || true
+          done
+          # Sign the main executable and app bundle
+          codesign --force --deep --options runtime --timestamp \
+            --sign "Developer ID Application: ($APPLE_TEAM_ID)" \
+            build/AetherSDR.app
+          # Verify
+          codesign --verify --deep --strict build/AetherSDR.app
+          echo "Code signing verified successfully"
+
       - name: Create DMG
         run: |
           create-dmg \
@@ -78,6 +113,31 @@ jobs:
             "AetherSDR-${{ github.ref_name }}-macOS-universal.dmg" \
             "build/AetherSDR.app" \
           || true  # create-dmg returns 2 on success with no code sign
+
+      - name: Sign DMG
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          codesign --force --timestamp \
+            --sign "Developer ID Application: ($APPLE_TEAM_ID)" \
+            AetherSDR-${{ github.ref_name }}-macOS-universal.dmg
+
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool submit \
+            AetherSDR-${{ github.ref_name }}-macOS-universal.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 600
+          # Staple the notarization ticket to the DMG
+          xcrun stapler staple \
+            AetherSDR-${{ github.ref_name }}-macOS-universal.dmg
+          echo "Notarization and stapling complete"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
