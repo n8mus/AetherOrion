@@ -1456,6 +1456,13 @@ void MainWindow::onConnectionStateChanged(bool connected)
         m_stationLabel->setText(m_radioModel.nickname());
         m_connStatusLabel->setText("Connected");
         m_connPanel->setStatusText("Connected");
+        // Show DIV button on dual-SCU radios
+        {
+            const QString& model = m_radioModel.model();
+            bool divAllowed = model.contains("6600") || model.contains("6700")
+                           || model.contains("8600") || model.contains("AU-520");
+            spectrum()->vfoWidget()->setDiversityAllowed(divAllowed);
+        }
         m_audio.startRxStream();
         // TX audio stream will start when the radio assigns a stream ID
         // Auto-hide the connection dialog on successful connect
@@ -1562,6 +1569,12 @@ void MainWindow::onSliceAdded(SliceModel* s)
             m_radioModel.createAudioStream();
         }
     }
+
+    // Re-claim TX assignment after profile load or slice recreation (#145).
+    // The radio sets tx=1 on the slice but tx_client_handle may be 0x00000000
+    // if the slice was destroyed and recreated (e.g. by profile global load).
+    if (s->isTxSlice())
+        m_radioModel.sendCommand(QString("slice set %1 tx=1").arg(s->sliceId()));
 
 #if defined(Q_OS_MAC) || defined(HAVE_PIPEWIRE)
     // Update m_daxTxMode when TX slice or its mode changes.
