@@ -1256,7 +1256,7 @@ void MainWindow::buildUI()
     m_stationLabel = new QLabel("");
     m_stationLabel->setStyleSheet(
         "QLabel { color: #c8d8e8; font-size: 21px; background: #0a0a14; "
-        "border: 1px solid #ffffff; padding: 2px 12px; }");
+        "border: 1px solid rgba(255,255,255,128); padding: 2px 12px; }");
     m_stationLabel->setAlignment(Qt::AlignCenter);
     hbox->addWidget(m_stationLabel);
 
