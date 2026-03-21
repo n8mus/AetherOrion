@@ -850,8 +850,11 @@ MainWindow::MainWindow(QWidget* parent)
                          const QString& utcTime) {
         const bool gpsPresent = (status != "Not Present" && status != "");
         m_gpsLabel->setText(gpsPresent
-            ? QString("GPS %1/%2 [%3]").arg(tracked).arg(visible).arg(status)
+            ? QString("GPS %1/%2").arg(tracked).arg(visible)
             : "GPS: N/A");
+        m_gpsStatusLabel->setText(gpsPresent
+            ? QString("[%1]").arg(status)
+            : "");
 
         if (!grid.isEmpty())
             m_gridLabel->setText(grid);
@@ -1256,9 +1259,20 @@ void MainWindow::buildUI()
     hbox->addStretch(1);
 
     // ── Right section ────────────────────────────────────────────────────
+    // GPS satellites (top) + lock status (bottom) stacked
+    auto* gpsStack = new QWidget;
+    auto* gpsVbox = new QVBoxLayout(gpsStack);
+    gpsVbox->setContentsMargins(0, 0, 0, 0);
+    gpsVbox->setSpacing(0);
     m_gpsLabel = new QLabel("");
-    m_gpsLabel->setStyleSheet(valStyle);
-    hbox->addWidget(m_gpsLabel);
+    m_gpsLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
+    m_gpsLabel->setAlignment(Qt::AlignCenter);
+    m_gpsStatusLabel = new QLabel("");
+    m_gpsStatusLabel->setStyleSheet("QLabel { color: #607080; font-size: 12px; }");
+    m_gpsStatusLabel->setAlignment(Qt::AlignCenter);
+    gpsVbox->addWidget(m_gpsLabel);
+    gpsVbox->addWidget(m_gpsStatusLabel);
+    hbox->addWidget(gpsStack);
 
     m_gridLabel = new QLabel("");
     m_gridLabel->setStyleSheet(valStyle);

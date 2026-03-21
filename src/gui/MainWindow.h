@@ -116,6 +116,7 @@ private:
     QLabel* m_radioVersionLabel{nullptr};
     QLabel* m_stationLabel{nullptr};
     QLabel* m_gpsLabel{nullptr};
+    QLabel* m_gpsStatusLabel{nullptr};
     QLabel* m_gridLabel{nullptr};
     QLabel* m_paTempLabel{nullptr};
     QLabel* m_networkLabel{nullptr};
