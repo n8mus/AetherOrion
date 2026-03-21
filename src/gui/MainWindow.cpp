@@ -914,9 +914,12 @@ void MainWindow::buildMenuBar()
 
     auto* radioSetup = settingsMenu->addAction("Radio Setup...");
     connect(radioSetup, &QAction::triggered, this, [this] {
+        // Snapshot compression setting before dialog opens
+        QString prevComp = m_radioModel.audioCompressionParam();
+
         auto* dlg = new RadioSetupDialog(&m_radioModel, &m_audio, this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
-        connect(dlg, &QDialog::finished, this, [this]() {
+        connect(dlg, &QDialog::finished, this, [this, prevComp]() {
 #ifdef HAVE_SERIALPORT
             // Re-load serial port settings if changed
             m_serialPort.loadSettings();
@@ -927,6 +930,18 @@ void MainWindow::buildMenuBar()
             if (s) {
                 bool isCw = (s->mode() == "CW" || s->mode() == "CWL");
                 m_panApplet->setCwPanelVisible(isCw && decodeOn);
+            }
+
+            // If audio compression changed, recreate the RX audio stream
+            QString newComp = m_radioModel.audioCompressionParam();
+            if (newComp != prevComp && m_radioModel.isConnected()) {
+                qDebug() << "MainWindow: audio compression changed from" << prevComp
+                         << "to" << newComp << "— recreating audio stream";
+                m_radioModel.removeRxAudioStream();
+                m_audio.setOpusTxEnabled(newComp == "opus");
+                QTimer::singleShot(500, this, [this]() {
+                    m_radioModel.createRxAudioStream();
+                });
             }
         });
         dlg->show();
