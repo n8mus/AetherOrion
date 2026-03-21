@@ -1360,8 +1360,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
     if (connected) {
         m_radioInfoLabel->setText(QString("%1  %2")
             .arg(m_radioModel.model(), m_radioModel.version()));
-        m_stationLabel->setText(QString("STATION: %1").arg(
-            m_radioModel.callsign().isEmpty() ? m_radioModel.nickname() : m_radioModel.callsign()));
+        m_stationLabel->setText(QString("STATION: %1").arg(m_radioModel.nickname()));
         m_connStatusLabel->setText("Connected");
         m_connPanel->setStatusText("Connected");
         m_audio.startRxStream();
