@@ -893,6 +893,14 @@ void MainWindow::closeEvent(QCloseEvent* event)
     s.setValue("MainWindowState",   saveState().toBase64());
     s.setValue("SplitterState",     m_splitter->saveState().toBase64());
     s.setValue("ConnPanelCollapsed", m_connPanel->isCollapsed() ? "True" : "False");
+
+    // Save active slice frequency/mode for restore on next launch
+    auto* sl = activeSlice();
+    if (sl) {
+        s.setValue("LastFrequency", QString::number(sl->frequency(), 'f', 6));
+        s.setValue("LastMode", sl->mode());
+    }
+
     s.save();
     m_discovery.stopListening();
     m_radioModel.disconnectFromRadio();
