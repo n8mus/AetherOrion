@@ -357,7 +357,10 @@ MainWindow::MainWindow(QWidget* parent)
 
     // ── +RX button: add a new slice on the current panadapter ──────────────
     connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::addRxClicked,
-            this, [this]() { m_radioModel.addSlice(); });
+            this, [this]() {
+        if (m_radioModel.slices().size() < m_radioModel.maxSlices())
+            m_radioModel.addSlice();
+    });
     connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::addTnfClicked,
             this, [this]() {
         auto* s = activeSlice();
@@ -649,6 +652,26 @@ MainWindow::MainWindow(QWidget* parent)
             this, [this](bool on) {
         QSignalBlocker sb(spectrum()->vfoWidget()->rn2Button());
         spectrum()->vfoWidget()->rn2Button()->setChecked(on);
+    });
+
+    // Split toggle — user clicks the SPLIT badge
+    connect(spectrum()->vfoWidget(), &VfoWidget::splitToggled,
+            this, [this]() {
+        if (!m_splitActive) {
+            // Entering split: create a new slice for TX
+            int currentCount = m_radioModel.slices().size();
+            if (currentCount >= m_radioModel.maxSlices())
+                return;  // radio can't support more slices
+            m_splitActive = true;
+            m_radioModel.addSlice();
+        } else {
+            // Exiting split: move TX back to the active slice
+            m_splitActive = false;
+            if (auto* s = activeSlice())
+                s->setTxSlice(true);
+        }
+
+        updateSplitState();
     });
 
     // CW autotune
@@ -1624,6 +1647,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
         spectrum()->setSliceOverlay(s->sliceId(), s->frequency(),
             s->filterLow(), s->filterHigh(), tx,
             s->sliceId() == m_activeSliceId);
+        updateSplitState();
     });
 
     // When the radio notifies us that this slice became active, switch to it
@@ -1731,6 +1755,8 @@ void MainWindow::setActiveSlice(int sliceId)
     }
 #endif
 
+    updateSplitState();
+
     qDebug() << "MainWindow: active slice set to" << sliceId;
 }
 
@@ -1756,6 +1782,14 @@ void MainWindow::pushSliceOverlay(SliceModel* s)
     spectrum()->setSliceOverlay(s->sliceId(), s->frequency(),
         s->filterLow(), s->filterHigh(), s->isTxSlice(),
         s->sliceId() == m_activeSliceId);
+}
+
+void MainWindow::updateSplitState()
+{
+    auto* active = activeSlice();
+    if (!active) return;
+
+    spectrum()->vfoWidget()->updateSplitBadge(active->isTxSlice(), m_splitActive);
 }
 
 SpectrumWidget* MainWindow::spectrum() const

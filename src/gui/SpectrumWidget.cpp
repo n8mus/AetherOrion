@@ -1124,6 +1124,7 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
         if (ao) {
             int vfoX = mhzToX(ao->freqMhz);
             m_vfoWidget->updatePosition(vfoX, specRect.top());
+            m_vfoWidget->raise();
         }
     }
 

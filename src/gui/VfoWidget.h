@@ -35,6 +35,11 @@ public:
     void setTransmitModel(TransmitModel* txModel);
     void setSignalLevel(float dbm);
 
+    // Split mode: call whenever TX assignment or active slice changes.
+    //   isTxSlice  — this VFO's slice has tx=1
+    //   splitActive — TX is assigned to a different slice than the active one
+    void updateSplitBadge(bool isTxSlice, bool splitActive);
+
     // Reposition relative to VFO marker x coordinate.
     void updatePosition(int vfoX, int specTop);
 
@@ -59,6 +64,7 @@ Q_SIGNALS:
 #ifdef HAVE_RADE
     void radeActivated(bool on, int sliceId);
 #endif
+    void splitToggled();
     void autotuneRequested(bool intermittent);  // CW auto-tune: false=once, true=loop
 
 protected:
@@ -91,7 +97,7 @@ private:
     QPushButton* m_rxAntBtn{nullptr};
     QPushButton* m_txAntBtn{nullptr};
     QLabel*      m_filterWidthLbl{nullptr};
-    QLabel*      m_splitBadge{nullptr};
+    QPushButton* m_splitBadge{nullptr};
     QPushButton* m_txBadge{nullptr};
     QLabel*      m_sliceBadge{nullptr};
     QPushButton* m_lockVfoBtn{nullptr};

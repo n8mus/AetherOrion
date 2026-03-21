@@ -196,10 +196,16 @@ void VfoWidget::buildUI()
 
     hdr->addStretch(1);
 
-    m_splitBadge = new QLabel("SPLIT");
-    m_splitBadge->setStyleSheet("QLabel { background: transparent; border: none; "
-                                 "color: #ffb800; font-size: 12px; font-weight: bold; }");
-    m_splitBadge->hide();
+    m_splitBadge = new QPushButton("SPLIT");
+    m_splitBadge->setFlat(true);
+    m_splitBadge->setStyleSheet(
+        "QPushButton { background: transparent; border: none; "
+        "color: rgba(255,255,255,40); font-size: 16px; font-weight: bold; }"
+        "QPushButton:hover { color: rgba(255,255,255,80); }");
+    m_splitBadge->setContentsMargins(0, 0, 8, 0);
+    connect(m_splitBadge, &QPushButton::clicked, this, [this]() {
+        emit splitToggled();
+    });
     hdr->addWidget(m_splitBadge);
 
     m_txBadge = new QPushButton("TX");
@@ -1218,7 +1224,12 @@ void VfoWidget::paintEvent(QPaintEvent* event)
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
 
-    // Semi-transparent white background with rounded corners
+    // Opaque dark background so passband shading doesn't bleed through
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0x0a, 0x0a, 0x14));
+    p.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 3, 3);
+
+    // Subtle white overlay for depth
     p.setPen(QColor(255, 255, 255, 13));
     p.setBrush(QColor(255, 255, 255, 13));
     p.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 3, 3);
@@ -1585,6 +1596,29 @@ void VfoWidget::updateTxBadgeStyle(bool isTx)
             "QPushButton { background: #404040; color: #808080; border: none; "
             "border-radius: 2px; font-size: 12px; font-weight: bold; padding: 0; }"
             "QPushButton:hover { background: #606060; color: #c0c0c0; }");
+    }
+}
+
+void VfoWidget::updateSplitBadge(bool isTxSlice, bool splitActive)
+{
+    if (splitActive && isTxSlice) {
+        // TX slice in split mode — hide SPLIT badge (TX badge is enough)
+        m_splitBadge->hide();
+    } else if (splitActive && !isTxSlice) {
+        // RX slice in split mode — red badge, full opacity
+        m_splitBadge->show();
+        m_splitBadge->setStyleSheet(
+            "QPushButton { background: #cc0000; color: #ffffff; border: none; "
+            "border-radius: 2px; font-size: 16px; font-weight: bold; "
+            "padding: 1px 3px; }"
+            "QPushButton:hover { background: #ee2222; }");
+    } else {
+        // Split not active — ghosted on all slices
+        m_splitBadge->show();
+        m_splitBadge->setStyleSheet(
+            "QPushButton { background: transparent; border: none; "
+            "color: rgba(255,255,255,40); font-size: 16px; font-weight: bold; }"
+            "QPushButton:hover { color: rgba(255,255,255,80); }");
     }
 }
 
