@@ -762,6 +762,10 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         m_radioModel.tnfModel()->setGlobalEnabled(!m_radioModel.tnfModel()->globalEnabled());
         return true;
     }
+    if (obj == m_addPanLabel && event->type() == QEvent::MouseButtonPress) {
+        m_radioModel.createPanadapter();
+        return true;
+    }
     return QMainWindow::eventFilter(obj, event);
 }
 
@@ -1050,6 +1054,13 @@ void MainWindow::buildUI()
     m_connStatusLabel->hide();
 
     // ── Left section ─────────────────────────────────────────────────────
+    auto* addPanBtn = new QLabel("+PAN");
+    addPanBtn->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 24px; }");
+    addPanBtn->setCursor(Qt::PointingHandCursor);
+    addPanBtn->installEventFilter(this);
+    hbox->addWidget(addPanBtn);
+    m_addPanLabel = addPanBtn;
+
     m_tnfIndicator = new QLabel("TNF");
     m_tnfIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 24px; }");
     m_tnfIndicator->setCursor(Qt::PointingHandCursor);
@@ -1773,10 +1784,6 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             this, [this]() {
         if (m_radioModel.slices().size() < m_radioModel.maxSlices())
             m_radioModel.addSlice();
-    });
-    connect(menu, &SpectrumOverlayMenu::addPanClicked,
-            this, [this]() {
-        m_radioModel.createPanadapter();
     });
     connect(menu, &SpectrumOverlayMenu::addTnfClicked,
             this, [this]() {

@@ -109,7 +109,6 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
     const BtnDef defs[] = {
         {"+RX",      -1, &SpectrumOverlayMenu::addRxClicked},   // 0
         {"+TNF",     -1, &SpectrumOverlayMenu::addTnfClicked},  // 1
-        {"+PAN",     -1, &SpectrumOverlayMenu::addPanClicked},  // +PAN button
         {"Band",      0, nullptr},   // 2 — toggleBandPanel
         {"ANT",       1, nullptr},   // 3 — toggleAntPanel
         {"DSP",       2, nullptr},   // 4 — toggleDspPanel
