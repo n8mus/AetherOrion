@@ -497,7 +497,13 @@ MainWindow::MainWindow(QWidget* parent)
         }
         if (!m_panStack && m_panApplet)
             m_panApplet->spectrumWidget()->setTransmitting(tx);
+        // Keep TX audio source strictly aligned with the local MOX edge for all
+        // modes (SSB + DAX). Waiting for interlock introduces audible lag.
         m_audio.setTransmitting(tx);
+#if defined(Q_OS_MAC) || defined(HAVE_PIPEWIRE)
+        if (m_daxBridge)
+            m_daxBridge->setTransmitting(tx);
+#endif
 
         // Update TX status bar indicator
         if (tx) {
@@ -522,14 +528,18 @@ MainWindow::MainWindow(QWidget* parent)
 #endif
     });
 
-    // Audio TX gate follows RF/interlock-aware signal from RadioModel.
+    // Interlock fallback gate:
+    // we only consume TX-off here, as a safety net if local edge updates
+    // are missed while interlock transitions.
     connect(&m_radioModel, &RadioModel::txAudioGateChanged,
             this, [this](bool tx) {
-        m_audio.setTransmitting(tx);
+        if (!tx) {
+            m_audio.setTransmitting(false);
 #if defined(Q_OS_MAC) || defined(HAVE_PIPEWIRE)
-        if (m_daxBridge)
-            m_daxBridge->setTransmitting(tx);
+            if (m_daxBridge)
+                m_daxBridge->setTransmitting(false);
 #endif
+        }
     });
 
     // Sync show-TX-in-waterfall setting to all spectrum widgets
@@ -4179,6 +4189,7 @@ void MainWindow::startDax()
     connect(m_daxBridge, &DaxBridge::txAudioReady,
             this, [this](const QByteArray& pcm) {
         if (m_audio.isRadeMode()) return;
+        if (!m_audio.isDaxTxMode()) return;
         m_audio.feedDaxTxAudio(pcm);
     });
 
