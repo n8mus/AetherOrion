@@ -195,6 +195,43 @@ void RadioModel::addSlice()
     });
 }
 
+void RadioModel::createPanadapter()
+{
+    qCDebug(lcProtocol) << "RadioModel::createPanadapter: sending panadapter create";
+    sendCmd("panadapter create", [this](int code, const QString& body) {
+        if (code != 0) {
+            qCWarning(lcProtocol) << "RadioModel: panadapter create failed, code"
+                       << Qt::hex << code << "body:" << body;
+            return;
+        }
+        // Parse pan ID from response
+        QString panId;
+        const QMap<QString, QString> kvs = CommandParser::parseKVs(body);
+        if (kvs.contains("pan"))       panId = kvs["pan"];
+        else if (kvs.contains("id"))   panId = kvs["id"];
+        else                           panId = body.trimmed();
+
+        qCDebug(lcProtocol) << "RadioModel: new panadapter created, pan_id =" << panId;
+
+        // The radio will push display pan status for this panId,
+        // which triggers PanadapterModel creation in onStatusReceived
+        // and emits panadapterAdded. Configure after a short delay.
+        if (!panId.isEmpty()) {
+            QTimer::singleShot(200, this, [this, panId]() {
+                sendCmd(QString("display pan set %1 xpixels=1024 ypixels=700").arg(panId));
+                sendCmd(QString("display pan set %1 fps=25 min_dbm=-130 max_dbm=-40").arg(panId));
+            });
+        }
+    });
+}
+
+void RadioModel::removePanadapter(const QString& panId)
+{
+    qCDebug(lcProtocol) << "RadioModel::removePanadapter:" << panId;
+    sendCmd(QString("display pan close %1").arg(panId));
+    // Radio will send "display pan <id> removed" → handled in onStatusReceived
+}
+
 // ── Pan accessor implementations ──────────────────────────────────────────────
 
 PanadapterModel* RadioModel::activePanadapter() const
@@ -988,6 +1025,24 @@ void RadioModel::onStatusReceived(const QString& object,
         const auto m = panRe.match(object);
         if (m.hasMatch()) {
             const QString panId = m.captured(1);
+
+            // Handle pan removal
+            if (kvs.contains("removed")) {
+                auto* pan = m_panadapters.take(panId);
+                if (pan) {
+                    m_panStream.unregisterPanStream(pan->panStreamId());
+                    m_panStream.unregisterWfStream(pan->wfStreamId());
+                    qCDebug(lcProtocol) << "RadioModel: panadapter removed" << panId;
+                    emit panadapterRemoved(panId);
+                    pan->deleteLater();
+                }
+                if (m_activePanId == panId) {
+                    m_activePanId = m_panadapters.isEmpty() ? QString()
+                                                            : m_panadapters.firstKey();
+                }
+                return;
+            }
+
             if (!m_panadapters.contains(panId)) {
                 // Claim this pan only if it belongs to us
                 if (kvs.contains("client_handle")) {

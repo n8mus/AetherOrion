@@ -261,23 +261,43 @@ MainWindow::MainWindow(QWidget* parent)
     });
 
     // ── Panadapter stream → spectrum widget ───────────────────────────────
+    // Route FFT/waterfall data to the correct SpectrumWidget by stream ID
     connect(m_radioModel.panStream(), &PanadapterStream::spectrumReady,
-            this, [this](quint32 /*streamId*/, const QVector<float>& bins) {
-        // Phase 2: route to active pan's spectrum widget
-        spectrum()->updateSpectrum(bins);
+            this, [this](quint32 streamId, const QVector<float>& bins) {
+        for (auto* pan : m_radioModel.panadapters()) {
+            if (pan->panStreamId() == streamId) {
+                if (auto* sw = m_panStack->spectrum(pan->panId()))
+                    sw->updateSpectrum(bins);
+                return;
+            }
+        }
+        // Fallback: active spectrum (covers "default" pan before radio connects)
+        if (auto* sw = spectrum()) sw->updateSpectrum(bins);
     });
     connect(m_radioModel.panStream(), &PanadapterStream::waterfallRowReady,
-            this, [this](quint32 /*streamId*/, const QVector<float>& bins,
+            this, [this](quint32 streamId, const QVector<float>& bins,
                          double low, double high, quint32 tc) {
-        spectrum()->updateWaterfallRow(bins, low, high, tc);
+        for (auto* pan : m_radioModel.panadapters()) {
+            if (pan->panStreamId() == streamId) {
+                if (auto* sw = m_panStack->spectrum(pan->panId()))
+                    sw->updateWaterfallRow(bins, low, high, tc);
+                return;
+            }
+        }
+        if (auto* sw = spectrum()) sw->updateWaterfallRow(bins, low, high, tc);
     });
     connect(m_radioModel.panStream(), &PanadapterStream::waterfallAutoBlackLevel,
-            this, [this](quint32 /*streamId*/, quint32 autoBlack) {
-        if (spectrum()->wfAutoBlack()) {
-            // Auto black level from radio tile header — apply as black level
-            // The value is in raw intensity units; map to our 0-125 slider range
-            const int level = std::clamp(static_cast<int>(autoBlack), 0, 125);
-            spectrum()->setWfBlackLevel(level);
+            this, [this](quint32 streamId, quint32 autoBlack) {
+        for (auto* pan : m_radioModel.panadapters()) {
+            if (pan->panStreamId() == streamId) {
+                if (auto* sw = m_panStack->spectrum(pan->panId())) {
+                    if (sw->wfAutoBlack()) {
+                        const int level = std::clamp(static_cast<int>(autoBlack), 0, 125);
+                        sw->setWfBlackLevel(level);
+                    }
+                }
+                return;
+            }
         }
     });
     connect(&m_radioModel, &RadioModel::panadapterInfoChanged,
@@ -315,6 +335,33 @@ MainWindow::MainWindow(QWidget* parent)
     });
     connect(&m_radioModel, &RadioModel::panadapterLevelChanged,
             spectrum(), &SpectrumWidget::setDbmRange);
+    // ── Multi-panadapter lifecycle ──────────────────────────────────────────
+    connect(&m_radioModel, &RadioModel::panadapterAdded,
+            this, [this](PanadapterModel* pan) {
+        // Skip if this pan already has an applet (e.g. "default" initial pan)
+        if (m_panStack->panadapter(pan->panId())) {
+            // Wire data to existing applet
+            connect(pan, &PanadapterModel::infoChanged,
+                    m_panStack->spectrum(pan->panId()), &SpectrumWidget::setFrequencyRange);
+            connect(pan, &PanadapterModel::levelChanged,
+                    m_panStack->spectrum(pan->panId()), &SpectrumWidget::setDbmRange);
+            return;
+        }
+        // Create new applet for this pan
+        auto* applet = m_panStack->addPanadapter(pan->panId());
+        wirePanadapter(applet);
+        connect(pan, &PanadapterModel::infoChanged,
+                applet->spectrumWidget(), &SpectrumWidget::setFrequencyRange);
+        connect(pan, &PanadapterModel::levelChanged,
+                applet->spectrumWidget(), &SpectrumWidget::setDbmRange);
+        qDebug() << "MainWindow: added panadapter applet for" << pan->panId();
+    });
+    connect(&m_radioModel, &RadioModel::panadapterRemoved,
+            this, [this](const QString& panId) {
+        m_panStack->removePanadapter(panId);
+        qDebug() << "MainWindow: removed panadapter applet for" << panId;
+    });
+
     // ── Per-panadapter signal wiring (extracted for multi-pan support) ──────
     wirePanadapter(m_panApplet);
 
@@ -1692,6 +1739,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             this, [this]() {
         if (m_radioModel.slices().size() < m_radioModel.maxSlices())
             m_radioModel.addSlice();
+    });
+    connect(menu, &SpectrumOverlayMenu::addPanClicked,
+            this, [this]() {
+        m_radioModel.createPanadapter();
     });
     connect(menu, &SpectrumOverlayMenu::addTnfClicked,
             this, [this]() {

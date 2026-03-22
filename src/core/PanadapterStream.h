@@ -61,6 +61,8 @@ public:
     // Only registered streams are processed; others are dropped.
     void registerPanStream(quint32 streamId);
     void registerWfStream(quint32 streamId);
+    void unregisterPanStream(quint32 streamId);
+    void unregisterWfStream(quint32 streamId);
     void clearRegisteredStreams();
 
     // DAX stream routing

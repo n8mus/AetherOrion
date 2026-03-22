@@ -179,7 +179,9 @@ public:
     void sendCwKey(bool down);                    // straight key: cw key 0|1
     void sendCwPaddle(bool dit, bool dah);        // iambic paddle: cw key <dit> <dah>
     void cwAutoTune(int sliceId, bool intermittent); // slice auto_tune
-    void addSlice();   // Create a new slice on the current panadapter
+    void addSlice();           // Create a new slice on the current panadapter
+    void createPanadapter();   // Create a new independent panadapter
+    void removePanadapter(const QString& panId);
     void setPanBandwidth(double bandwidthMhz);
     void setPanCenter(double centerMhz);
     void setPanDbmRange(float minDbm, float maxDbm);

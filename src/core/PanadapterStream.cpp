@@ -178,6 +178,18 @@ void PanadapterStream::registerWfStream(quint32 streamId)
     qCDebug(lcVita49) << "PanadapterStream: registered wf stream 0x" + QString::number(streamId, 16);
 }
 
+void PanadapterStream::unregisterPanStream(quint32 streamId)
+{
+    m_knownPanStreams.remove(streamId);
+    m_frames.remove(streamId);
+    m_dbmRanges.remove(streamId);
+}
+
+void PanadapterStream::unregisterWfStream(quint32 streamId)
+{
+    m_knownWfStreams.remove(streamId);
+}
+
 void PanadapterStream::clearRegisteredStreams()
 {
     m_knownPanStreams.clear();

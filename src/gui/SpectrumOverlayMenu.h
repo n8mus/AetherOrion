@@ -56,6 +56,7 @@ protected:
 signals:
     void addRxClicked();
     void addTnfClicked();
+    void addPanClicked();
     void daxClicked();
     void nr2Toggled(bool on);
     void rn2Toggled(bool on);
