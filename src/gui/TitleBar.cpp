@@ -183,9 +183,9 @@ void TitleBar::setHeadphoneVolume(int pct)
 void TitleBar::showFeatureRequestDialog()
 {
     static const QString kPrompt =
-        "Before responding, please read the AetherSDR project repository at\n"
-        "https://github.com/ten9876/AetherSDR to understand the project's\n"
-        "architecture, existing features, and current roadmap.\n\n"
+        "Before responding, please read the AetherSDR project context at\n"
+        "https://raw.githubusercontent.com/ten9876/AetherSDR/main/CLAUDE.md\n"
+        "to understand the project's architecture, existing features, and current roadmap.\n\n"
         "I want to request a feature for AetherSDR, a Linux-native Qt6/C++20 client\n"
         "for FlexRadio transceivers. It uses the FlexLib API over TCP/UDP.\n\n"
         "Before writing the feature request, please check the existing open issues at:\n"
