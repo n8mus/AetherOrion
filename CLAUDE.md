@@ -398,64 +398,25 @@ The multi-pan infrastructure is in place:
 - Click-to-tune correctly activates the clicked pan's slice
 - VFO flag deconfliction across pans
 
-### What DOESN'T Work (root cause unknown)
+### VFO Frequency Sync — RESOLVED
 
-**VFO widget frequency display doesn't sync from SliceModel:**
+The VFO widget was showing 14.1 MHz (default) on every launch instead of the
+last-used frequency. We investigated 5 different approaches (deferred timers,
+one-shot signals, direct label updates) before discovering the actual root cause:
 
-The VfoWidget's `updateFreqLabel()` reads `m_slice->frequency()` but shows
-stale/zero values. The `frequencyChanged` signal from SliceModel fires (verified
-in logs) but the VfoWidget doesn't update. Requires a user-initiated tune event
-(click-to-tune or scroll) to display the correct frequency.
+**Root cause:** We never saved the `GUIClientID` UUID returned by the
+`client gui` response. Every connect sent `client gui ` with an empty UUID,
+so the radio treated us as a brand new client and gave us a fresh slice at
+the default frequency. SmartSDR saves and reuses the UUID, so the radio
+recognizes it and restores the previous session's slice state.
 
-**Things we tried that FAILED:**
+**Fix:** One line — `s.setValue("GUIClientID", body.trimmed())` in the
+`client gui` response handler. The radio now restores freq, mode, filter,
+antenna, and all slice settings automatically.
 
-1. **`qFuzzyCompare` preventing signal emission** — SliceModel's `frequencyChanged`
-   uses `qFuzzyCompare(old, new)` to suppress duplicate signals. Removed it.
-   Result: signal fires but VFO still doesn't update. NOT the root cause.
-
-2. **Deferred `setSlice()` via QTimer (500ms, 1s, 2s)** — Theory: slice status
-   arrives after VFO is created, so `setSlice()` runs before frequency is known.
-   Added timer to re-call `setSlice()` after status settles.
-   Result: timer fires, `m_slice` is non-null, `syncFromSlice()` runs, but
-   `updateFreqLabel()` still shows wrong freq. Also caused 2-second waterfall
-   pause when switching focus between pans. REMOVED.
-
-3. **One-shot `frequencyChanged` connection** — Connected a lambda to
-   `SliceModel::frequencyChanged` that calls `vfo->setSlice(s)` on first fire.
-   Theory: re-wire after the first real frequency arrives.
-   Result: caused `setSlice()` to fire during focus switches (not just creation),
-   disconnecting all VFO signals and breaking updates. REMOVED.
-
-4. **Direct `updateFreqLabel()` call after `wireVfoWidget()`** — Called
-   `vfo->updateFreqLabel()` directly at the end of `onSliceAdded()`.
-   Result: `m_slice->frequency()` returns 0 at this point because the full
-   slice status hasn't arrived yet. NOT useful.
-
-5. **`syncFromSlice()` call in `setSlice()`** — VfoWidget::setSlice() calls
-   `syncFromSlice()` which calls `updateFreqLabel()`. But `m_slice->frequency()`
-   is 0 when `setSlice()` is called because the slice was just created.
-   The `frequencyChanged` signal should handle the update later, but doesn't
-   reliably reach the VFO widget.
-
-**Suspected root cause (unverified):**
-
-The VfoWidget's `m_slice` pointer may be getting cleared or replaced between
-`wireVfoWidget()` and the first `frequencyChanged` signal. The `setSlice()`
-method disconnects ALL signals from the old slice before connecting the new one.
-If something calls `setSlice(nullptr)` or `setSlice(differentSlice)` during
-the status flood, the connection to the real slice is lost.
-
-**The `setActiveSlice()` double-fire** was confirmed and fixed with a guard
-(`if (sliceId == m_activeSliceId) return`). But the VFO sync issue persists
-independently.
-
-### Focus Switching Issues
-
-When clicking on pan B while pan A is active:
-- Pan B's waterfall pauses for ~2 seconds (caused by deferred setSlice timer —
-  now removed)
-- RX applet doesn't update to show pan B's slice until a tuning event occurs
-- Going BACK to pan A also requires a tuning event
+**Lesson:** The VFO widget code was never broken. The signal connections,
+`syncFromSlice()`, `updateFreqLabel()` — all worked correctly. The data
+they were reading was wrong because the radio was giving us a blank slate.
 
 ### SmartControl Research Results
 

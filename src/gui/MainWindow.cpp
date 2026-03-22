@@ -1506,49 +1506,28 @@ void MainWindow::onSliceAdded(SliceModel* s)
     // Create a VfoWidget for this slice on the correct panadapter
     auto* vfo = spectrumForSlice(s)->addVfoWidget(s->sliceId());
 
-    // Feed S-meter and antenna list immediately (no slice state dependency)
+    wireVfoWidget(vfo, s);
+
+    // Feed S-meter and antenna list
     connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
             vfo, &VfoWidget::setSignalLevel);
     connect(&m_radioModel, &RadioModel::antListChanged,
             vfo, &VfoWidget::setAntennaList);
 
-    // Defer VFO wiring until the status flood settles (~2 seconds).
-    // During the accumulation phase, SliceModel is populated by applyStatus()
-    // from the radio's status messages. Wiring signals too early causes the VFO
-    // widget to miss the initial state (freq, mode, filter) because the signals
-    // fired before the connections were made.
-    const int sliceId = s->sliceId();
-    QTimer::singleShot(2000, this, [this, sliceId]() {
-        auto* s = m_radioModel.slice(sliceId);
-        if (!s) return;  // slice was removed during accumulation
-
-        auto* sw = spectrumForSlice(s);
-        if (!sw) return;
-        auto* vfo = sw->vfoWidget(sliceId);
-        if (!vfo) return;
-
-        // Now wire the VFO — setSlice() + syncFromSlice() will read
-        // fully-populated state from the SliceModel
-        wireVfoWidget(vfo, s);
-
-        // Direct freq label update for runtime changes
-        connect(s, &SliceModel::frequencyChanged, this, [this, s]() {
-            auto* sw2 = spectrumForSlice(s);
-            if (!sw2) return;
-            auto* v = sw2->vfoWidget(s->sliceId());
-            if (!v) return;
-            long long hz = static_cast<long long>(std::round(s->frequency() * 1e6));
-            int mhzPart = static_cast<int>(hz / 1000000);
-            int khzPart = static_cast<int>((hz / 1000) % 1000);
-            int hzPart  = static_cast<int>(hz % 1000);
-            v->freqLabel()->setText(QString("%1.%2.%3")
-                .arg(mhzPart)
-                .arg(khzPart, 3, 10, QChar('0'))
-                .arg(hzPart, 3, 10, QChar('0')));
-        });
-
-        qDebug() << "MainWindow: finalized VFO for slice" << sliceId
-                 << "freq:" << s->frequency();
+    // Direct freq label update for runtime changes
+    connect(s, &SliceModel::frequencyChanged, this, [this, s]() {
+        auto* sw2 = spectrumForSlice(s);
+        if (!sw2) return;
+        auto* v = sw2->vfoWidget(s->sliceId());
+        if (!v) return;
+        long long hz = static_cast<long long>(std::round(s->frequency() * 1e6));
+        int mhzPart = static_cast<int>(hz / 1000000);
+        int khzPart = static_cast<int>((hz / 1000) % 1000);
+        int hzPart  = static_cast<int>(hz % 1000);
+        v->freqLabel()->setText(QString("%1.%2.%3")
+            .arg(mhzPart)
+            .arg(khzPart, 3, 10, QChar('0'))
+            .arg(hzPart, 3, 10, QChar('0')));
     });
 
     // If split is pending, this new slice is the TX slice
