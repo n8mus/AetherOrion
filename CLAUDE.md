@@ -379,6 +379,121 @@ lacks status feedback and the expected status message format.
 
 ---
 
+## Multi-Panadapter Support (In Progress — #152)
+
+### Architecture (Phases 1-7 complete)
+
+The multi-pan infrastructure is in place:
+- **PanadapterModel** — per-pan state (center, bandwidth, dBm, antenna, WNB)
+- **PanadapterStream** — routes VITA-49 FFT/waterfall by stream ID
+- **PanadapterStack** — vertical QSplitter hosting N PanadapterApplets
+- **wirePanadapter()** — per-pan signal wiring extracted from constructor
+- **spectrumForSlice()** — routes slice overlays/VFOs to correct SpectrumWidget
+- **+PAN button** — uses `display panafall create x=100 y=100` (NOT `panadapter create`)
+
+### What Works
+- Creating a second panadapter via +PAN button
+- Independent FFT/waterfall on each pan
+- Independent zoom/pan/center per pan
+- Click-to-tune correctly activates the clicked pan's slice
+- VFO flag deconfliction across pans
+
+### What DOESN'T Work (root cause unknown)
+
+**VFO widget frequency display doesn't sync from SliceModel:**
+
+The VfoWidget's `updateFreqLabel()` reads `m_slice->frequency()` but shows
+stale/zero values. The `frequencyChanged` signal from SliceModel fires (verified
+in logs) but the VfoWidget doesn't update. Requires a user-initiated tune event
+(click-to-tune or scroll) to display the correct frequency.
+
+**Things we tried that FAILED:**
+
+1. **`qFuzzyCompare` preventing signal emission** — SliceModel's `frequencyChanged`
+   uses `qFuzzyCompare(old, new)` to suppress duplicate signals. Removed it.
+   Result: signal fires but VFO still doesn't update. NOT the root cause.
+
+2. **Deferred `setSlice()` via QTimer (500ms, 1s, 2s)** — Theory: slice status
+   arrives after VFO is created, so `setSlice()` runs before frequency is known.
+   Added timer to re-call `setSlice()` after status settles.
+   Result: timer fires, `m_slice` is non-null, `syncFromSlice()` runs, but
+   `updateFreqLabel()` still shows wrong freq. Also caused 2-second waterfall
+   pause when switching focus between pans. REMOVED.
+
+3. **One-shot `frequencyChanged` connection** — Connected a lambda to
+   `SliceModel::frequencyChanged` that calls `vfo->setSlice(s)` on first fire.
+   Theory: re-wire after the first real frequency arrives.
+   Result: caused `setSlice()` to fire during focus switches (not just creation),
+   disconnecting all VFO signals and breaking updates. REMOVED.
+
+4. **Direct `updateFreqLabel()` call after `wireVfoWidget()`** — Called
+   `vfo->updateFreqLabel()` directly at the end of `onSliceAdded()`.
+   Result: `m_slice->frequency()` returns 0 at this point because the full
+   slice status hasn't arrived yet. NOT useful.
+
+5. **`syncFromSlice()` call in `setSlice()`** — VfoWidget::setSlice() calls
+   `syncFromSlice()` which calls `updateFreqLabel()`. But `m_slice->frequency()`
+   is 0 when `setSlice()` is called because the slice was just created.
+   The `frequencyChanged` signal should handle the update later, but doesn't
+   reliably reach the VFO widget.
+
+**Suspected root cause (unverified):**
+
+The VfoWidget's `m_slice` pointer may be getting cleared or replaced between
+`wireVfoWidget()` and the first `frequencyChanged` signal. The `setSlice()`
+method disconnects ALL signals from the old slice before connecting the new one.
+If something calls `setSlice(nullptr)` or `setSlice(differentSlice)` during
+the status flood, the connection to the real slice is lost.
+
+**The `setActiveSlice()` double-fire** was confirmed and fixed with a guard
+(`if (sliceId == m_activeSliceId) return`). But the VFO sync issue persists
+independently.
+
+### Focus Switching Issues
+
+When clicking on pan B while pan A is active:
+- Pan B's waterfall pauses for ~2 seconds (caused by deferred setSlice timer —
+  now removed)
+- RX applet doesn't update to show pan B's slice until a tuning event occurs
+- Going BACK to pan A also requires a tuning event
+
+### SmartControl Research Results
+
+We investigated `client gui <uuid>` as a way to mirror another client's session
+(SmartConnect/SmartControl). Findings:
+
+- **`client gui <other_client_uuid>`** — KICKS the other client off
+  (`duplicate_client_id=1`). This is for SESSION PERSISTENCE, not binding.
+- **`client bind client_id=<uuid>`** — for NON-GUI clients (Maestro hardware
+  buttons) binding to a GUI client. Does NOT duplicate waterfall/spectrum.
+- **SmartConnect** is a Maestro hardware feature — physical buttons control a
+  GUI client's slice. NOT a GUI-to-GUI mirroring feature.
+- **The FlexRadio protocol has NO mechanism to link two GUI clients together.**
+  Multi-Flex = independent operation, period.
+- Discovery packet contains `gui_client_programs`, `gui_client_stations`,
+  `gui_client_handles` but NOT `gui_client_ids` (UUIDs).
+- UUIDs are only available via `sub client all` → `client <handle> connected
+  client_id=<uuid>` status messages.
+
+See issue #146 (closed) for full analysis.
+
+### Protocol Notes for +PAN
+
+- `panadapter create` — returns `0x50000015` (use `display panafall create` instead)
+- `display panafall create x=100 y=100` — works, creates new pan + waterfall
+- `display panafall create` (v2+ syntax) — returns `0x50000016` on fw v1.4.0.0
+  ONLY when no pans exist. Works fine for creating ADDITIONAL pans.
+- `radio slices=N panadapters=N` — these count DOWN (available slots, not in-use)
+- FLEX-8600 (dual SCU): max 4 pans, max 4 slices
+
+### +PAN Button Status
+
+**Currently DISABLED** in the event filter (`MainWindow::eventFilter`).
+The button is visible in the status bar but clicking it does nothing.
+Re-enable after VFO tracking and focus switching issues are resolved.
+
+---
+
 ## Multi-Client (Multi-Flex) Support
 
 When another client (SmartSDR, Maestro) is already connected to the radio,
