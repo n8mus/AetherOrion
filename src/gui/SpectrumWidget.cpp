@@ -53,9 +53,43 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
         static_cast<int>(m_fftFillAlpha * 100), m_fftWeightedAvg, m_fftFillColor,
         m_wfColorGain, m_wfBlackLevel, m_wfAutoBlack, m_wfLineDuration);
 
-    // VFO info widget (attached to VFO marker)
-    m_vfoWidget = new VfoWidget(this);
-    m_vfoWidget->raise();
+    // VFO widgets are created per-slice via addVfoWidget().
+    // m_vfoWidget is set by setActiveVfoWidget() as an alias to the active one.
+}
+
+// ── Multi-VfoWidget management ────────────────────────────────────────────────
+
+VfoWidget* SpectrumWidget::vfoWidget(int sliceId) const
+{
+    return m_vfoWidgets.value(sliceId, nullptr);
+}
+
+VfoWidget* SpectrumWidget::addVfoWidget(int sliceId)
+{
+    if (m_vfoWidgets.contains(sliceId))
+        return m_vfoWidgets[sliceId];
+
+    auto* w = new VfoWidget(this);
+    m_vfoWidgets[sliceId] = w;
+    w->show();
+    w->raise();
+    return w;
+}
+
+void SpectrumWidget::removeVfoWidget(int sliceId)
+{
+    if (auto* w = m_vfoWidgets.take(sliceId)) {
+        if (m_vfoWidget == w)
+            m_vfoWidget = nullptr;
+        delete w;
+    }
+}
+
+void SpectrumWidget::setActiveVfoWidget(int sliceId)
+{
+    m_vfoWidget = m_vfoWidgets.value(sliceId, nullptr);
+    if (m_vfoWidget)
+        m_vfoWidget->raise();
 }
 
 // ── Display control setters (save to AppSettings on each change) ──────────────
@@ -1118,15 +1152,16 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
     drawSliceMarkers(p, specRect, wfRect);
     drawOffScreenSlices(p, specRect);
 
-    // Reposition VFO widget to follow the active slice marker
-    if (m_vfoWidget) {
-        const auto* ao = activeOverlay();
-        if (ao) {
-            int vfoX = mhzToX(ao->freqMhz);
-            m_vfoWidget->updatePosition(vfoX, specRect.top());
-            m_vfoWidget->raise();
+    // Reposition all VFO widgets to follow their slice markers
+    for (const auto& so : m_sliceOverlays) {
+        if (auto* w = m_vfoWidgets.value(so.sliceId, nullptr)) {
+            int vfoX = mhzToX(so.freqMhz);
+            w->updatePosition(vfoX, specRect.top());
         }
     }
+    // Active widget on top
+    if (m_vfoWidget)
+        m_vfoWidget->raise();
 
     // ── WNB / RF Gain indicators (top-right of FFT area) ──────────────────
     if (m_wnbActive || m_rfGainValue != 0) {
@@ -1425,33 +1460,26 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
         const int fW   = fX2 - fX1;
 
         // ── Filter passband shading ──────────────────────────────────────
-        const int specAlpha = so.isActive ? 35 : 18;
-        const int wfAlpha   = so.isActive ? 25 : 12;
+        // All slices use the same style — color distinguishes them.
         p.fillRect(QRect(fX1, specRect.top(), fW, specRect.height()),
-                   QColor(col.red(), col.green(), col.blue(), specAlpha));
+                   QColor(col.red(), col.green(), col.blue(), 35));
         p.fillRect(QRect(fX1, wfRect.top(), fW, wfRect.height()),
-                   QColor(col.red(), col.green(), col.blue(), wfAlpha));
+                   QColor(col.red(), col.green(), col.blue(), 25));
 
-        // Filter edge lines — active slice only (avoids clutter)
-        if (so.isActive) {
-            p.setPen(QPen(QColor(col.red(), col.green(), col.blue(), 130), 1));
-            p.drawLine(fX1, specRect.top(), fX1, specRect.bottom());
-            p.drawLine(fX2, specRect.top(), fX2, specRect.bottom());
-        }
+        // Filter edge lines
+        p.setPen(QPen(QColor(col.red(), col.green(), col.blue(), 130), 1));
+        p.drawLine(fX1, specRect.top(), fX1, specRect.bottom());
+        p.drawLine(fX2, specRect.top(), fX2, specRect.bottom());
 
         // ── Center line ──────────────────────────────────────────────────
-        // Always drawn at the carrier frequency. In CW mode, the filter
-        // is centered on the carrier and the radio's BFO handles the pitch offset.
         int markerX = vfoX;
 
-        const qreal lineW = so.isActive ? 2.0 : 1.0;
-        const int lineAlpha = so.isActive ? 220 : 100;
-        p.setPen(QPen(QColor(col.red(), col.green(), col.blue(), lineAlpha), lineW));
+        p.setPen(QPen(QColor(col.red(), col.green(), col.blue(), 220), 2.0));
         p.drawLine(markerX, specRect.top(), markerX, wfRect.bottom());
 
         // ── Triangle marker at top ───────────────────────────────────────
-        const int triHalf = so.isActive ? 6 : 4;
-        const int triH = so.isActive ? 10 : 7;
+        const int triHalf = 6;
+        const int triH = 10;
         p.setPen(Qt::NoPen);
         p.setBrush(col);
         QPolygon tri;
@@ -1460,44 +1488,13 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             << QPoint(markerX, specRect.top() + triH);
         p.drawPolygon(tri);
 
-        // ── Slice letter flag + TX badge (inactive slices only) ─────────
-        if (!so.isActive) {
-            const QChar letter = QChar('A' + (so.sliceId & 3));
-            QFont f = p.font(); f.setPointSize(8); f.setBold(true); p.setFont(f);
-            const QFontMetrics fm(f);
-            const int flagW = fm.horizontalAdvance(letter) + 8;
-            const int flagH = fm.height() + 2;
-            const int flagX = vfoX + triHalf + 2;
-            const int flagY = specRect.top();
-            const QRect flagRect(flagX, flagY, flagW, flagH);
-
-            const int radius = 3;
-            p.setBrush(Qt::NoBrush);
-            p.setPen(QPen(col, 1));
-            p.drawRoundedRect(flagRect, radius, radius);
-            p.setPen(sliceColor(so.sliceId, true));
-            p.drawText(flagRect, Qt::AlignCenter, QString(letter));
-
-            // Red TX badge — only on the TX slice when it's out of focus
-            if (so.isTxSlice) {
-                QFont txFont = p.font(); txFont.setPointSize(7); p.setFont(txFont);
-                const QFontMetrics txFm(txFont);
-                const int txW = txFm.horizontalAdvance("TX") + 4;
-                const int txX = flagX + flagW + 2;
-                const QRect txRect(txX, flagY, txW, flagH);
-                p.setPen(Qt::NoPen);
-                p.setBrush(QColor(0xcc, 0x20, 0x20));
-                p.drawRoundedRect(txRect, radius, radius);
-                p.setPen(Qt::white);
-                p.drawText(txRect, Qt::AlignCenter, "TX");
-            }
-        }
+        // Slice letter badge and TX badge are now rendered by each
+        // slice's VfoWidget — no need to draw them on the spectrum.
     };
 
-    // Draw inactive slices first
+    // Draw all slices (active last so its marker is on top)
     for (const auto& so : m_sliceOverlays)
         if (!so.isActive) drawOne(so);
-    // Draw active slice on top
     for (const auto& so : m_sliceOverlays)
         if (so.isActive) drawOne(so);
 }

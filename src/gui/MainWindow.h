@@ -36,6 +36,8 @@ using DaxBridge = VirtualAudioBridge;
 class PipeWireAudioBridge;
 using DaxBridge = PipeWireAudioBridge;
 #endif
+class VfoWidget;
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
@@ -67,6 +69,8 @@ private:
     void updateFilterLimitsForMode(const QString& mode);
     void pushSliceOverlay(SliceModel* s);
     void updateSplitState();
+    void wireVfoWidget(VfoWidget* w, SliceModel* s);
+    void wireActiveVfoSignals(VfoWidget* w);
 
     BandSnapshot captureCurrentBandState() const;
     void restoreBandState(const BandSnapshot& snap);

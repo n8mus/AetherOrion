@@ -29,6 +29,7 @@ class VfoWidget : public QWidget {
 
 public:
     explicit VfoWidget(QWidget* parent = nullptr);
+    ~VfoWidget() override;
 
     void setSlice(SliceModel* slice);
     void setAntennaList(const QStringList& ants);
@@ -66,12 +67,13 @@ Q_SIGNALS:
 #endif
     void splitToggled();
     void autotuneRequested(bool intermittent);  // CW auto-tune: false=once, true=loop
+    void sliceActivationRequested(int sliceId);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
-    void wheelEvent(QWheelEvent*) override { /* consume — don't tune VFO */ }
-    void mousePressEvent(QMouseEvent* ev) override { ev->accept(); }
+    void wheelEvent(QWheelEvent* ev) override;
+    void mousePressEvent(QMouseEvent* ev) override;
 
 private:
     void buildUI();

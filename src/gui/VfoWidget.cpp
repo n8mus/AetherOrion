@@ -145,6 +145,27 @@ VfoWidget::VfoWidget(QWidget* parent)
     buildUI();
 }
 
+void VfoWidget::wheelEvent(QWheelEvent* ev)
+{
+    // Forward to parent (SpectrumWidget) for scroll-to-tune
+    ev->ignore();
+}
+
+void VfoWidget::mousePressEvent(QMouseEvent* ev)
+{
+    ev->accept();
+    if (m_slice)
+        emit sliceActivationRequested(m_slice->sliceId());
+}
+
+VfoWidget::~VfoWidget()
+{
+    // Close/lock buttons are children of our parent (SpectrumWidget),
+    // not us, so we must delete them manually.
+    delete m_closeSliceBtn;
+    delete m_lockVfoBtn;
+}
+
 void VfoWidget::buildUI()
 {
     auto* root = new QVBoxLayout(this);
@@ -202,7 +223,7 @@ void VfoWidget::buildUI()
         "QPushButton { background: transparent; border: none; "
         "color: rgba(255,255,255,40); font-size: 16px; font-weight: bold; }"
         "QPushButton:hover { color: rgba(255,255,255,80); }");
-    m_splitBadge->setContentsMargins(0, 0, 8, 0);
+    m_splitBadge->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     connect(m_splitBadge, &QPushButton::clicked, this, [this]() {
         emit splitToggled();
     });
@@ -239,18 +260,16 @@ void VfoWidget::buildUI()
     root->addWidget(m_radeStatusLabel);
 #endif
 
-    // Close and lock buttons — floating outside the VFO overlay,
-    // stacked vertically on the side opposite the marker.
-    // Created as children of our parent (SpectrumWidget) so they
-    // render outside our bounds. Positioned in updatePosition().
+    // Close and lock buttons — children of our parent (SpectrumWidget) so they
+    // can render outside our bounds. Lifecycle managed by VfoWidget destructor.
     auto* btnParent = parentWidget() ? parentWidget() : this;
-
     m_closeSliceBtn = new QPushButton("\xE2\x9C\x95", btnParent);  // ✕
     m_closeSliceBtn->setFixedSize(20, 20);
     m_closeSliceBtn->setStyleSheet(
         "QPushButton { background: rgba(255,255,255,15); border: none; "
         "border-radius: 10px; color: #c8d8e8; font-size: 11px; padding: 0; }"
         "QPushButton:hover { background: rgba(204,32,32,180); color: #ffffff; }");
+    m_closeSliceBtn->show();
     connect(m_closeSliceBtn, &QPushButton::clicked, this, [this] {
         emit closeSliceRequested();
     });
@@ -263,6 +282,7 @@ void VfoWidget::buildUI()
         "border-radius: 10px; font-size: 12px; padding: 0; }"
         "QPushButton:checked { background: rgba(255,100,100,80); }"
         "QPushButton:hover { background: rgba(255,255,255,40); }");
+    m_lockVfoBtn->show();
     connect(m_lockVfoBtn, &QPushButton::toggled, this, [this](bool locked) {
         m_lockVfoBtn->setText(locked ? "\xF0\x9F\x94\x92" : "\xF0\x9F\x94\x93");
         emit lockToggled(locked);

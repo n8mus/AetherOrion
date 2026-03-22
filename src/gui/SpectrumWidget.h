@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QVector>
+#include <QMap>
 #include <QImage>
 #include <QColor>
 
@@ -80,8 +81,12 @@ public:
     // Access the floating overlay menu (for wiring signals).
     SpectrumOverlayMenu* overlayMenu() const { return m_overlayMenu; }
 
-    // Access the VFO info widget.
-    VfoWidget* vfoWidget() const { return m_vfoWidget; }
+    // Access VFO info widgets (one per slice).
+    VfoWidget* vfoWidget() const { return m_vfoWidget; }  // active slice (compat)
+    VfoWidget* vfoWidget(int sliceId) const;
+    VfoWidget* addVfoWidget(int sliceId);
+    void       removeVfoWidget(int sliceId);
+    void       setActiveVfoWidget(int sliceId);
 
     // WNB and RF gain state for on-screen indicators.
     bool wnbActive()   const { return m_wnbActive; }
@@ -323,8 +328,9 @@ private:
 
     // Floating overlay menu (child widget, anchored top-left)
     SpectrumOverlayMenu* m_overlayMenu{nullptr};
-    // VFO info widget (child widget, attached to VFO marker)
-    VfoWidget* m_vfoWidget{nullptr};
+    // VFO info widgets (one per slice, attached to VFO markers)
+    QMap<int, VfoWidget*> m_vfoWidgets;
+    VfoWidget* m_vfoWidget{nullptr};  // alias to active slice widget (compat)
 };
 
 } // namespace AetherSDR

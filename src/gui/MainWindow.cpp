@@ -385,18 +385,8 @@ MainWindow::MainWindow(QWidget* parent)
         m_radioModel.sendCommand(QString("slice remove %1").arg(sliceId));
     });
 
-    // VFO widget close/lock buttons
-    connect(spectrum()->vfoWidget(), &VfoWidget::closeSliceRequested,
-            this, [this] {
-        if (m_radioModel.slices().size() <= 1) return;
-        if (m_activeSliceId >= 0)
-            m_radioModel.sendCommand(QString("slice remove %1").arg(m_activeSliceId));
-    });
-    connect(spectrum()->vfoWidget(), &VfoWidget::lockToggled,
-            this, [this](bool locked) {
-        if (auto* s = activeSlice())
-            s->setLocked(locked);
-    });
+    // VFO widget close/lock/afGain/autotune/split/pcAudio are now wired
+    // per-widget in wireVfoWidget() and wireActiveVfoSignals().
 
     // ── Band selection from overlay menu ───────────────────────────────────
     connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::bandSelected,
@@ -504,181 +494,60 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_appletPanel->rxApplet(), &RxApplet::afGainChanged, this, [this](int v) {
         if (auto* s = activeSlice()) s->setAudioGain(v);
     });
-    connect(spectrum()->vfoWidget(), &VfoWidget::afGainChanged, this, [this](int v) {
-        if (auto* s = activeSlice()) s->setAudioGain(v);
-    });
 
-    // ── PC Audio toggle: create/remove remote_audio_rx stream ───────────
-    connect(spectrum()->vfoWidget(), &VfoWidget::pcAudioToggled,
-            this, [this](bool on) {
-        if (!m_radioModel.isConnected()) return;
-        if (on) {
-            if (m_audio.startRxStream())
-                m_radioModel.createRxAudioStream();
-        } else {
-            m_audio.stopRxStream();
-            m_radioModel.removeRxAudioStream();
-        }
-    });
-
-    // ── Client-side NR2 toggle: VfoWidget → AudioEngine ─────────────────
-    // On first enable, generate FFTW wisdom if needed (takes several minutes).
-    connect(spectrum()->vfoWidget(), &VfoWidget::nr2Toggled,
-            this, [this](bool on) {
-        if (!on) {
-            m_audio.setNr2Enabled(false);
-            return;
-        }
-        // Check if wisdom exists; if not, generate with progress dialog
-        if (AudioEngine::needsWisdomGeneration()) {
-            auto* dlg = new QProgressDialog(
-                "Optimizing FFT plans for NR2...\n\n"
-                "This window will automatically close when wisdom generation is complete.",
-                QString(), 0, 100, this);
-            dlg->setWindowTitle("AetherSDR — FFTW Wisdom");
-            dlg->setWindowModality(Qt::ApplicationModal);
-            dlg->setMinimumDuration(0);
-            dlg->setAutoClose(false);
-            dlg->setAutoReset(false);
-            dlg->setCancelButton(nullptr);
-            dlg->setMinimumWidth(500);
-            dlg->setStyleSheet(
-                "QProgressBar { text-align: center; font-size: 13px;"
-                " font-weight: bold; color: #c8d8e8;"
-                " background: #1a2a3a; border: 1px solid #2e4e6e; border-radius: 3px; }"
-                "QProgressBar::chunk { background: #00b4d8; }");
-            dlg->show();
-
-            // Breathing animation (started later during save phase)
-            auto* breathe = new QPropertyAnimation(dlg, "windowOpacity", dlg);
-            breathe->setDuration(1500);
-            breathe->setStartValue(1.0);
-            breathe->setKeyValueAt(0.5, 0.55);
-            breathe->setEndValue(1.0);
-            breathe->setLoopCount(-1);
-
-            auto* thread = QThread::create([this, dlg, breathe]() {
-                AudioEngine::generateWisdom([dlg, breathe](int step, int total, const std::string& desc) {
-                    int pct = total > 0 ? (step * 100 / total) : 0;
-                    QString d = QString::fromStdString(desc);
-                    QMetaObject::invokeMethod(dlg, [dlg, breathe, pct, d]() {
-                        if (!d.isEmpty()) {
-                            // "Before" callback: update description, keep current %
-                            dlg->setLabelText(d + "\n\n"
-                                "This window will automatically close when wisdom generation is complete.");
-                            // Start breathing on the last few slow plans
-                            if (dlg->value() >= 90 && breathe->state() != QAbstractAnimation::Running)
-                                breathe->start();
-                        } else {
-                            // "After" callback: update progress bar
-                            dlg->setValue(pct);
-                        }
-                    });
-                });
-            });
-            connect(thread, &QThread::finished, this, [this, dlg, breathe, thread]() {
-                // All plans computed + wisdom saved — show brief "done" then close
-                breathe->stop();
-                dlg->setWindowOpacity(1.0);
-                dlg->setValue(100);
-                dlg->setLabelText("Wisdom generation complete!");
-                QTimer::singleShot(800, this, [this, dlg, thread]() {
-                    dlg->close();
-                    dlg->deleteLater();
-                    thread->deleteLater();
-                    m_audio.setNr2Enabled(true);
-                });
-            });
-            thread->start();
-        } else {
-            m_audio.setNr2Enabled(true);
-        }
-    });
+    // ── NR2/RN2 feedback: AudioEngine → active VfoWidget (dynamic lookup) ──
     connect(&m_audio, &AudioEngine::nr2EnabledChanged,
             this, [this](bool on) {
-        QSignalBlocker sb(spectrum()->vfoWidget()->nr2Button());
-        spectrum()->vfoWidget()->nr2Button()->setChecked(on);
+        if (auto* vfo = spectrum()->vfoWidget()) {
+            QSignalBlocker sb(vfo->nr2Button());
+            vfo->nr2Button()->setChecked(on);
+        }
     });
-    // Overlay DSP panel NR2 → forward to VfoWidget NR2 button (same signal chain)
-    connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::nr2Toggled,
-            this, [this](bool on) {
-        spectrum()->vfoWidget()->nr2Button()->setChecked(on);  // triggers nr2Toggled
-    });
-    // Sync overlay NR2 button when state changes
     connect(&m_audio, &AudioEngine::nr2EnabledChanged,
             this, [this](bool on) {
         if (auto* btn = spectrum()->overlayMenu()->dspNr2Button())
             { QSignalBlocker sb(btn); btn->setChecked(on); }
     });
-    // Overlay DSP panel RN2 → forward to VfoWidget RN2 button
-    connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::rn2Toggled,
+    connect(&m_audio, &AudioEngine::rn2EnabledChanged,
             this, [this](bool on) {
-        spectrum()->vfoWidget()->rn2Button()->setChecked(on);  // triggers rn2Toggled
+        if (auto* vfo = spectrum()->vfoWidget()) {
+            QSignalBlocker sb(vfo->rn2Button());
+            vfo->rn2Button()->setChecked(on);
+        }
     });
-    // Sync overlay RN2 button when state changes
     connect(&m_audio, &AudioEngine::rn2EnabledChanged,
             this, [this](bool on) {
         if (auto* btn = spectrum()->overlayMenu()->dspRn2Button())
             { QSignalBlocker sb(btn); btn->setChecked(on); }
     });
-
+    // Overlay DSP panel NR2/RN2 → forward to active VfoWidget button
+    connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::nr2Toggled,
+            this, [this](bool on) {
+        if (auto* vfo = spectrum()->vfoWidget())
+            vfo->nr2Button()->setChecked(on);
+    });
+    connect(spectrum()->overlayMenu(), &SpectrumOverlayMenu::rn2Toggled,
+            this, [this](bool on) {
+        if (auto* vfo = spectrum()->vfoWidget())
+            vfo->rn2Button()->setChecked(on);
+    });
     // RxApplet NR button 3-state cycle → NR2 enable/disable
     connect(m_appletPanel->rxApplet(), &RxApplet::nr2CycleToggled,
             this, [this](bool on) {
-        // Forward to VfoWidget NR2 button which triggers wisdom + enable
-        spectrum()->vfoWidget()->nr2Button()->setChecked(on);
+        if (auto* vfo = spectrum()->vfoWidget())
+            vfo->nr2Button()->setChecked(on);
     });
     // Sync RxApplet NR button visual when NR2 state changes
     connect(&m_audio, &AudioEngine::nr2EnabledChanged,
             this, [this](bool on) {
         auto* rx = m_appletPanel->rxApplet();
         if (on) {
-            // NR2 active — disable radio NR if on, show "NR2" green
             if (auto* s = activeSlice(); s && s->nrOn())
                 s->setNr(false);
             rx->setNrState(2);
         } else if (rx->nrState() == 2) {
-            // NR2 turned off — button goes to off state
             rx->setNrState(0);
         }
-    });
-
-    // ── Client-side RN2 (RNNoise) toggle: VfoWidget → AudioEngine ─────────
-    connect(spectrum()->vfoWidget(), &VfoWidget::rn2Toggled,
-            this, [this](bool on) {
-        m_audio.setRn2Enabled(on);
-    });
-    connect(&m_audio, &AudioEngine::rn2EnabledChanged,
-            this, [this](bool on) {
-        QSignalBlocker sb(spectrum()->vfoWidget()->rn2Button());
-        spectrum()->vfoWidget()->rn2Button()->setChecked(on);
-    });
-
-    // Split toggle — user clicks the SPLIT badge
-    connect(spectrum()->vfoWidget(), &VfoWidget::splitToggled,
-            this, [this]() {
-        if (!m_splitActive) {
-            // Entering split: create a new slice for TX
-            int currentCount = m_radioModel.slices().size();
-            if (currentCount >= m_radioModel.maxSlices())
-                return;  // radio can't support more slices
-            m_splitActive = true;
-            m_radioModel.addSlice();
-        } else {
-            // Exiting split: move TX back to the active slice
-            m_splitActive = false;
-            if (auto* s = activeSlice())
-                s->setTxSlice(true);
-        }
-
-        updateSplitState();
-    });
-
-    // CW autotune
-    connect(spectrum()->vfoWidget(), &VfoWidget::autotuneRequested,
-            this, [this](bool intermittent) {
-        auto* s = activeSlice();
-        if (s) m_radioModel.cwAutoTune(s->sliceId(), intermittent);
     });
 
     // ── RxApplet RNN 3-state cycle → RN2 enable/disable ────────────────────
@@ -689,8 +558,6 @@ MainWindow::MainWindow(QWidget* parent)
 
 #ifdef HAVE_RADE
     connect(m_appletPanel->rxApplet(), &RxApplet::radeActivated,
-            this, [this](bool on, int sliceId) { if (on) activateRADE(sliceId); else deactivateRADE(); });
-    connect(spectrum()->vfoWidget(), &VfoWidget::radeActivated,
             this, [this](bool on, int sliceId) { if (on) activateRADE(sliceId); else deactivateRADE(); });
 #endif
 
@@ -704,14 +571,11 @@ MainWindow::MainWindow(QWidget* parent)
             m_appletPanel, &AppletPanel::setAntennaList);
     connect(&m_radioModel, &RadioModel::antListChanged,
             spectrum()->overlayMenu(), &SpectrumOverlayMenu::setAntennaList);
-    connect(&m_radioModel, &RadioModel::antListChanged,
-            spectrum()->vfoWidget(), &VfoWidget::setAntennaList);
+    // Antenna list and S-meter are now wired per-widget in onSliceAdded.
 
     // ── S-Meter: MeterModel → SMeterWidget ────────────────────────────────
     connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
             m_appletPanel->sMeterWidget(), &SMeterWidget::setLevel);
-    connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
-            spectrum()->vfoWidget(), &VfoWidget::setSignalLevel);
     connect(m_radioModel.meterModel(), &MeterModel::txMetersChanged,
             m_appletPanel->sMeterWidget(), &SMeterWidget::setTxMeters);
     connect(m_radioModel.meterModel(), &MeterModel::micMetersChanged,
@@ -1484,7 +1348,9 @@ void MainWindow::onConnectionStateChanged(bool connected)
             const QString& model = m_radioModel.model();
             bool divAllowed = model.contains("6600") || model.contains("6700")
                            || model.contains("8600") || model.contains("AU-520");
-            spectrum()->vfoWidget()->setDiversityAllowed(divAllowed);
+            // Set diversity allowed on all existing VFO widgets
+            if (auto* vfo = spectrum()->vfoWidget())
+                vfo->setDiversityAllowed(divAllowed);
         }
         m_audio.startRxStream();
         // TX audio stream will start when the radio assigns a stream ID
@@ -1672,12 +1538,25 @@ void MainWindow::onSliceAdded(SliceModel* s)
                 m_cwDecoder.stop();
         }
     });
+
+    // Create a VfoWidget for this slice
+    auto* vfo = spectrum()->addVfoWidget(s->sliceId());
+    wireVfoWidget(vfo, s);
+
+    // Feed S-meter to this widget's signal level display
+    connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
+            vfo, &VfoWidget::setSignalLevel);
+
+    // Antenna list updates
+    connect(&m_radioModel, &RadioModel::antListChanged,
+            vfo, &VfoWidget::setAntennaList);
 }
 
 void MainWindow::onSliceRemoved(int id)
 {
     qDebug() << "MainWindow: slice removed" << id;
     spectrum()->removeSliceOverlay(id);
+    spectrum()->removeVfoWidget(id);
 
     // Reset panadapter state so display settings re-sync after profile load
     m_radioModel.resetPanState();
@@ -1686,7 +1565,6 @@ void MainWindow::onSliceRemoved(int id)
     // If the removed slice was active, switch to the first remaining slice
     if (id == m_activeSliceId) {
         m_appletPanel->setSlice(nullptr);
-        spectrum()->vfoWidget()->setSlice(nullptr);
         spectrum()->overlayMenu()->setSlice(nullptr);
 
         const auto& slices = m_radioModel.slices();
@@ -1722,12 +1600,24 @@ void MainWindow::setActiveSlice(int sliceId)
             sl->filterLow(), sl->filterHigh(), sl->isTxSlice(), isActive);
     }
 
-    // Re-wire applet panel, overlay menu, VFO widget to the new active slice
+    // Re-wire applet panel, overlay menu to the new active slice
     m_panApplet->setSliceId(sliceId);
     m_appletPanel->setSlice(s);
     spectrum()->overlayMenu()->setSlice(s);
-    spectrum()->vfoWidget()->setSlice(s);
-    spectrum()->vfoWidget()->setTransmitModel(m_radioModel.transmitModel());
+
+    // Switch active VFO widget — disconnect global signals from old, connect to new
+    if (auto* prevVfo = spectrum()->vfoWidget()) {
+        disconnect(prevVfo, &VfoWidget::pcAudioToggled, this, nullptr);
+        disconnect(prevVfo, &VfoWidget::splitToggled, this, nullptr);
+        disconnect(prevVfo, &VfoWidget::nr2Toggled, this, nullptr);
+        disconnect(prevVfo, &VfoWidget::rn2Toggled, this, nullptr);
+#ifdef HAVE_RADE
+        disconnect(prevVfo, &VfoWidget::radeActivated, this, nullptr);
+#endif
+    }
+    spectrum()->setActiveVfoWidget(sliceId);
+    if (auto* vfo = spectrum()->vfoWidget())
+        wireActiveVfoSignals(vfo);
 
     // Update filter limits for the active slice's mode
     updateFilterLimitsForMode(s->mode());
@@ -1789,7 +1679,152 @@ void MainWindow::updateSplitState()
     auto* active = activeSlice();
     if (!active) return;
 
-    spectrum()->vfoWidget()->updateSplitBadge(active->isTxSlice(), m_splitActive);
+    // Update split badge on all VfoWidgets
+    for (auto* s : m_radioModel.slices()) {
+        if (auto* w = spectrum()->vfoWidget(s->sliceId()))
+            w->updateSplitBadge(s->isTxSlice(), m_splitActive);
+    }
+}
+
+void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
+{
+    const int sliceId = s->sliceId();
+
+    // Per-slice signals — these are specific to the slice this widget represents
+    connect(w, &VfoWidget::closeSliceRequested, this, [this, sliceId]() {
+        if (m_radioModel.slices().size() <= 1) return;
+        m_radioModel.sendCommand(QString("slice remove %1").arg(sliceId));
+    });
+    connect(w, &VfoWidget::lockToggled, this, [this, sliceId](bool locked) {
+        if (auto* sl = m_radioModel.slice(sliceId))
+            sl->setLocked(locked);
+    });
+    connect(w, &VfoWidget::afGainChanged, this, [this, sliceId](int v) {
+        if (auto* sl = m_radioModel.slice(sliceId))
+            sl->setAudioGain(v);
+    });
+    connect(w, &VfoWidget::autotuneRequested, this, [this, sliceId](bool intermittent) {
+        if (m_radioModel.slice(sliceId))
+            m_radioModel.cwAutoTune(sliceId, intermittent);
+    });
+
+    // Clicking an inactive VfoWidget activates that slice
+    connect(w, &VfoWidget::sliceActivationRequested, this, [this](int id) {
+        if (id != m_activeSliceId)
+            setActiveSlice(id);
+    });
+
+    // Wire slice data into widget
+    w->setSlice(s);
+    w->setAntennaList(m_radioModel.antennaList());
+    w->setTransmitModel(m_radioModel.transmitModel());
+}
+
+void MainWindow::wireActiveVfoSignals(VfoWidget* w)
+{
+    // Global signals — only the active widget drives these.
+    // Caller must disconnect previous active widget first.
+    connect(w, &VfoWidget::pcAudioToggled, this, [this](bool on) {
+        if (!m_radioModel.isConnected()) return;
+        if (on) {
+            if (m_audio.startRxStream())
+                m_radioModel.createRxAudioStream();
+        } else {
+            m_audio.stopRxStream();
+            m_radioModel.removeRxAudioStream();
+        }
+    });
+    connect(w, &VfoWidget::splitToggled, this, [this]() {
+        if (!m_splitActive) {
+            int currentCount = m_radioModel.slices().size();
+            if (currentCount >= m_radioModel.maxSlices())
+                return;
+            m_splitActive = true;
+            m_radioModel.addSlice();
+        } else {
+            m_splitActive = false;
+            if (auto* s = activeSlice())
+                s->setTxSlice(true);
+        }
+        updateSplitState();
+    });
+
+    // NR2 toggle with FFTW wisdom generation
+    connect(w, &VfoWidget::nr2Toggled, this, [this](bool on) {
+        if (!on) {
+            m_audio.setNr2Enabled(false);
+            return;
+        }
+        if (AudioEngine::needsWisdomGeneration()) {
+            auto* dlg = new QProgressDialog(
+                "Optimizing FFT plans for NR2...\n\n"
+                "This window will automatically close when wisdom generation is complete.",
+                QString(), 0, 100, this);
+            dlg->setWindowTitle("AetherSDR — FFTW Wisdom");
+            dlg->setWindowModality(Qt::ApplicationModal);
+            dlg->setMinimumDuration(0);
+            dlg->setAutoClose(false);
+            dlg->setAutoReset(false);
+            dlg->setCancelButton(nullptr);
+            dlg->setMinimumWidth(500);
+            dlg->setStyleSheet(
+                "QProgressBar { text-align: center; font-size: 13px;"
+                " font-weight: bold; color: #c8d8e8;"
+                " background: #1a2a3a; border: 1px solid #2e4e6e; border-radius: 3px; }"
+                "QProgressBar::chunk { background: #00b4d8; }");
+            dlg->show();
+
+            auto* breathe = new QPropertyAnimation(dlg, "windowOpacity", dlg);
+            breathe->setDuration(1500);
+            breathe->setStartValue(1.0);
+            breathe->setKeyValueAt(0.5, 0.55);
+            breathe->setEndValue(1.0);
+            breathe->setLoopCount(-1);
+
+            auto* thread = QThread::create([this, dlg, breathe]() {
+                AudioEngine::generateWisdom([dlg, breathe](int step, int total, const std::string& desc) {
+                    int pct = total > 0 ? (step * 100 / total) : 0;
+                    QString d = QString::fromStdString(desc);
+                    QMetaObject::invokeMethod(dlg, [dlg, breathe, pct, d]() {
+                        if (!d.isEmpty()) {
+                            dlg->setLabelText(d + "\n\n"
+                                "This window will automatically close when wisdom generation is complete.");
+                            if (dlg->value() >= 90 && breathe->state() != QAbstractAnimation::Running)
+                                breathe->start();
+                        } else {
+                            dlg->setValue(pct);
+                        }
+                    });
+                });
+            });
+            connect(thread, &QThread::finished, this, [this, dlg, breathe, thread]() {
+                breathe->stop();
+                dlg->setWindowOpacity(1.0);
+                dlg->setValue(100);
+                dlg->setLabelText("Wisdom generation complete!");
+                QTimer::singleShot(800, this, [this, dlg, thread]() {
+                    dlg->close();
+                    dlg->deleteLater();
+                    thread->deleteLater();
+                    m_audio.setNr2Enabled(true);
+                });
+            });
+            thread->start();
+        } else {
+            m_audio.setNr2Enabled(true);
+        }
+    });
+
+    // RN2 toggle
+    connect(w, &VfoWidget::rn2Toggled, this, [this](bool on) {
+        m_audio.setRn2Enabled(on);
+    });
+
+#ifdef HAVE_RADE
+    connect(w, &VfoWidget::radeActivated, this, [this](bool on, int sliceId) {
+        if (on) activateRADE(sliceId); else deactivateRADE();
+    });
+#endif
 }
 
 SpectrumWidget* MainWindow::spectrum() const
