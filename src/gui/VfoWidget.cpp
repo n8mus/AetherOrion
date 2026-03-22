@@ -1470,6 +1470,12 @@ void VfoWidget::setSlice(SliceModel* slice)
                                 : QString::fromUtf8("AF  \xF0\x9F\x94\x8A"));
         m_updatingFromModel = false;
     });
+    connect(m_slice, &SliceModel::audioPanChanged, this, [this](int pan) {
+        m_updatingFromModel = true;
+        QSignalBlocker sb(m_panSlider);
+        m_panSlider->setValue(pan);
+        m_updatingFromModel = false;
+    });
     // Diversity sync
     {
         QSignalBlocker sb(m_divBtn);
@@ -1652,8 +1658,6 @@ void VfoWidget::syncFromSlice()
     if (!m_slice) return;
     m_updatingFromModel = true;
 
-             << "rxAnt:" << m_slice->rxAntenna()
-             << "freq:" << m_slice->frequency();
     m_rxAntBtn->setText(m_slice->rxAntenna());
     m_txAntBtn->setText(m_slice->txAntenna());
     updateTxBadgeStyle(m_slice->isTxSlice());
