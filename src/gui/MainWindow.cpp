@@ -507,9 +507,12 @@ MainWindow::MainWindow(QWidget* parent)
             spectrum()->overlayMenu(), &SpectrumOverlayMenu::setAntennaList);
     // Antenna list and S-meter are now wired per-widget in onSliceAdded.
 
-    // ── S-Meter: MeterModel → SMeterWidget ────────────────────────────────
+    // ── S-Meter: MeterModel → SMeterWidget (active slice only) ─────────────
     connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
-            m_appletPanel->sMeterWidget(), &SMeterWidget::setLevel);
+            this, [this](int sliceIndex, float dbm) {
+        if (sliceIndex == m_activeSliceId)
+            m_appletPanel->sMeterWidget()->setLevel(dbm);
+    });
     connect(m_radioModel.meterModel(), &MeterModel::txMetersChanged,
             m_appletPanel->sMeterWidget(), &SMeterWidget::setTxMeters);
     connect(m_radioModel.meterModel(), &MeterModel::micMetersChanged,
@@ -1508,9 +1511,13 @@ void MainWindow::onSliceAdded(SliceModel* s)
 
     wireVfoWidget(vfo, s);
 
-    // Feed S-meter and antenna list
+    // Feed S-meter per-slice — only this VFO's slice level
+    const int sid = s->sliceId();
     connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
-            vfo, &VfoWidget::setSignalLevel);
+            vfo, [vfo, sid](int sliceIndex, float dbm) {
+        if (sliceIndex == sid)
+            vfo->setSignalLevel(dbm);
+    });
     connect(&m_radioModel, &RadioModel::antListChanged,
             vfo, &VfoWidget::setAntennaList);
 

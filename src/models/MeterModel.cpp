@@ -15,7 +15,7 @@ void MeterModel::defineMeter(const MeterDef& def)
 
     // Cache indices for high-frequency lookups
     if (def.source == "SLC" && def.name == "LEVEL")
-        m_sLevelIdx = def.index;
+        m_sLevelIdxBySlice[def.sourceIndex] = def.index;
     else if (def.name == "FWDPWR")
         m_fwdPwrIdx = def.index;
     else if (def.name == "SWR")
@@ -45,7 +45,11 @@ void MeterModel::removeMeter(int index)
     m_defs.remove(index);
     m_values.remove(index);
 
-    if (index == m_sLevelIdx)   m_sLevelIdx = -1;
+    // Remove from per-slice LEVEL map
+    for (auto it = m_sLevelIdxBySlice.begin(); it != m_sLevelIdxBySlice.end(); ) {
+        if (it.value() == index) it = m_sLevelIdxBySlice.erase(it);
+        else ++it;
+    }
     if (index == m_fwdPwrIdx)   m_fwdPwrIdx = -1;
     if (index == m_swrIdx)      m_swrIdx = -1;
     if (index == m_micPeakIdx)   m_micPeakIdx = -1;
@@ -74,7 +78,7 @@ float MeterModel::convertRaw(const MeterDef& def, qint16 raw) const
 void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>& vals)
 {
     const int n = qMin(ids.size(), vals.size());
-    bool sChanged = false;
+    // sLevelChanged is emitted per-slice inline in the loop below
     bool txChanged = false;
     bool micChanged = false;
     bool alcChanged = false;
@@ -88,9 +92,17 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
         const float v = convertRaw(*it, vals[i]);
         m_values[idx] = v;
 
-        if (idx == m_sLevelIdx) {
-            m_sLevel = v;
-            sChanged = true;
+        // Check if this meter is a per-slice LEVEL meter
+        bool isSliceLevel = false;
+        for (auto sit = m_sLevelIdxBySlice.constBegin(); sit != m_sLevelIdxBySlice.constEnd(); ++sit) {
+            if (sit.value() == idx) {
+                emit sLevelChanged(sit.key(), v);
+                isSliceLevel = true;
+                break;
+            }
+        }
+        if (isSliceLevel) {
+            // no-op, already emitted
         } else if (idx == m_fwdPwrIdx) {
             // FWDPWR meter reports in dBm — convert to watts for display.
             // watts = 10^(dBm/10) / 1000
@@ -126,8 +138,7 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
         emit meterUpdated(idx, v);
     }
 
-    if (sChanged)
-        emit sLevelChanged(m_sLevel);
+    // sLevelChanged is now emitted per-slice inline above
     if (txChanged)
         emit txMetersChanged(m_fwdPower, m_swr);
     if (micChanged)
