@@ -338,17 +338,27 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Multi-panadapter lifecycle ──────────────────────────────────────────
     connect(&m_radioModel, &RadioModel::panadapterAdded,
             this, [this](PanadapterModel* pan) {
-        // Skip if this pan already has an applet (e.g. "default" initial pan)
+        // Skip if this pan already has an applet
         if (m_panStack->panadapter(pan->panId())) {
-            // Wire data to existing applet
             connect(pan, &PanadapterModel::infoChanged,
                     m_panStack->spectrum(pan->panId()), &SpectrumWidget::setFrequencyRange);
             connect(pan, &PanadapterModel::levelChanged,
                     m_panStack->spectrum(pan->panId()), &SpectrumWidget::setDbmRange);
             return;
         }
-        // Create new applet for this pan
-        auto* applet = m_panStack->addPanadapter(pan->panId());
+
+        PanadapterApplet* applet = nullptr;
+
+        // Reuse the "default" placeholder for the first real pan
+        if (m_panStack->panadapter("default")) {
+            applet = m_panStack->panadapter("default");
+            applet->setPanId(pan->panId());
+            m_panStack->rekey("default", pan->panId());
+        } else {
+            applet = m_panStack->addPanadapter(pan->panId());
+            wirePanadapter(applet);
+        }
+        m_panApplet = applet;
         wirePanadapter(applet);
         connect(pan, &PanadapterModel::infoChanged,
                 applet->spectrumWidget(), &SpectrumWidget::setFrequencyRange);
@@ -991,7 +1001,7 @@ void MainWindow::buildUI()
 
     // Centre — panadapter stack (one or more FFT + waterfall panes)
     m_panStack = new PanadapterStack(splitter);
-    m_panApplet = m_panStack->addPanadapter("default");  // initial pan, replaced on connect
+    m_panApplet = m_panStack->addPanadapter("default");
     splitter->addWidget(m_panStack);
     splitter->setStretchFactor(0, 1);
 
@@ -1582,7 +1592,12 @@ void MainWindow::setActiveSlice(int sliceId)
     }
 
     // Re-wire applet panel, overlay menu to the new active slice
-    m_panApplet->setSliceId(sliceId);
+    if (m_panStack) {
+        if (auto* applet = m_panStack->panadapter(s->panId()))
+            applet->setSliceId(sliceId);
+        else if (m_panStack->activeApplet())
+            m_panStack->activeApplet()->setSliceId(sliceId);
+    }
     m_appletPanel->setSlice(s);
     spectrum()->overlayMenu()->setSlice(s);
 

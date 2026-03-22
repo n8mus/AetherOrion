@@ -57,6 +57,15 @@ void PanadapterStack::removePanadapter(const QString& panId)
     }
 }
 
+void PanadapterStack::rekey(const QString& oldId, const QString& newId)
+{
+    if (auto* applet = m_pans.take(oldId)) {
+        m_pans[newId] = applet;
+        if (m_activePanId == oldId)
+            m_activePanId = newId;
+    }
+}
+
 PanadapterApplet* PanadapterStack::panadapter(const QString& panId) const
 {
     return m_pans.value(panId, nullptr);

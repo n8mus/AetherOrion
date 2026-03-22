@@ -21,6 +21,7 @@ public:
     // Add/remove panadapter displays
     PanadapterApplet* addPanadapter(const QString& panId);
     void removePanadapter(const QString& panId);
+    void rekey(const QString& oldId, const QString& newId);
 
     // Accessors
     PanadapterApplet* panadapter(const QString& panId) const;
