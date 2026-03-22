@@ -446,19 +446,24 @@ void VfoWidget::buildTabContent()
         vb->setContentsMargins(2, 2, 2, 2);
         vb->setSpacing(2);
 
-        // AF row: gain slider + mute toggle (speaker emoji)
+        // AF row: mute-toggle label + gain slider
         auto* gainRow = new QHBoxLayout;
         gainRow->setSpacing(3);
+        m_muteBtn = new QPushButton(QString::fromUtf8("AF  \xF0\x9F\x94\x8A")); // AF 🔊
+        m_muteBtn->setCheckable(true);
+        m_muteBtn->setFixedHeight(20);
+        m_muteBtn->setFixedWidth(60);
+        m_muteBtn->setStyleSheet(
+            "QPushButton { background: #1a2a3a; border: 1px solid #304050;"
+            " border-radius: 2px; color: #c8d8e8; font-size: 13px;"
+            " font-weight: bold; padding: 1px 4px; }"
+            "QPushButton:checked { background: #6a2020; color: #ff8080;"
+            " border: 1px solid #a04040; }");
+        gainRow->addWidget(m_muteBtn);
         m_afGainSlider = new QSlider(Qt::Horizontal);
         m_afGainSlider->setRange(0, 100);
         m_afGainSlider->setStyleSheet(kSliderStyle);
         gainRow->addWidget(m_afGainSlider, 1);
-        m_muteBtn = new QPushButton(QString::fromUtf8("\xF0\x9F\x94\x8A")); // 🔊
-        m_muteBtn->setCheckable(true);
-        m_muteBtn->setFlat(true);
-        m_muteBtn->setFixedSize(26, 20);
-        m_muteBtn->setStyleSheet(kFlatBtn + "QPushButton { font-size: 14px; padding: 0; }");
-        gainRow->addWidget(m_muteBtn);
         vb->addLayout(gainRow);
 
         // Pan row: DIV button + L + slider (with center marker) + R
@@ -499,8 +504,8 @@ void VfoWidget::buildTabContent()
         });
         connect(m_muteBtn, &QPushButton::toggled, this, [this](bool on) {
             if (!m_updatingFromModel && m_slice) m_slice->setAudioMute(on);
-            m_muteBtn->setText(on ? QString::fromUtf8("\xF0\x9F\x94\x87")    // 🔇
-                                  : QString::fromUtf8("\xF0\x9F\x94\x8A"));  // 🔊
+            m_muteBtn->setText(on ? QString::fromUtf8("AF  \xF0\x9F\x94\x87")    // 🔇 AF
+                                  : QString::fromUtf8("AF  \xF0\x9F\x94\x8A"));  // 🔊 AF
         });
         // SQL row
         auto* sqlRow = new QHBoxLayout;
@@ -1461,8 +1466,8 @@ void VfoWidget::setSlice(SliceModel* slice)
         m_updatingFromModel = true;
         QSignalBlocker sb(m_muteBtn);
         m_muteBtn->setChecked(mute);
-        m_muteBtn->setText(mute ? QString::fromUtf8("\xF0\x9F\x94\x87")
-                                : QString::fromUtf8("\xF0\x9F\x94\x8A"));
+        m_muteBtn->setText(mute ? QString::fromUtf8("AF  \xF0\x9F\x94\x87")
+                                : QString::fromUtf8("AF  \xF0\x9F\x94\x8A"));
         m_updatingFromModel = false;
     });
     // Diversity sync
@@ -1678,8 +1683,8 @@ void VfoWidget::syncFromSlice()
         QSignalBlocker sb(m_muteBtn);
         bool muted = m_slice->audioMute();
         m_muteBtn->setChecked(muted);
-        m_muteBtn->setText(muted ? QString::fromUtf8("\xF0\x9F\x94\x87")
-                                 : QString::fromUtf8("\xF0\x9F\x94\x8A"));
+        m_muteBtn->setText(muted ? QString::fromUtf8("AF  \xF0\x9F\x94\x87")
+                                 : QString::fromUtf8("AF  \xF0\x9F\x94\x8A"));
     }
     {
         QSignalBlocker b1(m_sqlBtn), b2(m_sqlSlider);

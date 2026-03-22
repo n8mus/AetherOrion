@@ -92,6 +92,9 @@ public:
     void setAudioMute(bool mute);
     void setDiversity(bool on);
     bool diversity() const { return m_diversity; }
+    bool isDiversityChild() const { return m_diversityChild; }
+    bool isDiversityParent() const { return m_diversityParent; }
+    int  diversityIndex() const { return m_diversityIndex; }
     void setRxAntenna(const QString& ant);
     void setTxAntenna(const QString& ant);
     void setLocked(bool locked);
@@ -218,6 +221,9 @@ private:
     bool    m_qsk{false};
     bool    m_audioMute{false};
     bool    m_diversity{false};
+    bool    m_diversityChild{false};
+    bool    m_diversityParent{false};
+    int     m_diversityIndex{-1};
     bool    m_nb{false};
     bool    m_nr{false};
     bool    m_anf{false};

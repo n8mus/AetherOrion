@@ -1544,6 +1544,14 @@ void MainWindow::onSliceAdded(SliceModel* s)
 
     wireVfoWidget(vfo, s);
 
+    // Show DIV button on dual-SCU radios
+    {
+        const QString& model = m_radioModel.model();
+        bool divAllowed = model.contains("6600") || model.contains("6700")
+                       || model.contains("8600") || model.contains("AU-520");
+        vfo->setDiversityAllowed(divAllowed);
+    }
+
     // Feed S-meter per-slice — only this VFO's slice level
     const int sid = s->sliceId();
     connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
@@ -1568,6 +1576,24 @@ void MainWindow::onSliceAdded(SliceModel* s)
             .arg(mhzPart)
             .arg(khzPart, 3, 10, QChar('0'))
             .arg(hzPart, 3, 10, QChar('0')));
+
+        // Diversity: client-side sync — immediately update child VFO display
+        // to avoid rubber-banding from the radio round-trip delay.
+        // Only for diversity parent→child, NOT split RX→TX.
+        if (s->isDiversityParent()) {
+            for (auto* other : m_radioModel.slices()) {
+                if (other->isDiversityChild() && other->sliceId() != s->sliceId()) {
+                    auto* csw = spectrumForSlice(other);
+                    if (!csw) continue;
+                    auto* cv = csw->vfoWidget(other->sliceId());
+                    if (!cv) continue;
+                    cv->freqLabel()->setText(QString("%1.%2.%3")
+                        .arg(mhzPart)
+                        .arg(khzPart, 3, 10, QChar('0'))
+                        .arg(hzPart, 3, 10, QChar('0')));
+                }
+            }
+        }
     });
 
     // If split is pending, this new slice is the TX slice
@@ -2133,8 +2159,30 @@ void MainWindow::onFrequencyChanged(double mhz)
 
     spectrum()->setVfoFrequency(mhz);
     if (!m_updatingFromModel) {
-        if (auto* s = activeSlice())
+        if (auto* s = activeSlice()) {
             s->setFrequency(mhz);
+
+            // Diversity: immediately mirror freq to child VFO (no radio round-trip)
+            if (s->isDiversityParent()) {
+                long long hz = static_cast<long long>(std::round(mhz * 1e6));
+                QString freqStr = QString("%1.%2.%3")
+                    .arg(static_cast<int>(hz / 1000000))
+                    .arg(static_cast<int>((hz / 1000) % 1000), 3, 10, QChar('0'))
+                    .arg(static_cast<int>(hz % 1000), 3, 10, QChar('0'));
+                for (auto* other : m_radioModel.slices()) {
+                    if (other->isDiversityChild() && other->sliceId() != s->sliceId()) {
+                        auto* csw = spectrumForSlice(other);
+                        if (!csw) continue;
+                        auto* cv = csw->vfoWidget(other->sliceId());
+                        if (cv) cv->freqLabel()->setText(freqStr);
+                        // Also update the overlay marker position
+                        csw->setSliceOverlay(other->sliceId(), mhz,
+                            other->filterLow(), other->filterHigh(),
+                            other->isTxSlice(), false);
+                    }
+                }
+            }
+        }
     }
 }
 

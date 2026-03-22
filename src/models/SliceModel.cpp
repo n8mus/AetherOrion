@@ -491,6 +491,12 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
             emit diversityChanged(div);
         }
     }
+    if (kvs.contains("diversity_child"))
+        m_diversityChild = kvs["diversity_child"] == "1";
+    if (kvs.contains("diversity_parent"))
+        m_diversityParent = kvs["diversity_parent"] == "1";
+    if (kvs.contains("diversity_index"))
+        m_diversityIndex = kvs["diversity_index"].toInt();
 
     // Slice control state
     if (kvs.contains("rxant")) {
