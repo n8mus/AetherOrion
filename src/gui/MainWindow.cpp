@@ -1369,7 +1369,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
     // Connect slice state changes → spectrum overlay updates
     connect(s, &SliceModel::frequencyChanged, this, [this, s](double mhz) {
         m_updatingFromModel = true;
-        spectrum()->setSliceOverlay(s->sliceId(), mhz,
+        spectrumForSlice(s)->setSliceOverlay(s->sliceId(), mhz,
             s->filterLow(), s->filterHigh(), s->isTxSlice(),
             s->sliceId() == m_activeSliceId);
         m_updatingFromModel = false;
@@ -1384,11 +1384,11 @@ void MainWindow::onSliceAdded(SliceModel* s)
         m_antennaGenius.setRadioFrequency(s->frequency());
 
     connect(s, &SliceModel::filterChanged, this, [this, s](int lo, int hi) {
-        spectrum()->setSliceOverlay(s->sliceId(), s->frequency(),
+        spectrumForSlice(s)->setSliceOverlay(s->sliceId(), s->frequency(),
             lo, hi, s->isTxSlice(), s->sliceId() == m_activeSliceId);
     });
     connect(s, &SliceModel::txSliceChanged, this, [this, s](bool tx) {
-        spectrum()->setSliceOverlay(s->sliceId(), s->frequency(),
+        spectrumForSlice(s)->setSliceOverlay(s->sliceId(), s->frequency(),
             s->filterLow(), s->filterHigh(), tx,
             s->sliceId() == m_activeSliceId);
         updateSplitState();
@@ -1417,8 +1417,25 @@ void MainWindow::onSliceAdded(SliceModel* s)
         }
     });
 
-    // Create a VfoWidget for this slice
-    auto* vfo = spectrum()->addVfoWidget(s->sliceId());
+    // Handle slice migration between panadapters
+    connect(s, &SliceModel::panIdChanged, this, [this, s](const QString&) {
+        // Remove overlay/VFO from all spectrums
+        if (m_panStack) {
+            for (auto* pan : m_radioModel.panadapters()) {
+                if (auto* sw = m_panStack->spectrum(pan->panId())) {
+                    sw->removeSliceOverlay(s->sliceId());
+                    sw->removeVfoWidget(s->sliceId());
+                }
+            }
+        }
+        // Re-add on the new pan
+        auto* sw = spectrumForSlice(s);
+        sw->addVfoWidget(s->sliceId());
+        pushSliceOverlay(s);
+    });
+
+    // Create a VfoWidget for this slice on the correct panadapter
+    auto* vfo = spectrumForSlice(s)->addVfoWidget(s->sliceId());
     wireVfoWidget(vfo, s);
 
     // Feed S-meter to this widget's signal level display
@@ -1457,6 +1474,17 @@ void MainWindow::onSliceRemoved(int id)
         updateSplitState();
     }
 
+    // Remove overlay from all panadapter spectrums (slice model is already gone,
+    // so we can't look up which pan it was on)
+    if (m_panStack) {
+        for (auto* pan : m_radioModel.panadapters()) {
+            if (auto* sw = m_panStack->spectrum(pan->panId())) {
+                sw->removeSliceOverlay(id);
+                sw->removeVfoWidget(id);
+            }
+        }
+    }
+    // Fallback: also clean the active/default spectrum
     spectrum()->removeSliceOverlay(id);
     spectrum()->removeVfoWidget(id);
 
@@ -1495,10 +1523,10 @@ void MainWindow::setActiveSlice(int sliceId)
     if (sliceId != prevId)
         s->setActive(true);
 
-    // Update all overlay isActive flags
+    // Update all overlay isActive flags on each slice's correct spectrum
     for (auto* sl : m_radioModel.slices()) {
         const bool isActive = (sl->sliceId() == sliceId);
-        spectrum()->setSliceOverlay(sl->sliceId(), sl->frequency(),
+        spectrumForSlice(sl)->setSliceOverlay(sl->sliceId(), sl->frequency(),
             sl->filterLow(), sl->filterHigh(), sl->isTxSlice(), isActive);
     }
 
@@ -1570,7 +1598,7 @@ void MainWindow::updateFilterLimitsForMode(const QString& mode)
 
 void MainWindow::pushSliceOverlay(SliceModel* s)
 {
-    spectrum()->setSliceOverlay(s->sliceId(), s->frequency(),
+    spectrumForSlice(s)->setSliceOverlay(s->sliceId(), s->frequency(),
         s->filterLow(), s->filterHigh(), s->isTxSlice(),
         s->sliceId() == m_activeSliceId);
 }
@@ -1889,6 +1917,15 @@ SpectrumWidget* MainWindow::spectrum() const
 {
     return m_panStack ? m_panStack->activeSpectrum()
                       : (m_panApplet ? m_panApplet->spectrumWidget() : nullptr);
+}
+
+SpectrumWidget* MainWindow::spectrumForSlice(SliceModel* s) const
+{
+    if (s && m_panStack) {
+        auto* sw = m_panStack->spectrum(s->panId());
+        if (sw) return sw;
+    }
+    return spectrum();  // fallback to active pan
 }
 
 // ─── Band settings capture / restore ──────────────────────────────────────────

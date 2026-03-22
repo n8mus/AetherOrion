@@ -72,6 +72,7 @@ private:
     void updateSplitState();
     void disableSplit();
     void wirePanadapter(PanadapterApplet* applet);
+    SpectrumWidget* spectrumForSlice(SliceModel* s) const;
     void wireVfoWidget(VfoWidget* w, SliceModel* s);
     void wireActiveVfoSignals(VfoWidget* w);
 
