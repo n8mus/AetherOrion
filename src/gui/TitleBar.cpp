@@ -194,6 +194,7 @@ void TitleBar::showFeatureRequestDialog()
         "covers the same thing, tell me the issue number and title instead of writing\n"
         "a new one — I'll go add my +1 and comments there.\n\n"
         "If no duplicate exists, please write a GitHub issue for this feature request.\n"
+        "Use GitHub-flavored Markdown formatting (headers, code blocks, bullet points).\n"
         "Include:\n"
         "1. A clear title\n"
         "2. A \"What\" section describing what the feature does from the user's perspective\n"
