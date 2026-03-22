@@ -563,6 +563,7 @@ void RadioModel::onDisconnected()
     qCDebug(lcProtocol) << "RadioModel: disconnected";
     stopNetworkMonitor();
     m_panStream.stop();
+    m_panStream.clearRegisteredStreams();
     // Clean up panadapter models
     qDeleteAll(m_panadapters);
     m_panadapters.clear();
@@ -1451,7 +1452,8 @@ void RadioModel::handlePanadapterStatus(const QMap<QString, QString>& kvs)
     if (kvs.contains("min_dbm") || kvs.contains("max_dbm")) {
         const float minDbm = kvs.value("min_dbm", "-130").toFloat();
         const float maxDbm = kvs.value("max_dbm", "-20").toFloat();
-        m_panStream.setDbmRange(minDbm, maxDbm);
+        auto* p = activePanadapter();
+        if (p) m_panStream.setDbmRange(p->panStreamId(), minDbm, maxDbm);
         emit panadapterLevelChanged(minDbm, maxDbm);
     }
     if (kvs.contains("ant_list")) {
@@ -1471,9 +1473,13 @@ void RadioModel::handlePanadapterStatus(const QMap<QString, QString>& kvs)
 
 void RadioModel::updateStreamFilters()
 {
-    quint32 panId = m_activePanId.isEmpty() ? 0 : m_activePanId.toUInt(nullptr, 16);
-    quint32 wfId  = activeWfId().isEmpty() ? 0 : activeWfId().toUInt(nullptr, 16);
-    m_panStream.setOwnedStreamIds(panId, wfId);
+    // Register all known pan/wf stream IDs with PanadapterStream
+    for (auto* pan : m_panadapters) {
+        if (pan->panStreamId())
+            m_panStream.registerPanStream(pan->panStreamId());
+        if (pan->wfStreamId())
+            m_panStream.registerWfStream(pan->wfStreamId());
+    }
 }
 
 void RadioModel::configurePan()

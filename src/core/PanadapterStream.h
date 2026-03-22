@@ -5,6 +5,7 @@
 #include <QHostAddress>
 #include <QVector>
 #include <QMap>
+#include <QSet>
 #include <QTimer>
 
 namespace AetherSDR {
@@ -53,13 +54,14 @@ public:
     quint16 localPort() const { return m_localPort; }
     bool    isRunning() const;
 
-    // Update the dBm range used to scale incoming FFT bins.
-    // Called whenever the radio reports min_dbm / max_dbm for the panadapter.
-    void setDbmRange(float minDbm, float maxDbm);
+    // Update the dBm range used to scale incoming FFT bins for a specific stream.
+    void setDbmRange(quint32 streamId, float minDbm, float maxDbm);
 
-    // Set the stream IDs we own (filter out other clients' FFT/waterfall data).
-    // panStreamId is the panadapter hex ID (e.g. 0x40000000).
-    void setOwnedStreamIds(quint32 panStreamId, quint32 wfStreamId);
+    // Register/unregister pan and waterfall stream IDs we own.
+    // Only registered streams are processed; others are dropped.
+    void registerPanStream(quint32 streamId);
+    void registerWfStream(quint32 streamId);
+    void clearRegisteredStreams();
 
     // DAX stream routing
     void registerDaxStream(quint32 streamId, int channel);
@@ -70,15 +72,13 @@ public:
 
 signals:
     void daxAudioReady(int channel, const QByteArray& pcm);
-    void spectrumReady(const QVector<float>& binsDbm);
-    // One row of waterfall data (dBm values, Width bins).
-    // lowFreqMhz / highFreqMhz describe the frequency span of this tile.
-    // May be emitted multiple times per tile (once per Height row).
-    void waterfallRowReady(const QVector<float>& binsDbm,
+    void spectrumReady(quint32 streamId, const QVector<float>& binsDbm);
+    // One row of waterfall data (intensity values, Width bins).
+    void waterfallRowReady(quint32 streamId, const QVector<float>& binsDbm,
                            double lowFreqMhz, double highFreqMhz,
                            quint32 timecode);
     // Emitted once per waterfall tile with the radio's computed auto black level.
-    void waterfallAutoBlackLevel(quint32 autoBlack);
+    void waterfallAutoBlackLevel(quint32 streamId, quint32 autoBlack);
     // Raw PCM payload (header stripped) from IF-Data (audio) VITA-49 packets.
     // Format: 16-bit signed, stereo, 24 kHz, little-endian.
     void audioDataReady(const QByteArray& pcm);
@@ -90,8 +90,8 @@ private slots:
 
 private:
     void processDatagram(const QByteArray& data);
-    void decodeFFT(const uchar* raw, int totalBytes, bool hasTrailer);
-    void decodeWaterfallTile(const uchar* raw, int totalBytes, bool hasTrailer);
+    void decodeFFT(const uchar* raw, int totalBytes, bool hasTrailer, quint32 streamId);
+    void decodeWaterfallTile(const uchar* raw, int totalBytes, bool hasTrailer, quint32 streamId);
     void decodeNarrowAudio(const uchar* raw, int totalBytes, bool hasTrailer);
     void decodeReducedBwAudio(const uchar* raw, int totalBytes, bool hasTrailer);
     void decodeOpusAudio(const uchar* raw, int totalBytes, bool hasTrailer);
@@ -155,14 +155,13 @@ private:
         int  totalCount{0};
     };
 
-    quint32         m_ownedPanStreamId{0};
-    quint32         m_ownedWfStreamId{0};
+    QSet<quint32>   m_knownPanStreams;     // registered pan stream IDs
+    QSet<quint32>   m_knownWfStreams;     // registered wf stream IDs
     QUdpSocket      m_socket;
     quint16         m_localPort{0};
-    float           m_minDbm{-130.0f};
-    float           m_maxDbm{-20.0f};
+    QMap<quint32, QPair<float,float>> m_dbmRanges;  // streamId → (min, max)
     RadioConnection* m_conn{nullptr};
-    FrameAssembler  m_frame;
+    QMap<quint32, FrameAssembler> m_frames;  // per-stream FFT frame assembly
     QMap<quint32, StreamStats> m_streamStats;  // keyed by stream ID
 
 public:

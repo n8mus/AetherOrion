@@ -261,11 +261,17 @@ MainWindow::MainWindow(QWidget* parent)
 
     // ── Panadapter stream → spectrum widget ───────────────────────────────
     connect(m_radioModel.panStream(), &PanadapterStream::spectrumReady,
-            spectrum(), &SpectrumWidget::updateSpectrum);
+            this, [this](quint32 /*streamId*/, const QVector<float>& bins) {
+        // Phase 2: route to active pan's spectrum widget
+        spectrum()->updateSpectrum(bins);
+    });
     connect(m_radioModel.panStream(), &PanadapterStream::waterfallRowReady,
-            spectrum(), &SpectrumWidget::updateWaterfallRow);
+            this, [this](quint32 /*streamId*/, const QVector<float>& bins,
+                         double low, double high, quint32 tc) {
+        spectrum()->updateWaterfallRow(bins, low, high, tc);
+    });
     connect(m_radioModel.panStream(), &PanadapterStream::waterfallAutoBlackLevel,
-            this, [this](quint32 autoBlack) {
+            this, [this](quint32 /*streamId*/, quint32 autoBlack) {
         if (spectrum()->wfAutoBlack()) {
             // Auto black level from radio tile header — apply as black level
             // The value is in raw intensity units; map to our 0-125 slider range

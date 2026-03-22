@@ -166,19 +166,32 @@ void PanadapterStream::stop()
 
 // ─── Datagram reception ───────────────────────────────────────────────────────
 
-void PanadapterStream::setOwnedStreamIds(quint32 panStreamId, quint32 wfStreamId)
+void PanadapterStream::registerPanStream(quint32 streamId)
 {
-    m_ownedPanStreamId = panStreamId;
-    m_ownedWfStreamId  = wfStreamId;
-    qCDebug(lcVita49) << "PanadapterStream: filtering for pan=0x" + QString::number(panStreamId, 16)
-             << "wf=0x" + QString::number(wfStreamId, 16);
+    m_knownPanStreams.insert(streamId);
+    qCDebug(lcVita49) << "PanadapterStream: registered pan stream 0x" + QString::number(streamId, 16);
 }
 
-void PanadapterStream::setDbmRange(float minDbm, float maxDbm)
+void PanadapterStream::registerWfStream(quint32 streamId)
 {
-    m_minDbm = minDbm;
-    m_maxDbm = maxDbm;
-    qCDebug(lcVita49) << "PanadapterStream: dBm range set to" << minDbm << "->" << maxDbm;
+    m_knownWfStreams.insert(streamId);
+    qCDebug(lcVita49) << "PanadapterStream: registered wf stream 0x" + QString::number(streamId, 16);
+}
+
+void PanadapterStream::clearRegisteredStreams()
+{
+    m_knownPanStreams.clear();
+    m_knownWfStreams.clear();
+    m_frames.clear();
+    m_dbmRanges.clear();
+    qCDebug(lcVita49) << "PanadapterStream: cleared all registered streams";
+}
+
+void PanadapterStream::setDbmRange(quint32 streamId, float minDbm, float maxDbm)
+{
+    m_dbmRanges[streamId] = {minDbm, maxDbm};
+    qCDebug(lcVita49) << "PanadapterStream: dBm range for 0x" + QString::number(streamId, 16)
+             << minDbm << "->" << maxDbm;
 }
 
 void PanadapterStream::onDatagramReady()
@@ -290,16 +303,14 @@ void PanadapterStream::processDatagram(const QByteArray& data)
         decodeOpusAudio(raw, data.size(), hasTrailer);
         return;
     case PCC_FFT:
-        // Filter: only process FFT from our panadapter
-        if (m_ownedPanStreamId != 0 && streamId != m_ownedPanStreamId)
+        if (!m_knownPanStreams.isEmpty() && !m_knownPanStreams.contains(streamId))
             return;
-        decodeFFT(raw, data.size(), hasTrailer);
+        decodeFFT(raw, data.size(), hasTrailer, streamId);
         return;
     case PCC_WATERFALL:
-        // Filter: only process waterfall from our display
-        if (m_ownedWfStreamId != 0 && streamId != m_ownedWfStreamId)
+        if (!m_knownWfStreams.isEmpty() && !m_knownWfStreams.contains(streamId))
             return;
-        decodeWaterfallTile(raw, data.size(), hasTrailer);
+        decodeWaterfallTile(raw, data.size(), hasTrailer, streamId);
         return;
     case PCC_METER:
         decodeMeterData(raw, data.size(), hasTrailer);
@@ -311,14 +322,8 @@ void PanadapterStream::processDatagram(const QByteArray& data)
 
 // ─── FFT decode ──────────────────────────────────────────────────────────────
 
-void PanadapterStream::decodeFFT(const uchar* raw, int totalBytes, bool hasTrailer)
+void PanadapterStream::decodeFFT(const uchar* raw, int totalBytes, bool hasTrailer, quint32 streamId)
 {
-    // FFT sub-header (bytes 28–39):
-    //   uint16 start_bin_index
-    //   uint16 num_bins
-    //   uint16 bin_size          (bytes per bin, always 2)
-    //   uint16 total_bins_in_frame
-    //   uint32 frame_index
     static constexpr int FFT_SUBHEADER_BYTES = 12;
     if (totalBytes < VITA49_HEADER_BYTES + FFT_SUBHEADER_BYTES) return;
 
@@ -341,32 +346,32 @@ void PanadapterStream::decodeFFT(const uchar* raw, int totalBytes, bool hasTrail
 
     const uchar* binData = raw + binDataOffset;
 
-    if (frameIndex != m_frame.frameIndex)
-        m_frame.reset(frameIndex, totalBins);
+    // Per-stream frame assembly
+    auto& frame = m_frames[streamId];
+    if (frameIndex != frame.frameIndex)
+        frame.reset(frameIndex, totalBins);
 
-    if (startBin + numBins > static_cast<quint16>(m_frame.buf.size()))
+    if (startBin + numBins > static_cast<quint16>(frame.buf.size()))
         return;
 
     for (quint16 i = 0; i < numBins; ++i)
-        m_frame.buf[startBin + i] = qFromBigEndian<quint16>(binData + i * 2);
+        frame.buf[startBin + i] = qFromBigEndian<quint16>(binData + i * 2);
 
-    m_frame.binsReceived += numBins;
+    frame.binsReceived += numBins;
 
-    if (!m_frame.isComplete()) return;
+    if (!frame.isComplete()) return;
 
-    // Convert to dBm and emit
-    const float range = m_maxDbm - m_minDbm;
-    const int   count = m_frame.buf.size();
+    // Convert to dBm using per-stream range
+    auto [minDbm, maxDbm] = m_dbmRanges.value(streamId, {-130.0f, -40.0f});
+    const float range = maxDbm - minDbm;
+    const int   count = frame.buf.size();
     QVector<float> bins(count);
 
-    // The radio sends pre-scaled Y pixel coordinates:
-    //   raw 0 = max_dbm (strongest), raw (ypixels-1) = min_dbm (weakest).
-    // We configured ypixels=700, so the Y range is 0–699.
     constexpr float kYPixels = 700.0f;
     for (int i = 0; i < count; ++i)
-        bins[i] = m_maxDbm - (static_cast<float>(m_frame.buf[i]) / (kYPixels - 1.0f)) * range;
+        bins[i] = maxDbm - (static_cast<float>(frame.buf[i]) / (kYPixels - 1.0f)) * range;
 
-    emit spectrumReady(bins);
+    emit spectrumReady(streamId, bins);
 }
 
 // ─── Waterfall tile decode ───────────────────────────────────────────────────
@@ -386,7 +391,7 @@ void PanadapterStream::decodeFFT(const uchar* raw, int totalBytes, bool hasTrail
 // Conversion: treat as signed int16, divide by 128.  Typical noise floor
 // ~96-106, signal peaks ~110-115.  Colour-mapped in SpectrumWidget.
 
-void PanadapterStream::decodeWaterfallTile(const uchar* raw, int totalBytes, bool hasTrailer)
+void PanadapterStream::decodeWaterfallTile(const uchar* raw, int totalBytes, bool hasTrailer, quint32 streamId)
 {
     static constexpr int TILE_SUBHEADER_BYTES = 36;
     if (totalBytes < VITA49_HEADER_BYTES + TILE_SUBHEADER_BYTES) return;
@@ -457,8 +462,8 @@ void PanadapterStream::decodeWaterfallTile(const uchar* raw, int totalBytes, boo
     if (!m_wfFrame.isComplete()) return;
 
     const double frameHighMhz = m_wfFrame.lowFreqMhz + m_wfFrame.binBwMhz * m_wfFrame.totalBins;
-    emit waterfallAutoBlackLevel(m_wfFrame.autoBlack);
-    emit waterfallRowReady(m_wfFrame.buf, m_wfFrame.lowFreqMhz, frameHighMhz, m_wfFrame.timecode);
+    emit waterfallAutoBlackLevel(streamId, m_wfFrame.autoBlack);
+    emit waterfallRowReady(streamId, m_wfFrame.buf, m_wfFrame.lowFreqMhz, frameHighMhz, m_wfFrame.timecode);
 }
 
 // ─── Audio decode ─────────────────────────────────────────────────────────────
