@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "ConnectionPanel.h"
+#include "TitleBar.h"
 #include "PanadapterApplet.h"
 #include "PanadapterStack.h"
 #include "SpectrumWidget.h"
@@ -507,6 +508,27 @@ MainWindow::MainWindow(QWidget* parent)
             spectrum()->overlayMenu(), &SpectrumOverlayMenu::setAntennaList);
     // Antenna list and S-meter are now wired per-widget in onSliceAdded.
 
+    // ── Title bar: PC Audio, master volume, headphone volume ────────────────
+    connect(m_titleBar, &TitleBar::pcAudioToggled, this, [this](bool on) {
+        if (on) m_radioModel.createRxAudioStream();
+        else    m_radioModel.removeRxAudioStream();
+    });
+    connect(m_titleBar, &TitleBar::masterVolumeChanged, this, [this](int pct) {
+        m_audio.setRxVolume(pct / 100.0f);
+        auto& s = AppSettings::instance();
+        s.setValue("MasterVolume", QString::number(pct));
+        s.save();
+    });
+    connect(m_titleBar, &TitleBar::headphoneVolumeChanged,
+            &m_radioModel, &RadioModel::setHeadphoneGain);
+    connect(&m_radioModel, &RadioModel::audioOutputChanged, this, [this]() {
+        m_titleBar->setHeadphoneVolume(m_radioModel.headphoneGain());
+    });
+
+    // Apply saved master volume
+    int savedMasterVol = AppSettings::instance().value("MasterVolume", "100").toInt();
+    m_audio.setRxVolume(savedMasterVol / 100.0f);
+
     // ── S-Meter: MeterModel → SMeterWidget (active slice only) ─────────────
     connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
             this, [this](int sliceIndex, float dbm) {
@@ -995,10 +1017,21 @@ void MainWindow::buildMenuBar()
 
 void MainWindow::buildUI()
 {
-    // ── Central splitter: [sidebar | spectrum | applets] ──────────────────
+    // ── Title bar + central splitter ─────────────────────────────────────────
+    m_titleBar = new TitleBar(this);
+    // Embed the menu bar into the title bar (left side)
+    m_titleBar->setMenuBar(menuBar());
+
     m_splitter = new QSplitter(Qt::Horizontal, this);
     m_splitter->setHandleWidth(0);
-    setCentralWidget(m_splitter);
+
+    auto* central = new QWidget(this);
+    auto* vbox = new QVBoxLayout(central);
+    vbox->setContentsMargins(0, 0, 0, 0);
+    vbox->setSpacing(0);
+    vbox->addWidget(m_titleBar);
+    vbox->addWidget(m_splitter, 1);
+    setCentralWidget(central);
     auto* splitter = m_splitter;
 
     // Connection panel — floating popup (not in splitter)
@@ -1637,7 +1670,6 @@ void MainWindow::setActiveSlice(int sliceId)
 
     // Switch active VFO widget — disconnect global signals from old, connect to new
     if (auto* prevVfo = spectrum()->vfoWidget()) {
-        disconnect(prevVfo, &VfoWidget::pcAudioToggled, this, nullptr);
         disconnect(prevVfo, &VfoWidget::nr2Toggled, this, nullptr);
         disconnect(prevVfo, &VfoWidget::rn2Toggled, this, nullptr);
 #ifdef HAVE_RADE
@@ -1943,18 +1975,7 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
 
 void MainWindow::wireActiveVfoSignals(VfoWidget* w)
 {
-    // Global signals — only the active widget drives these.
-    // Caller must disconnect previous active widget first.
-    connect(w, &VfoWidget::pcAudioToggled, this, [this](bool on) {
-        if (!m_radioModel.isConnected()) return;
-        if (on) {
-            if (m_audio.startRxStream())
-                m_radioModel.createRxAudioStream();
-        } else {
-            m_audio.stopRxStream();
-            m_radioModel.removeRxAudioStream();
-        }
-    });
+    // PC Audio toggle is now in TitleBar (global, not per-slice).
     // Split toggle is wired per-widget in wireVfoWidget (slice-aware).
 
     // NR2 toggle with FFTW wisdom generation

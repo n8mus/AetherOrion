@@ -66,7 +66,6 @@ Q_SIGNALS:
     void lockToggled(bool locked);
     void nr2Toggled(bool on);
     void rn2Toggled(bool on);
-    void pcAudioToggled(bool on);
 #ifdef HAVE_RADE
     void radeActivated(bool on, int sliceId);
 #endif
@@ -127,7 +126,6 @@ private:
     QSlider* m_afGainSlider{nullptr};
     QSlider* m_panSlider{nullptr};
     QPushButton* m_muteBtn{nullptr};
-    QPushButton* m_pcAudioBtn{nullptr};
     QPushButton* m_divBtn{nullptr};
     QPushButton* m_sqlBtn{nullptr};
 public:

@@ -173,6 +173,7 @@ set(GUI_SOURCES
     src/gui/CatApplet.cpp
     src/gui/MeterSlider.cpp
     src/gui/AntennaGeniusApplet.cpp
+    src/gui/TitleBar.cpp
     src/gui/SupportDialog.cpp
 )
 

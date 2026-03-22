@@ -446,22 +446,9 @@ void VfoWidget::buildTabContent()
         vb->setContentsMargins(2, 2, 2, 2);
         vb->setSpacing(2);
 
-        // AF row: PC audio toggle + gain slider + mute toggle (speaker emoji)
+        // AF row: gain slider + mute toggle (speaker emoji)
         auto* gainRow = new QHBoxLayout;
         gainRow->setSpacing(3);
-        m_pcAudioBtn = new QPushButton("PC");
-        m_pcAudioBtn->setCheckable(true);
-        m_pcAudioBtn->setChecked(
-            AppSettings::instance().value("PcAudioEnabled", "True").toString() == "True");
-        m_pcAudioBtn->setFixedHeight(20);
-        m_pcAudioBtn->setFixedWidth(60);
-        m_pcAudioBtn->setStyleSheet(
-            "QPushButton { background: #1a2a3a; border: 1px solid #304050;"
-            " border-radius: 2px; color: #c8d8e8; font-size: 10px;"
-            " font-weight: bold; padding: 1px 6px; }"
-            "QPushButton:checked { background: #1a6030; color: #ffffff;"
-            " border: 1px solid #20a040; }");
-        gainRow->addWidget(m_pcAudioBtn);
         m_afGainSlider = new QSlider(Qt::Horizontal);
         m_afGainSlider->setRange(0, 100);
         m_afGainSlider->setStyleSheet(kSliderStyle);
@@ -515,11 +502,6 @@ void VfoWidget::buildTabContent()
             m_muteBtn->setText(on ? QString::fromUtf8("\xF0\x9F\x94\x87")    // 🔇
                                   : QString::fromUtf8("\xF0\x9F\x94\x8A"));  // 🔊
         });
-        connect(m_pcAudioBtn, &QPushButton::toggled, this, [this](bool on) {
-            AppSettings::instance().setValue("PcAudioEnabled", on ? "True" : "False");
-            emit pcAudioToggled(on);
-        });
-
         // SQL row
         auto* sqlRow = new QHBoxLayout;
         sqlRow->setSpacing(3);

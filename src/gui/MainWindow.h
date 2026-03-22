@@ -23,6 +23,7 @@
 namespace AetherSDR {
 
 class ConnectionPanel;
+class TitleBar;
 class SpectrumWidget;
 class PanadapterApplet;
 class PanadapterStack;
@@ -100,6 +101,7 @@ private:
     ConnectionPanel* m_connPanel{nullptr};
 
     // GUI — main area
+    TitleBar*         m_titleBar{nullptr};
     QSplitter*        m_splitter{nullptr};
     PanadapterStack*  m_panStack{nullptr};
     PanadapterApplet* m_panApplet{nullptr};  // backward compat alias to active applet
