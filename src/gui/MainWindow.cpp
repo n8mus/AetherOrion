@@ -1550,11 +1550,29 @@ void MainWindow::onSliceAdded(SliceModel* s)
     // Antenna list updates
     connect(&m_radioModel, &RadioModel::antListChanged,
             vfo, &VfoWidget::setAntennaList);
+
+    // If split is pending, this new slice is the TX slice
+    if (m_splitActive && m_splitTxSliceId < 0 && s->sliceId() != m_splitRxSliceId) {
+        m_splitTxSliceId = s->sliceId();
+        s->setTxSlice(true);
+        updateSplitState();
+    }
 }
 
 void MainWindow::onSliceRemoved(int id)
 {
     qDebug() << "MainWindow: slice removed" << id;
+
+    // If the split TX slice was closed, disable split
+    if (m_splitActive && id == m_splitTxSliceId) {
+        m_splitActive = false;
+        m_splitRxSliceId = -1;
+        m_splitTxSliceId = -1;
+        if (auto* s = activeSlice())
+            s->setTxSlice(true);
+        updateSplitState();
+    }
+
     spectrum()->removeSliceOverlay(id);
     spectrum()->removeVfoWidget(id);
 
@@ -1608,7 +1626,6 @@ void MainWindow::setActiveSlice(int sliceId)
     // Switch active VFO widget — disconnect global signals from old, connect to new
     if (auto* prevVfo = spectrum()->vfoWidget()) {
         disconnect(prevVfo, &VfoWidget::pcAudioToggled, this, nullptr);
-        disconnect(prevVfo, &VfoWidget::splitToggled, this, nullptr);
         disconnect(prevVfo, &VfoWidget::nr2Toggled, this, nullptr);
         disconnect(prevVfo, &VfoWidget::rn2Toggled, this, nullptr);
 #ifdef HAVE_RADE
@@ -1674,15 +1691,33 @@ void MainWindow::pushSliceOverlay(SliceModel* s)
         s->sliceId() == m_activeSliceId);
 }
 
+void MainWindow::disableSplit()
+{
+    if (!m_splitActive) return;
+
+    m_splitActive = false;
+
+    // Move TX back to the RX slice
+    if (auto* rxSlice = m_radioModel.slice(m_splitRxSliceId))
+        rxSlice->setTxSlice(true);
+
+    // Destroy the split TX slice
+    if (m_splitTxSliceId >= 0)
+        m_radioModel.sendCommand(QString("slice remove %1").arg(m_splitTxSliceId));
+
+    m_splitRxSliceId = -1;
+    m_splitTxSliceId = -1;
+
+    updateSplitState();
+}
+
 void MainWindow::updateSplitState()
 {
-    auto* active = activeSlice();
-    if (!active) return;
-
-    // Update split badge on all VfoWidgets
     for (auto* s : m_radioModel.slices()) {
-        if (auto* w = spectrum()->vfoWidget(s->sliceId()))
-            w->updateSplitBadge(s->isTxSlice(), m_splitActive);
+        if (auto* w = spectrum()->vfoWidget(s->sliceId())) {
+            bool isTxSlice = (m_splitActive && s->sliceId() == m_splitTxSliceId);
+            w->updateSplitBadge(isTxSlice, m_splitActive);
+        }
     }
 }
 
@@ -1714,6 +1749,21 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
             setActiveSlice(id);
     });
 
+    // Split toggle — per-widget, slice-aware
+    connect(w, &VfoWidget::splitToggled, this, [this, sliceId]() {
+        if (!m_splitActive) {
+            // Entering split: this slice becomes RX, create a new TX slice
+            if (m_radioModel.slices().size() >= m_radioModel.maxSlices())
+                return;
+            m_splitActive = true;
+            m_splitRxSliceId = sliceId;
+            m_radioModel.addSlice();
+        } else if (sliceId == m_splitRxSliceId) {
+            // Clicking SPLIT on the RX VFO again → disable split, destroy TX slice
+            disableSplit();
+        }
+    });
+
     // Wire slice data into widget
     w->setSlice(s);
     w->setAntennaList(m_radioModel.antennaList());
@@ -1734,20 +1784,7 @@ void MainWindow::wireActiveVfoSignals(VfoWidget* w)
             m_radioModel.removeRxAudioStream();
         }
     });
-    connect(w, &VfoWidget::splitToggled, this, [this]() {
-        if (!m_splitActive) {
-            int currentCount = m_radioModel.slices().size();
-            if (currentCount >= m_radioModel.maxSlices())
-                return;
-            m_splitActive = true;
-            m_radioModel.addSlice();
-        } else {
-            m_splitActive = false;
-            if (auto* s = activeSlice())
-                s->setTxSlice(true);
-        }
-        updateSplitState();
-    });
+    // Split toggle is wired per-widget in wireVfoWidget (slice-aware).
 
     // NR2 toggle with FFTW wisdom generation
     connect(w, &VfoWidget::nr2Toggled, this, [this](bool on) {

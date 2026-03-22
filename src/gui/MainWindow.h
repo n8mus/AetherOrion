@@ -69,6 +69,7 @@ private:
     void updateFilterLimitsForMode(const QString& mode);
     void pushSliceOverlay(SliceModel* s);
     void updateSplitState();
+    void disableSplit();
     void wireVfoWidget(VfoWidget* w, SliceModel* s);
     void wireActiveVfoSignals(VfoWidget* w);
 
@@ -135,6 +136,8 @@ private:
     // Active slice tracking for multi-slice support
     int m_activeSliceId{-1};
     bool m_splitActive{false};
+    int  m_splitRxSliceId{-1};
+    int  m_splitTxSliceId{-1};
 
     // Guard: set true while updating controls from the model, so that
     // onFrequencyChanged doesn't echo the change back to the radio.
