@@ -1,0 +1,74 @@
+#pragma once
+
+#include <QObject>
+#include <QMap>
+#include <QString>
+#include <QStringList>
+
+namespace AetherSDR {
+
+// Per-panadapter state model. Replaces the single-pan fields that were
+// previously in RadioModel. Each PanadapterModel represents one FFT/waterfall
+// display on the radio, identified by its hex pan ID (e.g. "0x40000000").
+class PanadapterModel : public QObject {
+    Q_OBJECT
+
+public:
+    explicit PanadapterModel(const QString& panId, QObject* parent = nullptr);
+
+    // Identity
+    QString panId() const { return m_panId; }
+    quint32 panStreamId() const;   // numeric form of panId for VITA-49 matching
+    QString waterfallId() const { return m_waterfallId; }
+    quint32 wfStreamId() const;    // numeric form of waterfallId
+    void setWaterfallId(const QString& id);
+    QString clientHandle() const { return m_clientHandle; }
+    void setClientHandle(const QString& h);
+
+    // Display state
+    double centerMhz() const { return m_centerMhz; }
+    double bandwidthMhz() const { return m_bandwidthMhz; }
+    float minDbm() const { return m_minDbm; }
+    float maxDbm() const { return m_maxDbm; }
+    QStringList antList() const { return m_antList; }
+    int rfGain() const { return m_rfGain; }
+    bool wnbActive() const { return m_wnbActive; }
+    int wnbLevel() const { return m_wnbLevel; }
+    QString preamp() const { return m_preamp; }
+
+    // Configuration flags
+    bool isResized() const { return m_resized; }
+    void setResized(bool r) { m_resized = r; }
+    bool isWaterfallConfigured() const { return m_wfConfigured; }
+    void setWaterfallConfigured(bool c) { m_wfConfigured = c; }
+
+    // Apply status from protocol
+    void applyPanStatus(const QMap<QString, QString>& kvs);
+    void applyWaterfallStatus(const QMap<QString, QString>& kvs);
+
+signals:
+    void infoChanged(double centerMhz, double bandwidthMhz);
+    void levelChanged(float minDbm, float maxDbm);
+    void antListChanged(const QStringList& ants);
+    void rfGainChanged(int gain, const QString& preamp);
+    void wnbChanged(bool active, int level);
+    void waterfallIdChanged(const QString& wfId);
+
+private:
+    QString     m_panId;
+    QString     m_waterfallId;
+    QString     m_clientHandle;
+    double      m_centerMhz{14.1};
+    double      m_bandwidthMhz{0.2};
+    float       m_minDbm{-130.0f};
+    float       m_maxDbm{-40.0f};
+    QStringList m_antList;
+    int         m_rfGain{0};
+    bool        m_wnbActive{false};
+    int         m_wnbLevel{50};
+    QString     m_preamp;
+    bool        m_resized{false};
+    bool        m_wfConfigured{false};
+};
+
+} // namespace AetherSDR

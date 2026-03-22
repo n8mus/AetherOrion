@@ -1,0 +1,112 @@
+#include "PanadapterModel.h"
+#include <QDebug>
+
+namespace AetherSDR {
+
+PanadapterModel::PanadapterModel(const QString& panId, QObject* parent)
+    : QObject(parent)
+    , m_panId(panId)
+{}
+
+quint32 PanadapterModel::panStreamId() const
+{
+    bool ok = false;
+    quint32 id = m_panId.toUInt(&ok, 16);
+    return ok ? id : 0;
+}
+
+quint32 PanadapterModel::wfStreamId() const
+{
+    bool ok = false;
+    quint32 id = m_waterfallId.toUInt(&ok, 16);
+    return ok ? id : 0;
+}
+
+void PanadapterModel::setWaterfallId(const QString& id)
+{
+    if (m_waterfallId != id) {
+        m_waterfallId = id;
+        emit waterfallIdChanged(id);
+    }
+}
+
+void PanadapterModel::setClientHandle(const QString& h)
+{
+    m_clientHandle = h;
+}
+
+void PanadapterModel::applyPanStatus(const QMap<QString, QString>& kvs)
+{
+    bool infoChanged = false;
+    bool levelChanged = false;
+
+    if (kvs.contains("center")) {
+        double c = kvs["center"].toDouble();
+        if (c != m_centerMhz) { m_centerMhz = c; infoChanged = true; }
+    }
+    if (kvs.contains("bandwidth")) {
+        double b = kvs["bandwidth"].toDouble();
+        if (b != m_bandwidthMhz) { m_bandwidthMhz = b; infoChanged = true; }
+    }
+    if (kvs.contains("min_dbm")) {
+        float v = kvs["min_dbm"].toFloat();
+        if (v != m_minDbm) { m_minDbm = v; levelChanged = true; }
+    }
+    if (kvs.contains("max_dbm")) {
+        float v = kvs["max_dbm"].toFloat();
+        if (v != m_maxDbm) { m_maxDbm = v; levelChanged = true; }
+    }
+    if (kvs.contains("rfgain")) {
+        int g = kvs["rfgain"].toInt();
+        QString pre = kvs.value("pre", m_preamp);
+        if (g != m_rfGain || pre != m_preamp) {
+            m_rfGain = g;
+            m_preamp = pre;
+            emit rfGainChanged(m_rfGain, m_preamp);
+        }
+    }
+    if (kvs.contains("wnb")) {
+        bool w = kvs["wnb"].toInt() != 0;
+        int lvl = kvs.value("wnb_level", QString::number(m_wnbLevel)).toInt();
+        if (w != m_wnbActive || lvl != m_wnbLevel) {
+            m_wnbActive = w;
+            m_wnbLevel = lvl;
+            emit wnbChanged(m_wnbActive, m_wnbLevel);
+        }
+    }
+    if (kvs.contains("ant_list")) {
+        QStringList ants = kvs["ant_list"].split(',', Qt::SkipEmptyParts);
+        if (ants != m_antList) {
+            m_antList = ants;
+            emit antListChanged(m_antList);
+        }
+    }
+    if (kvs.contains("waterfall")) {
+        setWaterfallId(kvs["waterfall"]);
+    }
+
+    if (infoChanged)
+        emit this->infoChanged(m_centerMhz, m_bandwidthMhz);
+    if (levelChanged)
+        emit this->levelChanged(m_minDbm, m_maxDbm);
+}
+
+void PanadapterModel::applyWaterfallStatus(const QMap<QString, QString>& kvs)
+{
+    // Waterfall status shares center/bandwidth with pan — sync if present
+    if (kvs.contains("center") || kvs.contains("bandwidth")) {
+        bool changed = false;
+        if (kvs.contains("center")) {
+            double c = kvs["center"].toDouble();
+            if (c != m_centerMhz) { m_centerMhz = c; changed = true; }
+        }
+        if (kvs.contains("bandwidth")) {
+            double b = kvs["bandwidth"].toDouble();
+            if (b != m_bandwidthMhz) { m_bandwidthMhz = b; changed = true; }
+        }
+        if (changed)
+            emit infoChanged(m_centerMhz, m_bandwidthMhz);
+    }
+}
+
+} // namespace AetherSDR

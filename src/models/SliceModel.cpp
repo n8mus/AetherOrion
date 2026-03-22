@@ -416,6 +416,15 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
     bool modeChanged_  = false;
     bool filterChanged_= false;
 
+    // Panadapter assignment (e.g. "pan=0x40000000")
+    if (kvs.contains("pan")) {
+        const QString p = kvs["pan"];
+        if (m_panId != p) {
+            m_panId = p;
+            emit panIdChanged(m_panId);
+        }
+    }
+
     // The radio sends the frequency as "RF_frequency" in status messages.
     if (kvs.contains("RF_frequency")) {
         const double f = kvs["RF_frequency"].toDouble();

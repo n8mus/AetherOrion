@@ -5,6 +5,7 @@
 #include "core/PanadapterStream.h"
 #include "SliceModel.h"
 #include "MeterModel.h"
+#include "PanadapterModel.h"
 #include "TunerModel.h"
 #include "TransmitModel.h"
 #include "EqualizerModel.h"
@@ -157,8 +158,13 @@ public:
     bool    multiFlexEnabled() const { return m_multiFlexEnabled; }
     void    setRemoteOnEnabled(bool on);
     void    setMultiFlexEnabled(bool on);
-    double panCenterMhz()    const { return m_panCenterMhz; }
-    double panBandwidthMhz() const { return m_panBandwidthMhz; }
+    // Panadapter access (delegates to active pan)
+    double panCenterMhz() const;
+    double panBandwidthMhz() const;
+    QString panId() const { return m_activePanId; }
+    PanadapterModel* activePanadapter() const;
+    PanadapterModel* panadapter(const QString& panId) const;
+    QList<PanadapterModel*> panadapters() const { return m_panadapters.values(); }
 
     QList<SliceModel*> slices() const { return m_slices; }
     SliceModel* slice(int id) const;
@@ -207,6 +213,8 @@ signals:
     void panadapterInfoChanged(double centerMhz, double bandwidthMhz);
     // Emitted when the radio reports the panadapter's dBm display range.
     void panadapterLevelChanged(float minDbm, float maxDbm);
+    void panadapterAdded(PanadapterModel* pan);
+    void panadapterRemoved(const QString& panId);
     // Emitted when the radio reports its antenna list (e.g. "ANT1,ANT2,RX_A,RX_B").
     void antListChanged(QStringList ants);
     // Emitted when a power amplifier (e.g. PGXL) is detected or lost.
@@ -330,12 +338,8 @@ private:
     bool        m_multiFlexEnabled{true};
     QStringList m_antList;
 
-    double  m_panCenterMhz{14.225};
-    double  m_panBandwidthMhz{0.200};
-    QString m_panId;             // e.g. "0x40000000", empty until first status
-    QString m_waterfallId;       // e.g. "0x42000000", from display waterfall status
-    bool    m_panResized{false}; // true once we've sent the resize command
-    bool    m_wfConfigured{false};
+    QMap<QString, PanadapterModel*> m_panadapters;  // panId → model
+    QString m_activePanId;       // currently active panadapter
 
     bool    m_hasAmplifier{false};  // true if a power amp (PGXL) is detected
 

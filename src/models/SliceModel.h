@@ -24,6 +24,7 @@ public:
 
     // Getters
     int     sliceId()    const { return m_id; }
+    QString panId()      const { return m_panId; }       // e.g. "0x40000000"
     double  frequency()  const { return m_frequency; }   // MHz
     QString mode()       const { return m_mode; }
     QStringList modeList() const { return m_modeList; }
@@ -142,6 +143,7 @@ public:
 
 signals:
     void frequencyChanged(double mhz);
+    void panIdChanged(const QString& panId);
     void modeChanged(const QString& mode);
     void filterChanged(int low, int high);
     void activeChanged(bool active);
@@ -197,6 +199,7 @@ signals:
 
 private:
     int     m_id{0};
+    QString m_panId;           // panadapter assignment (e.g. "0x40000000")
     double  m_frequency{0.0};
     QString m_mode{"USB"};
     QStringList m_modeList;
