@@ -50,6 +50,7 @@ public:
     QPushButton* nr2Button() const { return m_nr2Btn; }
     QPushButton* rn2Button() const { return m_rn2Btn; }
     void setAfGain(int pct);
+    void syncFromSlice();
 
 #ifdef HAVE_RADE
     void setRadeActive(bool on);
@@ -81,7 +82,6 @@ protected:
 private:
     void buildUI();
     void buildTabContent();
-    void syncFromSlice();
     void updateTxBadgeStyle(bool isTx);
     void showTab(int index);
     void updateFreqLabel();

@@ -1374,6 +1374,8 @@ void VfoWidget::setSignalLevel(float dbm)
 
 void VfoWidget::setSlice(SliceModel* slice)
 {
+    qDebug() << "VfoWidget::setSlice:" << (slice ? slice->sliceId() : -1)
+             << "old:" << (m_slice ? m_slice->sliceId() : -1);
     if (m_slice)
         m_slice->disconnect(this);
     m_slice = slice;

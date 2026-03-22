@@ -1495,6 +1495,17 @@ void MainWindow::onSliceAdded(SliceModel* s)
     auto* vfo = spectrumForSlice(s)->addVfoWidget(s->sliceId());
     wireVfoWidget(vfo, s);
 
+    // Force full VFO re-wire after the slice status flood settles.
+    // The initial setSlice() in wireVfoWidget runs before RF_frequency arrives,
+    // and something clears m_slice before the deferred status reaches the widget.
+    QTimer::singleShot(2000, this, [this, vfo, s]() {
+        if (vfo && s && m_radioModel.slices().contains(s)) {
+            qDebug() << "MainWindow: re-wiring VFO for slice" << s->sliceId()
+                     << "freq=" << s->frequency();
+            vfo->setSlice(s);
+        }
+    });
+
     // Feed S-meter to this widget's signal level display
     connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
             vfo, &VfoWidget::setSignalLevel);
@@ -1847,6 +1858,8 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
 void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
 {
     const int sliceId = s->sliceId();
+
+    // Note: w->setSlice(s) is called at the end of this method (line ~1895)
 
     // Per-slice signals — these are specific to the slice this widget represents
     connect(w, &VfoWidget::closeSliceRequested, this, [this, sliceId]() {

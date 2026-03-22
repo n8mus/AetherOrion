@@ -428,7 +428,8 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
     // The radio sends the frequency as "RF_frequency" in status messages.
     if (kvs.contains("RF_frequency")) {
         const double f = kvs["RF_frequency"].toDouble();
-        if (!qFuzzyCompare(m_frequency, f)) {
+        // qFuzzyCompare fails when either value is 0.0 — use explicit epsilon
+        if (std::abs(m_frequency - f) > 1e-9) {
             m_frequency = f;
             freqChanged = true;
         }
@@ -652,7 +653,8 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
         emit fmDeviationChanged(m_fmDeviation);
     }
 
-    if (freqChanged)    emit frequencyChanged(m_frequency);
+    if (freqChanged)
+        emit frequencyChanged(m_frequency);
     if (modeChanged_)   emit modeChanged(m_mode);
     if (filterChanged_) emit filterChanged(m_filterLow, m_filterHigh);
 }
