@@ -128,6 +128,10 @@ QString RigctlProtocol::processCommand(const QString& cmd)
         if (name == "get_info")       return cmdGetInfo();
         if (name == "get_split_vfo")  return cmdGetSplitVfo();
         if (name == "set_split_vfo")  return cmdSetSplitVfo(args);
+        if (name == "get_split_freq") return cmdGetSplitFreq();
+        if (name == "set_split_freq") return cmdSetSplitFreq(args);
+        if (name == "get_split_mode") return cmdGetSplitMode();
+        if (name == "set_split_mode") return cmdSetSplitMode(args);
         if (name == "dump_state")     return cmdDumpState();
         if (name == "quit")           return {};  // caller handles disconnect
         if (name == "chk_vfo")        return QStringLiteral("0\n");  // VFO mode disabled
@@ -154,6 +158,8 @@ QString RigctlProtocol::processCommand(const QString& cmd)
     case 'T': return cmdSetPtt(args);
     case '_': return cmdGetInfo();
     case 'S': return cmdGetSplitVfo();
+    case 'I': return cmdGetSplitFreq();
+    case 'X': return cmdGetSplitMode();
     case '1': return cmdDumpState();       // \dump_state
     case 'b': return cmdSendMorse(args);    // send morse
     case 'q': return {};                   // quit
@@ -298,17 +304,91 @@ QString RigctlProtocol::cmdGetInfo()
         .arg(m_model->name(), m_model->model(), m_model->version());
 }
 
-QString RigctlProtocol::cmdGetSplitVfo()
+// Find the TX slice (may differ from the RX slice in split mode)
+SliceModel* RigctlProtocol::findTxSlice() const
 {
-    // FLEX-8600 fw v1.4.0.0 does not expose split via SmartSDR — always report OFF, VFOA
-    if (m_extended)
-        return QStringLiteral("get_split_vfo:\nSplit: 0\nTX VFO: VFOA\n") + rprt(0);
-    return QStringLiteral("0\nVFOA\n");
+    if (!m_model) return nullptr;
+    for (auto* s : m_model->slices())
+        if (s->isTxSlice()) return s;
+    return nullptr;
 }
 
-QString RigctlProtocol::cmdSetSplitVfo(const QString&)
+QString RigctlProtocol::cmdGetSplitVfo()
 {
-    // Accept but ignore — we don't support split
+    auto* rxSlice = currentSlice();
+    auto* txSlice = findTxSlice();
+    bool split = (rxSlice && txSlice && rxSlice != txSlice);
+    const QString txVfo = txSlice
+        ? (txSlice->sliceId() == 0 ? "VFOA" : "VFOB")
+        : "VFOA";
+    if (m_extended)
+        return QString("get_split_vfo:\nSplit: %1\nTX VFO: %2\n").arg(split ? 1 : 0).arg(txVfo) + rprt(0);
+    return QString("%1\n%2\n").arg(split ? 1 : 0).arg(txVfo);
+}
+
+QString RigctlProtocol::cmdSetSplitVfo(const QString& args)
+{
+    // Format: "1 VFOB" or "0 VFOA"
+    QStringList parts = args.split(' ', Qt::SkipEmptyParts);
+    if (parts.isEmpty()) return rprt(-1);
+    bool enable = (parts[0] == "1");
+    if (!enable) {
+        // Disable split — move TX back to our slice
+        if (auto* s = currentSlice())
+            s->setTxSlice(true);
+    }
+    // Enabling split requires a second slice — handled by MainWindow's split logic
+    return rprt(0);
+}
+
+QString RigctlProtocol::cmdGetSplitFreq()
+{
+    auto* txSlice = findTxSlice();
+    if (!txSlice) return rprt(-1);
+    long long hz = static_cast<long long>(std::round(txSlice->frequency() * 1e6));
+    if (m_extended)
+        return QString("get_split_freq:\nTX Frequency: %1\n").arg(hz) + rprt(0);
+    return QString("%1\n").arg(hz);
+}
+
+QString RigctlProtocol::cmdSetSplitFreq(const QString& args)
+{
+    auto* txSlice = findTxSlice();
+    if (!txSlice) return rprt(-1);
+    bool ok;
+    double hz = args.trimmed().toDouble(&ok);
+    if (!ok) return rprt(-1);
+    txSlice->setFrequency(hz / 1e6);
+    return rprt(0);
+}
+
+QString RigctlProtocol::cmdGetSplitMode()
+{
+    auto* txSlice = findTxSlice();
+    if (!txSlice) return rprt(-1);
+    const QString mode = txSlice->mode();
+    // Map FlexRadio mode to Hamlib mode string
+    QString hMode = mode;
+    if (mode == "DIGU") hMode = "PKTUSB";
+    else if (mode == "DIGL") hMode = "PKTLSB";
+    else if (mode == "SAM") hMode = "AMS";
+    int passband = txSlice->filterHigh() - txSlice->filterLow();
+    if (m_extended)
+        return QString("get_split_mode:\nTX Mode: %1\nTX Passband: %2\n").arg(hMode).arg(passband) + rprt(0);
+    return QString("%1\n%2\n").arg(hMode).arg(passband);
+}
+
+QString RigctlProtocol::cmdSetSplitMode(const QString& args)
+{
+    auto* txSlice = findTxSlice();
+    if (!txSlice) return rprt(-1);
+    QStringList parts = args.split(' ', Qt::SkipEmptyParts);
+    if (parts.isEmpty()) return rprt(-1);
+    QString mode = parts[0];
+    if (mode == "PKTUSB") mode = "DIGU";
+    else if (mode == "PKTLSB") mode = "DIGL";
+    else if (mode == "AMS") mode = "SAM";
+    txSlice->setMode(mode);
     return rprt(0);
 }
 

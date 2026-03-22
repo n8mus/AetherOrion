@@ -44,6 +44,10 @@ private:
     QString cmdGetInfo();
     QString cmdGetSplitVfo();
     QString cmdSetSplitVfo(const QString& args);
+    QString cmdGetSplitFreq();
+    QString cmdSetSplitFreq(const QString& args);
+    QString cmdGetSplitMode();
+    QString cmdSetSplitMode(const QString& args);
     QString cmdDumpState();
     QString cmdSendMorse(const QString& text);  // b <text> / \send_morse
     QString cmdStopMorse();                     // \stop_morse
@@ -51,6 +55,7 @@ private:
 
     // Helpers
     SliceModel* currentSlice() const;
+    SliceModel* findTxSlice() const;
     QString rprt(int code) const;
 
     // Mode conversion tables
