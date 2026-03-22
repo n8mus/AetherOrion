@@ -170,9 +170,18 @@ void RadioModel::addSlice()
         return;
     }
 
-    // Create a new slice on the current panadapter at the center frequency.
-    // The radio will pick a default mode (USB) and antenna.
-    const QString freq = QString::number(m_panCenterMhz, 'f', 6);
+    // Create a new slice offset from existing slices so VFO flags deconflict.
+    // Use pan center, but if an existing slice is within 5 kHz, offset by
+    // 20% of the visible bandwidth.
+    double newFreq = m_panCenterMhz;
+    const double offsetMhz = m_panBandwidthMhz * 0.2;  // 20% of visible BW
+    for (auto* s : m_slices) {
+        if (std::abs(s->frequency() - newFreq) < 0.005) {  // within 5 kHz
+            newFreq += offsetMhz;
+            break;
+        }
+    }
+    const QString freq = QString::number(newFreq, 'f', 6);
     const QString cmd = QString("slice create pan=%1 freq=%2").arg(m_panId, freq);
 
     qCDebug(lcProtocol) << "RadioModel::addSlice:" << cmd;

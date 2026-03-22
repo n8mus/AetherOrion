@@ -1184,35 +1184,39 @@ void VfoWidget::setAfGain(int pct)
     }
 }
 
-void VfoWidget::updatePosition(int vfoX, int specTop)
+void VfoWidget::updatePosition(int vfoX, int specTop, FlagDir dir)
 {
     const int w = width();
     bool onLeft = true;
 
-    // For lower-sideband modes (LSB, DIGL, CWL), default to right side
-    // so the widget doesn't obscure the passband
-    bool lowerSideband = false;
-    if (m_slice) {
-        const QString mode = m_slice->mode();
-        lowerSideband = (mode == "LSB" || mode == "DIGL" || mode == "CWL");
+    if (dir == ForceLeft) {
+        onLeft = true;
+    } else if (dir == ForceRight) {
+        onLeft = false;
+    } else {
+        // Auto: use mode-based default
+        bool lowerSideband = false;
+        if (m_slice) {
+            const QString mode = m_slice->mode();
+            lowerSideband = (mode == "LSB" || mode == "DIGL" || mode == "CWL");
+        }
+        onLeft = !lowerSideband;
     }
 
     int x;
-    if (lowerSideband) {
-        x = vfoX;           // right of VFO marker
-        onLeft = false;
-        // Flip to left if would clip off right edge
-        if (parentWidget() && x + w > parentWidget()->width()) {
-            x = vfoX - w;
-            onLeft = true;
-        }
-    } else {
-        x = vfoX - w;       // left of VFO marker
-        onLeft = true;
+    if (onLeft) {
+        x = vfoX - w;
         // Flip to right if would clip off left edge
         if (x < 0) {
             x = vfoX;
             onLeft = false;
+        }
+    } else {
+        x = vfoX;
+        // Flip to left if would clip off right edge
+        if (parentWidget() && x + w > parentWidget()->width()) {
+            x = vfoX - w;
+            onLeft = true;
         }
     }
 

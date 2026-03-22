@@ -129,6 +129,7 @@ public:
         int    filterHighHz{0};
         bool   isTxSlice{false};
         bool   isActive{false};
+        int    splitPartnerId{-1};  // slice ID of split partner, -1 if not in split
     };
 
     // Add or update a slice overlay (called per-slice on any state change).
@@ -136,6 +137,9 @@ public:
                          bool tx, bool active);
     // Remove a slice overlay.
     void removeSliceOverlay(int sliceId);
+
+    // Mark two slices as a split pair (RX + TX). Pass -1 to clear.
+    void setSplitPair(int rxSliceId, int txSliceId);
 
     // ── TNF overlay ─────────────────────────────────────────────────────
     struct TnfMarker {

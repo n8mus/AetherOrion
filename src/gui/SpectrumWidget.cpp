@@ -236,6 +236,21 @@ void SpectrumWidget::removeSliceOverlay(int sliceId)
     update();
 }
 
+void SpectrumWidget::setSplitPair(int rxSliceId, int txSliceId)
+{
+    // Clear old split markers
+    for (auto& so : m_sliceOverlays)
+        so.splitPartnerId = -1;
+
+    if (rxSliceId >= 0 && txSliceId >= 0) {
+        int rxIdx = overlayIndex(rxSliceId);
+        int txIdx = overlayIndex(txSliceId);
+        if (rxIdx >= 0) m_sliceOverlays[rxIdx].splitPartnerId = txSliceId;
+        if (txIdx >= 0) m_sliceOverlays[txIdx].splitPartnerId = rxSliceId;
+    }
+    update();
+}
+
 // ─── Legacy single-slice convenience wrappers ────────────────────────────────
 
 void SpectrumWidget::setVfoFrequency(double freqMhz)
@@ -1155,11 +1170,79 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
     drawSliceMarkers(p, specRect, wfRect);
     drawOffScreenSlices(p, specRect);
 
-    // Reposition all VFO widgets to follow their slice markers
-    for (const auto& so : m_sliceOverlays) {
-        if (auto* w = m_vfoWidgets.value(so.sliceId, nullptr)) {
-            int vfoX = mhzToX(so.freqMhz);
-            w->updatePosition(vfoX, specRect.top());
+    // Reposition all VFO widgets — deconflict flags so they fly away from each other
+    // Split pairs always face each other: RX←  →TX
+    {
+        // Collect visible VFOs sorted by screen X position
+        struct VfoPos { int sliceId; int x; VfoWidget* w; int splitPartner; };
+        QVector<VfoPos> vfos;
+        for (const auto& so : m_sliceOverlays) {
+            if (auto* w = m_vfoWidgets.value(so.sliceId, nullptr))
+                vfos.append({so.sliceId, mhzToX(so.freqMhz), w, so.splitPartnerId});
+        }
+        std::sort(vfos.begin(), vfos.end(), [](const VfoPos& a, const VfoPos& b) {
+            return a.x < b.x;
+        });
+
+        const int panelW = vfos.isEmpty() ? 0 : vfos[0].w->width();
+        const int specW = specRect.width();
+
+        // First pass: assign directions for split pairs
+        QMap<int, VfoWidget::FlagDir> dirMap;  // sliceId → direction
+        for (int i = 0; i < vfos.size(); ++i) {
+            if (vfos[i].splitPartner < 0) continue;
+            if (dirMap.contains(vfos[i].sliceId)) continue;  // already assigned
+
+            // Find partner index
+            int pi = -1;
+            for (int j = 0; j < vfos.size(); ++j) {
+                if (vfos[j].sliceId == vfos[i].splitPartner) { pi = j; break; }
+            }
+            if (pi < 0) continue;
+
+            // Left partner flies left, right partner flies right
+            int leftIdx  = (vfos[i].x <= vfos[pi].x) ? i : pi;
+            int rightIdx = (leftIdx == i) ? pi : i;
+            dirMap[vfos[leftIdx].sliceId]  = VfoWidget::ForceLeft;
+            dirMap[vfos[rightIdx].sliceId] = VfoWidget::ForceRight;
+
+            // Edge clamp
+            if (vfos[leftIdx].x < panelW)
+                dirMap[vfos[leftIdx].sliceId] = VfoWidget::ForceRight;
+            if (vfos[rightIdx].x + panelW > specW)
+                dirMap[vfos[rightIdx].sliceId] = VfoWidget::ForceLeft;
+        }
+
+        // Second pass: assign remaining (non-split) VFOs
+        if (vfos.size() == 1) {
+            vfos[0].w->updatePosition(vfos[0].x, specRect.top());
+        } else {
+            for (int i = 0; i < vfos.size(); ++i) {
+                VfoWidget::FlagDir dir = VfoWidget::Auto;
+
+                if (dirMap.contains(vfos[i].sliceId)) {
+                    // Split pair: use pre-assigned direction
+                    dir = dirMap[vfos[i].sliceId];
+                } else if (vfos.size() == 2) {
+                    dir = (i == 0) ? VfoWidget::ForceLeft : VfoWidget::ForceRight;
+                    if (i == 0 && vfos[i].x < panelW) dir = VfoWidget::ForceRight;
+                    if (i == 1 && vfos[i].x + panelW > specW) dir = VfoWidget::ForceLeft;
+                } else {
+                    if (i == 0) {
+                        dir = VfoWidget::ForceLeft;
+                        if (vfos[i].x < panelW) dir = VfoWidget::ForceRight;
+                    } else if (i == vfos.size() - 1) {
+                        dir = VfoWidget::ForceRight;
+                        if (vfos[i].x + panelW > specW) dir = VfoWidget::ForceLeft;
+                    } else {
+                        int gapLeft = vfos[i].x - vfos[i-1].x;
+                        int gapRight = vfos[i+1].x - vfos[i].x;
+                        dir = (gapLeft >= gapRight) ? VfoWidget::ForceLeft : VfoWidget::ForceRight;
+                    }
+                }
+
+                vfos[i].w->updatePosition(vfos[i].x, specRect.top(), dir);
+            }
         }
     }
     // Active widget on top, but overlay stays above all

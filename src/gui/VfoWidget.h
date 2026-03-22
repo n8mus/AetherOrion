@@ -41,8 +41,11 @@ public:
     //   splitActive — TX is assigned to a different slice than the active one
     void updateSplitBadge(bool isTxSlice, bool splitActive);
 
+    // Flag direction hint for deconfliction.
+    enum FlagDir { Auto, ForceLeft, ForceRight };
+
     // Reposition relative to VFO marker x coordinate.
-    void updatePosition(int vfoX, int specTop);
+    void updatePosition(int vfoX, int specTop, FlagDir dir = Auto);
 
     QPushButton* nr2Button() const { return m_nr2Btn; }
     QPushButton* rn2Button() const { return m_rn2Btn; }

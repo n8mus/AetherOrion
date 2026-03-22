@@ -1555,6 +1555,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
     if (m_splitActive && m_splitTxSliceId < 0 && s->sliceId() != m_splitRxSliceId) {
         m_splitTxSliceId = s->sliceId();
         s->setTxSlice(true);
+        spectrum()->setSplitPair(m_splitRxSliceId, m_splitTxSliceId);
         updateSplitState();
     }
 }
@@ -1568,6 +1569,7 @@ void MainWindow::onSliceRemoved(int id)
         m_splitActive = false;
         m_splitRxSliceId = -1;
         m_splitTxSliceId = -1;
+        spectrum()->setSplitPair(-1, -1);
         if (auto* s = activeSlice())
             s->setTxSlice(true);
         updateSplitState();
@@ -1707,6 +1709,7 @@ void MainWindow::disableSplit()
 
     m_splitRxSliceId = -1;
     m_splitTxSliceId = -1;
+    spectrum()->setSplitPair(-1, -1);
 
     updateSplitState();
 }
@@ -1716,7 +1719,8 @@ void MainWindow::updateSplitState()
     for (auto* s : m_radioModel.slices()) {
         if (auto* w = spectrum()->vfoWidget(s->sliceId())) {
             bool isTxSlice = (m_splitActive && s->sliceId() == m_splitTxSliceId);
-            w->updateSplitBadge(isTxSlice, m_splitActive);
+            bool isRxSplit = (m_splitActive && s->sliceId() == m_splitRxSliceId);
+            w->updateSplitBadge(isTxSlice, isRxSplit);
         }
     }
 }
