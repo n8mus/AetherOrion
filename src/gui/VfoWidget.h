@@ -51,6 +51,7 @@ public:
     QPushButton* rn2Button() const { return m_rn2Btn; }
     void setAfGain(int pct);
     void syncFromSlice();
+    QLabel* freqLabel() const { return m_freqLabel; }
 
 #ifdef HAVE_RADE
     void setRadeActive(bool on);

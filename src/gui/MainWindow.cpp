@@ -1506,15 +1506,21 @@ void MainWindow::onSliceAdded(SliceModel* s)
     auto* vfo = spectrumForSlice(s)->addVfoWidget(s->sliceId());
     wireVfoWidget(vfo, s);
 
-    // Force full VFO re-wire after the slice status flood settles.
-    // The initial setSlice() in wireVfoWidget runs before RF_frequency arrives,
-    // and something clears m_slice before the deferred status reaches the widget.
-    QTimer::singleShot(2000, this, [this, vfo, s]() {
-        if (vfo && s && m_radioModel.slices().contains(s)) {
-            qDebug() << "MainWindow: re-wiring VFO for slice" << s->sliceId()
-                     << "freq=" << s->frequency();
-            vfo->setSlice(s);
-        }
+    // Direct label update from slice — bypasses m_slice entirely
+    connect(s, &SliceModel::frequencyChanged, this, [this, s]() {
+        // Find the VFO widget for this slice on its spectrum
+        auto* sw = spectrumForSlice(s);
+        if (!sw) return;
+        auto* v = sw->vfoWidget(s->sliceId());
+        if (!v) return;
+        long long hz = static_cast<long long>(std::round(s->frequency() * 1e6));
+        int mhzPart = static_cast<int>(hz / 1000000);
+        int khzPart = static_cast<int>((hz / 1000) % 1000);
+        int hzPart  = static_cast<int>(hz % 1000);
+        v->freqLabel()->setText(QString("%1.%2.%3")
+            .arg(mhzPart)
+            .arg(khzPart, 3, 10, QChar('0'))
+            .arg(hzPart, 3, 10, QChar('0')));
     });
 
     // Feed S-meter to this widget's signal level display
