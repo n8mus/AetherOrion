@@ -401,9 +401,17 @@ void RadioModel::onConnected()
 
 void RadioModel::registerAsGuiClient(const QString& clientId)
 {
-    sendCmd(QString("client gui %1").arg(clientId), [this](int code, const QString&) {
-        if (code != 0)
+    sendCmd(QString("client gui %1").arg(clientId), [this](int code, const QString& body) {
+        if (code != 0) {
             qCWarning(lcProtocol) << "RadioModel: client gui failed, code" << Qt::hex << code;
+        } else if (!body.trimmed().isEmpty()) {
+            // Save our UUID for session persistence across restarts.
+            // The radio restores slices/frequencies for a known UUID.
+            auto& s = AppSettings::instance();
+            s.setValue("GUIClientID", body.trimmed());
+            s.save();
+            qCDebug(lcProtocol) << "RadioModel: saved GUIClientID:" << body.trimmed();
+        }
 
         sendCmd("client program AetherSDR");
         sendCmd("client station AetherSDR");

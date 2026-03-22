@@ -316,9 +316,9 @@ MainWindow::MainWindow(QWidget* parent)
             m_radioModel.setWaterfallLineDuration(rate);
             // Restore saved WNB and RF gain
             auto& s = AppSettings::instance();
-            bool wnbOn = s.value("DisplayWnbEnabled", "False").toString() == "True";
-            int wnbLevel = s.value("DisplayWnbLevel", "50").toInt();
-            int rfGain = s.value("DisplayRfGain", "0").toInt();
+            bool wnbOn = s.value(spectrum()->settingsKey("DisplayWnbEnabled"), "False").toString() == "True";
+            int wnbLevel = s.value(spectrum()->settingsKey("DisplayWnbLevel"), "50").toInt();
+            int rfGain = s.value(spectrum()->settingsKey("DisplayRfGain"), "0").toInt();
             m_radioModel.setPanWnb(wnbOn);
             m_radioModel.setPanWnbLevel(wnbLevel);
             m_radioModel.setPanRfGain(rfGain);
@@ -1505,32 +1505,51 @@ void MainWindow::onSliceAdded(SliceModel* s)
 
     // Create a VfoWidget for this slice on the correct panadapter
     auto* vfo = spectrumForSlice(s)->addVfoWidget(s->sliceId());
-    wireVfoWidget(vfo, s);
 
-    // Direct label update from slice — bypasses m_slice entirely
-    connect(s, &SliceModel::frequencyChanged, this, [this, s]() {
-        // Find the VFO widget for this slice on its spectrum
-        auto* sw = spectrumForSlice(s);
-        if (!sw) return;
-        auto* v = sw->vfoWidget(s->sliceId());
-        if (!v) return;
-        long long hz = static_cast<long long>(std::round(s->frequency() * 1e6));
-        int mhzPart = static_cast<int>(hz / 1000000);
-        int khzPart = static_cast<int>((hz / 1000) % 1000);
-        int hzPart  = static_cast<int>(hz % 1000);
-        v->freqLabel()->setText(QString("%1.%2.%3")
-            .arg(mhzPart)
-            .arg(khzPart, 3, 10, QChar('0'))
-            .arg(hzPart, 3, 10, QChar('0')));
-    });
-
-    // Feed S-meter to this widget's signal level display
+    // Feed S-meter and antenna list immediately (no slice state dependency)
     connect(m_radioModel.meterModel(), &MeterModel::sLevelChanged,
             vfo, &VfoWidget::setSignalLevel);
-
-    // Antenna list updates
     connect(&m_radioModel, &RadioModel::antListChanged,
             vfo, &VfoWidget::setAntennaList);
+
+    // Defer VFO wiring until the status flood settles (~2 seconds).
+    // During the accumulation phase, SliceModel is populated by applyStatus()
+    // from the radio's status messages. Wiring signals too early causes the VFO
+    // widget to miss the initial state (freq, mode, filter) because the signals
+    // fired before the connections were made.
+    const int sliceId = s->sliceId();
+    QTimer::singleShot(2000, this, [this, sliceId]() {
+        auto* s = m_radioModel.slice(sliceId);
+        if (!s) return;  // slice was removed during accumulation
+
+        auto* sw = spectrumForSlice(s);
+        if (!sw) return;
+        auto* vfo = sw->vfoWidget(sliceId);
+        if (!vfo) return;
+
+        // Now wire the VFO — setSlice() + syncFromSlice() will read
+        // fully-populated state from the SliceModel
+        wireVfoWidget(vfo, s);
+
+        // Direct freq label update for runtime changes
+        connect(s, &SliceModel::frequencyChanged, this, [this, s]() {
+            auto* sw2 = spectrumForSlice(s);
+            if (!sw2) return;
+            auto* v = sw2->vfoWidget(s->sliceId());
+            if (!v) return;
+            long long hz = static_cast<long long>(std::round(s->frequency() * 1e6));
+            int mhzPart = static_cast<int>(hz / 1000000);
+            int khzPart = static_cast<int>((hz / 1000) % 1000);
+            int hzPart  = static_cast<int>(hz % 1000);
+            v->freqLabel()->setText(QString("%1.%2.%3")
+                .arg(mhzPart)
+                .arg(khzPart, 3, 10, QChar('0'))
+                .arg(hzPart, 3, 10, QChar('0')));
+        });
+
+        qDebug() << "MainWindow: finalized VFO for slice" << sliceId
+                 << "freq:" << s->frequency();
+    });
 
     // If split is pending, this new slice is the TX slice
     if (m_splitActive && m_splitTxSliceId < 0 && s->sliceId() != m_splitRxSliceId) {
@@ -1844,14 +1863,14 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         m_radioModel.setPanWnb(on);
         sw->setWnbActive(on);
         auto& s = AppSettings::instance();
-        s.setValue("DisplayWnbEnabled", on ? "True" : "False");
+        s.setValue(sw->settingsKey("DisplayWnbEnabled"), on ? "True" : "False");
         s.save();
     });
     connect(menu, &SpectrumOverlayMenu::wnbLevelChanged,
-            this, [this](int level) {
+            this, [this, sw](int level) {
         m_radioModel.setPanWnbLevel(level);
         auto& s = AppSettings::instance();
-        s.setValue("DisplayWnbLevel", QString::number(level));
+        s.setValue(sw->settingsKey("DisplayWnbLevel"), QString::number(level));
         s.save();
     });
     connect(menu, &SpectrumOverlayMenu::rfGainChanged,
@@ -1859,7 +1878,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         m_radioModel.setPanRfGain(gain);
         sw->setRfGain(gain);
         auto& s = AppSettings::instance();
-        s.setValue("DisplayRfGain", QString::number(gain));
+        s.setValue(sw->settingsKey("DisplayRfGain"), QString::number(gain));
         s.save();
     });
 

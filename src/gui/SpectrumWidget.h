@@ -29,6 +29,12 @@ class SpectrumWidget : public QWidget {
 public:
     explicit SpectrumWidget(QWidget* parent = nullptr);
 
+    // Per-pan settings persistence
+    void setPanIndex(int idx) { m_panIndex = idx; }
+    int panIndex() const { return m_panIndex; }
+    QString settingsKey(const QString& base) const;
+    void loadSettings();
+
     QSize sizeHint() const override { return {800, 300}; }
 
     // Set the frequency range covered by this panadapter.
@@ -245,6 +251,7 @@ private:
     int m_stepHz{100};
 
     // ── FFT display controls (radio-side via "display pan set") ──────────
+    int   m_panIndex{0};             // per-pan settings index (0, 1, 2, 3)
     int   m_fftAverage{0};           // 0=off, 1-10 frames
     bool  m_fftWeightedAvg{false};
     int   m_fftFps{25};

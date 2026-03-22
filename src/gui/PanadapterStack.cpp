@@ -26,6 +26,8 @@ PanadapterApplet* PanadapterStack::addPanadapter(const QString& panId)
 
     auto* applet = new PanadapterApplet(m_splitter);
     applet->setPanId(panId);
+    applet->spectrumWidget()->setPanIndex(m_pans.size());
+    applet->spectrumWidget()->loadSettings();
     m_splitter->addWidget(applet);
 
     // Equal stretch for all pans

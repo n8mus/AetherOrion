@@ -28,30 +28,13 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
     setCursor(Qt::CrossCursor);
     setMouseTracking(true);
 
-    // Restore saved display settings
-    auto& s = AppSettings::instance();
-    m_spectrumFrac   = std::clamp(s.value("SpectrumSplitRatio", "0.40").toFloat(), 0.10f, 0.90f);
-    m_fftAverage     = s.value("DisplayFftAverage", "0").toInt();
-    m_fftFps         = s.value("DisplayFftFps", "25").toInt();
-    m_fftFillAlpha   = s.value("DisplayFftFillAlpha", "0.70").toFloat();
-    m_fftWeightedAvg = s.value("DisplayFftWeightedAvg", "False").toString() == "True";
-    const QString fillColorStr = s.value("DisplayFftFillColor", "#00e5ff").toString();
-    QColor parsed(fillColorStr);
-    if (parsed.isValid())
-        m_fftFillColor = parsed;
-    m_wfColorGain    = s.value("DisplayWfColorGain", "50").toInt();
-    m_wfBlackLevel   = s.value("DisplayWfBlackLevel", "15").toInt();
-    m_wfAutoBlack    = s.value("DisplayWfAutoBlack", "True").toString() == "True";
-    m_wfLineDuration = s.value("DisplayWfLineDuration", "100").toInt();
-
     // Floating overlay menu (child widget, stays on top)
     m_overlayMenu = new SpectrumOverlayMenu(this);
     m_overlayMenu->raise();
 
-    // Sync overlay menu sliders with restored settings
-    m_overlayMenu->syncDisplaySettings(m_fftAverage, m_fftFps,
-        static_cast<int>(m_fftFillAlpha * 100), m_fftWeightedAvg, m_fftFillColor,
-        m_wfColorGain, m_wfBlackLevel, m_wfAutoBlack, m_wfLineDuration);
+    // Load display settings (panIndex 0 by default — loadSettings() can be
+    // called again after setPanIndex() for multi-pan)
+    loadSettings();
 
     // VFO widgets are created per-slice via addVfoWidget().
     // m_vfoWidget is set by setActiveVfoWidget() as an alias to the active one.
@@ -62,6 +45,37 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
 VfoWidget* SpectrumWidget::vfoWidget(int sliceId) const
 {
     return m_vfoWidgets.value(sliceId, nullptr);
+}
+
+QString SpectrumWidget::settingsKey(const QString& base) const
+{
+    if (m_panIndex == 0)
+        return base;  // backward compat — no suffix for pan 0
+    return QString("%1_%2").arg(base).arg(m_panIndex);
+}
+
+void SpectrumWidget::loadSettings()
+{
+    auto& s = AppSettings::instance();
+    m_spectrumFrac   = std::clamp(s.value(settingsKey("SpectrumSplitRatio"), "0.40").toFloat(), 0.10f, 0.90f);
+    m_fftAverage     = s.value(settingsKey("DisplayFftAverage"), "0").toInt();
+    m_fftFps         = s.value(settingsKey("DisplayFftFps"), "25").toInt();
+    m_fftFillAlpha   = s.value(settingsKey("DisplayFftFillAlpha"), "0.70").toFloat();
+    m_fftWeightedAvg = s.value(settingsKey("DisplayFftWeightedAvg"), "False").toString() == "True";
+    const QString fillColorStr = s.value(settingsKey("DisplayFftFillColor"), "#00e5ff").toString();
+    QColor parsed(fillColorStr);
+    if (parsed.isValid())
+        m_fftFillColor = parsed;
+    m_wfColorGain    = s.value(settingsKey("DisplayWfColorGain"), "50").toInt();
+    m_wfBlackLevel   = s.value(settingsKey("DisplayWfBlackLevel"), "15").toInt();
+    m_wfAutoBlack    = s.value(settingsKey("DisplayWfAutoBlack"), "True").toString() == "True";
+    m_wfLineDuration = s.value(settingsKey("DisplayWfLineDuration"), "100").toInt();
+
+    // Sync overlay menu sliders with restored settings
+    if (m_overlayMenu)
+        m_overlayMenu->syncDisplaySettings(m_fftAverage, m_fftFps,
+            static_cast<int>(m_fftFillAlpha * 100), m_fftWeightedAvg, m_fftFillColor,
+            m_wfColorGain, m_wfBlackLevel, m_wfAutoBlack, m_wfLineDuration);
 }
 
 VfoWidget* SpectrumWidget::addVfoWidget(int sliceId)
@@ -100,59 +114,59 @@ void SpectrumWidget::setActiveVfoWidget(int sliceId)
 void SpectrumWidget::setFftAverage(int frames) {
     m_fftAverage = frames;
     auto& s = AppSettings::instance();
-    s.setValue("DisplayFftAverage", QString::number(frames));
+    s.setValue(settingsKey("DisplayFftAverage"), QString::number(frames));
     s.save();
 }
 void SpectrumWidget::setFftWeightedAvg(bool on) {
     m_fftWeightedAvg = on;
     auto& s = AppSettings::instance();
-    s.setValue("DisplayFftWeightedAvg", on ? "True" : "False");
+    s.setValue(settingsKey("DisplayFftWeightedAvg"), on ? "True" : "False");
     s.save();
 }
 void SpectrumWidget::setFftFps(int fps) {
     m_fftFps = fps;
     auto& s = AppSettings::instance();
-    s.setValue("DisplayFftFps", QString::number(fps));
+    s.setValue(settingsKey("DisplayFftFps"), QString::number(fps));
     s.save();
 }
 void SpectrumWidget::setFftFillAlpha(float a) {
     m_fftFillAlpha = std::clamp(a, 0.0f, 1.0f);
     auto& s = AppSettings::instance();
-    s.setValue("DisplayFftFillAlpha", QString::number(m_fftFillAlpha, 'f', 2));
+    s.setValue(settingsKey("DisplayFftFillAlpha"), QString::number(m_fftFillAlpha, 'f', 2));
     s.save();
     update();
 }
 void SpectrumWidget::setFftFillColor(const QColor& c) {
     m_fftFillColor = c;
     auto& s = AppSettings::instance();
-    s.setValue("DisplayFftFillColor", c.name());
+    s.setValue(settingsKey("DisplayFftFillColor"), c.name());
     s.save();
     update();
 }
 void SpectrumWidget::setWfColorGain(int gain) {
     m_wfColorGain = std::clamp(gain, 0, 100);
     auto& s = AppSettings::instance();
-    s.setValue("DisplayWfColorGain", QString::number(m_wfColorGain));
+    s.setValue(settingsKey("DisplayWfColorGain"), QString::number(m_wfColorGain));
     s.save();
     update();
 }
 void SpectrumWidget::setWfBlackLevel(int level) {
     m_wfBlackLevel = std::clamp(level, 0, 100);
     auto& s = AppSettings::instance();
-    s.setValue("DisplayWfBlackLevel", QString::number(m_wfBlackLevel));
+    s.setValue(settingsKey("DisplayWfBlackLevel"), QString::number(m_wfBlackLevel));
     s.save();
     update();
 }
 void SpectrumWidget::setWfAutoBlack(bool on) {
     m_wfAutoBlack = on;
     auto& s = AppSettings::instance();
-    s.setValue("DisplayWfAutoBlack", on ? "True" : "False");
+    s.setValue(settingsKey("DisplayWfAutoBlack"), on ? "True" : "False");
     s.save();
 }
 void SpectrumWidget::setWfLineDuration(int ms) {
     m_wfLineDuration = std::clamp(ms, 50, 500);
     auto& s = AppSettings::instance();
-    s.setValue("DisplayWfLineDuration", QString::number(m_wfLineDuration));
+    s.setValue(settingsKey("DisplayWfLineDuration"), QString::number(m_wfLineDuration));
     s.save();
     // Re-calibrate the time scale for the new rate
     resetWfTimeScale();
@@ -179,7 +193,7 @@ void SpectrumWidget::setSpectrumFrac(float f)
 {
     m_spectrumFrac = std::clamp(f, 0.10f, 0.90f);
     auto& s = AppSettings::instance();
-    s.setValue("SpectrumSplitRatio", QString::number(m_spectrumFrac, 'f', 3));
+    s.setValue(settingsKey("SpectrumSplitRatio"), QString::number(m_spectrumFrac, 'f', 3));
     s.save();
     update();
 }
@@ -902,7 +916,7 @@ void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
         m_draggingDivider = false;
         setCursor(Qt::CrossCursor);
         auto& s = AppSettings::instance();
-        s.setValue("SpectrumSplitRatio", QString::number(m_spectrumFrac, 'f', 3));
+        s.setValue(settingsKey("SpectrumSplitRatio"), QString::number(m_spectrumFrac, 'f', 3));
         s.save();
         ev->accept();
         return;
