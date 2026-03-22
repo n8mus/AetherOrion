@@ -139,6 +139,7 @@ endif()
 set(MODEL_SOURCES
     src/models/RadioModel.cpp
     src/models/SliceModel.cpp
+    src/models/PanadapterModel.cpp
     src/models/MeterModel.cpp
     src/models/TunerModel.cpp
     src/models/TransmitModel.cpp

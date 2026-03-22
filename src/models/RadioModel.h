@@ -391,6 +391,29 @@ public:
 private:
     QMap<int, XvtrInfo> m_xvtrList;
 
+    // Backward-compat helpers for active panadapter (Phase 1)
+    QString activeWfId() const {
+        auto* p = activePanadapter();
+        return p ? p->waterfallId() : QString();
+    }
+    void setActiveWfId(const QString& id) {
+        if (auto* p = activePanadapter()) p->setWaterfallId(id);
+    }
+    bool activePanResized() const {
+        auto* p = activePanadapter();
+        return p ? p->isResized() : false;
+    }
+    void setActivePanResized(bool r) {
+        if (auto* p = activePanadapter()) p->setResized(r);
+    }
+    bool activeWfConfigured() const {
+        auto* p = activePanadapter();
+        return p ? p->isWaterfallConfigured() : false;
+    }
+    void setActiveWfConfigured(bool c) {
+        if (auto* p = activePanadapter()) p->setWaterfallConfigured(c);
+    }
+
 private:
     QList<SliceModel*> m_slices;
     QMap<int, MemoryEntry> m_memories;

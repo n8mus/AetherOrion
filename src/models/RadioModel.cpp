@@ -165,7 +165,7 @@ void RadioModel::cwAutoTune(int sliceId, bool intermittent)
 
 void RadioModel::addSlice()
 {
-    if (m_panId.isEmpty()) {
+    if (m_activePanId.isEmpty()) {
         qCWarning(lcProtocol) << "RadioModel::addSlice: no panadapter, cannot create slice";
         return;
     }
@@ -173,8 +173,9 @@ void RadioModel::addSlice()
     // Create a new slice offset from existing slices so VFO flags deconflict.
     // Use pan center, but if an existing slice is within 5 kHz, offset by
     // 20% of the visible bandwidth.
-    double newFreq = m_panCenterMhz;
-    const double offsetMhz = m_panBandwidthMhz * 0.2;  // 20% of visible BW
+    auto* pan = activePanadapter();
+    double newFreq = pan ? pan->centerMhz() : 14.1;
+    const double offsetMhz = (pan ? pan->bandwidthMhz() : 0.2) * 0.2;  // 20% of visible BW
     for (auto* s : m_slices) {
         if (std::abs(s->frequency() - newFreq) < 0.005) {  // within 5 kHz
             newFreq += offsetMhz;
@@ -182,7 +183,7 @@ void RadioModel::addSlice()
         }
     }
     const QString freq = QString::number(newFreq, 'f', 6);
-    const QString cmd = QString("slice create pan=%1 freq=%2").arg(m_panId, freq);
+    const QString cmd = QString("slice create pan=%1 freq=%2").arg(m_activePanId, freq);
 
     qCDebug(lcProtocol) << "RadioModel::addSlice:" << cmd;
     m_connection.sendCommand(cmd, [](int code, const QString& body) {
@@ -194,90 +195,114 @@ void RadioModel::addSlice()
     });
 }
 
+// ── Pan accessor implementations ──────────────────────────────────────────────
+
+PanadapterModel* RadioModel::activePanadapter() const
+{
+    return m_panadapters.value(m_activePanId, nullptr);
+}
+
+PanadapterModel* RadioModel::panadapter(const QString& panId) const
+{
+    return m_panadapters.value(panId, nullptr);
+}
+
+double RadioModel::panCenterMhz() const
+{
+    auto* p = activePanadapter();
+    return p ? p->centerMhz() : 14.1;
+}
+
+double RadioModel::panBandwidthMhz() const
+{
+    auto* p = activePanadapter();
+    return p ? p->bandwidthMhz() : 0.2;
+}
+
 void RadioModel::setPanBandwidth(double bandwidthMhz)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
         QString("display pan set %1 bandwidth=%2")
-            .arg(m_panId).arg(bandwidthMhz, 0, 'f', 6));
+            .arg(m_activePanId).arg(bandwidthMhz, 0, 'f', 6));
 }
 
 void RadioModel::setPanCenter(double centerMhz)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
         QString("display pan set %1 center=%2")
-            .arg(m_panId).arg(centerMhz, 0, 'f', 6));
+            .arg(m_activePanId).arg(centerMhz, 0, 'f', 6));
 }
 
 void RadioModel::setPanDbmRange(float minDbm, float maxDbm)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
         QString("display pan set %1 min_dbm=%2 max_dbm=%3")
-            .arg(m_panId)
+            .arg(m_activePanId)
             .arg(static_cast<double>(minDbm), 0, 'f', 2)
             .arg(static_cast<double>(maxDbm), 0, 'f', 2));
 }
 
 void RadioModel::setPanWnb(bool on)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
-        QString("display pan set %1 wnb=%2").arg(m_panId).arg(on ? 1 : 0));
+        QString("display pan set %1 wnb=%2").arg(m_activePanId).arg(on ? 1 : 0));
 }
 
 void RadioModel::setPanWnbLevel(int level)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
-        QString("display pan set %1 wnb_level=%2").arg(m_panId).arg(level));
+        QString("display pan set %1 wnb_level=%2").arg(m_activePanId).arg(level));
 }
 
 void RadioModel::setPanRfGain(int gain)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
-        QString("display pan set %1 rfgain=%2").arg(m_panId).arg(gain));
+        QString("display pan set %1 rfgain=%2").arg(m_activePanId).arg(gain));
 }
 
 // ── Display controls — FFT ─────────────────────────────────────────────────
 
 void RadioModel::setPanAverage(int frames)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
-        QString("display pan set %1 average=%2").arg(m_panId).arg(frames));
+        QString("display pan set %1 average=%2").arg(m_activePanId).arg(frames));
 }
 
 void RadioModel::setPanFps(int fps)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
-        QString("display pan set %1 fps=%2").arg(m_panId).arg(fps));
+        QString("display pan set %1 fps=%2").arg(m_activePanId).arg(fps));
 }
 
 void RadioModel::setPanWeightedAverage(bool on)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
-        QString("display pan set %1 weighted_average=%2").arg(m_panId).arg(on ? 1 : 0));
+        QString("display pan set %1 weighted_average=%2").arg(m_activePanId).arg(on ? 1 : 0));
 }
 
 // ── Display controls — Waterfall ──────────────────────────────────────────
 
 void RadioModel::setWaterfallColorGain(int gain)
 {
-    if (m_waterfallId.isEmpty()) return;
+    if (activeWfId().isEmpty()) return;
     sendCmd(
-        QString("display panafall set %1 color_gain=%2").arg(m_waterfallId).arg(gain));
+        QString("display panafall set %1 color_gain=%2").arg(activeWfId()).arg(gain));
 }
 
 void RadioModel::setWaterfallBlackLevel(int level)
 {
-    if (m_waterfallId.isEmpty()) return;
+    if (activeWfId().isEmpty()) return;
     sendCmd(
-        QString("display panafall set %1 black_level=%2").arg(m_waterfallId).arg(level));
+        QString("display panafall set %1 black_level=%2").arg(activeWfId()).arg(level));
 }
 
 void RadioModel::setWaterfallAutoBlack(bool on)
@@ -285,30 +310,30 @@ void RadioModel::setWaterfallAutoBlack(bool on)
     Q_UNUSED(on);
     // Auto-black is handled client-side. Always keep radio's auto_black off
     // because its algorithm targets SmartSDR's rendering, not ours.
-    if (m_waterfallId.isEmpty()) return;
+    if (activeWfId().isEmpty()) return;
     sendCmd(
-        QString("display panafall set %1 auto_black=0").arg(m_waterfallId));
+        QString("display panafall set %1 auto_black=0").arg(activeWfId()));
 }
 
 void RadioModel::setWaterfallLineDuration(int ms)
 {
-    if (m_waterfallId.isEmpty()) return;
+    if (activeWfId().isEmpty()) return;
     sendCmd(
-        QString("display panafall set %1 line_duration=%2").arg(m_waterfallId).arg(ms));
+        QString("display panafall set %1 line_duration=%2").arg(activeWfId()).arg(ms));
 }
 
 void RadioModel::setPanNoiseFloorPosition(int pos)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
-        QString("display pan set %1 noise_floor_position=%2").arg(m_panId).arg(pos));
+        QString("display pan set %1 noise_floor_position=%2").arg(m_activePanId).arg(pos));
 }
 
 void RadioModel::setPanNoiseFloorEnable(bool on)
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
     sendCmd(
-        QString("display pan set %1 noise_floor_position_enable=%2").arg(m_panId).arg(on ? 1 : 0));
+        QString("display pan set %1 noise_floor_position_enable=%2").arg(m_activePanId).arg(on ? 1 : 0));
 }
 
 // ─── Connection slots ─────────────────────────────────────────────────────────
@@ -316,7 +341,7 @@ void RadioModel::setPanNoiseFloorEnable(bool on)
 void RadioModel::onConnected()
 {
     qCDebug(lcProtocol) << "RadioModel: connected";
-    m_panResized = false;
+    setActivePanResized(false);
     emit connectionStateChanged(true);
     // Delay network monitor until after client gui registration
     // (pings sent before registration cause "Malformed command" on WAN)
@@ -472,7 +497,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                             });
                         } else {
                             qCDebug(lcProtocol) << "RadioModel: SmartConnect — using our pan"
-                                     << m_panId << "and" << m_slices.size() << "slice(s)";
+                                     << m_activePanId << "and" << m_slices.size() << "slice(s)";
                         }
 
                         for (auto* s : m_slices) {
@@ -538,11 +563,11 @@ void RadioModel::onDisconnected()
     qCDebug(lcProtocol) << "RadioModel: disconnected";
     stopNetworkMonitor();
     m_panStream.stop();
-    m_panId.clear();
-    m_waterfallId.clear();
+    // Clean up panadapter models
+    qDeleteAll(m_panadapters);
+    m_panadapters.clear();
+    m_activePanId.clear();
     m_ownedSliceIds.clear();
-    m_panResized = false;
-    m_wfConfigured = false;
     emit connectionStateChanged(false);
 
     if (m_wanConn) {
@@ -962,21 +987,22 @@ void RadioModel::onStatusReceived(const QString& object,
         const auto m = panRe.match(object);
         if (m.hasMatch()) {
             const QString panId = m.captured(1);
-            if (m_panId.isEmpty()) {
+            if (!m_panadapters.contains(panId)) {
                 // Claim this pan only if it belongs to us
                 if (kvs.contains("client_handle")) {
                     quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
-                    if (owner == clientHandle()) {
-                        m_panId = panId;
-                        updateStreamFilters();
-                        qCDebug(lcProtocol) << "RadioModel: claimed panadapter" << m_panId;
-                    } else {
+                    if (owner != clientHandle())
                         return;  // not our panadapter, ignore
-                    }
-                } else {
-                    m_panId = panId;  // no client_handle field, assume ours
                 }
-            } else if (panId != m_panId) {
+                auto* pan = new PanadapterModel(panId, this);
+                pan->setClientHandle(QString::number(clientHandle(), 16));
+                m_panadapters[panId] = pan;
+                if (m_activePanId.isEmpty())
+                    m_activePanId = panId;
+                updateStreamFilters();
+                qCDebug(lcProtocol) << "RadioModel: claimed panadapter" << panId;
+                emit panadapterAdded(pan);
+            } else if (!m_panadapters.contains(panId)) {
                 return;  // not our panadapter, ignore
             }
         }
@@ -991,25 +1017,25 @@ void RadioModel::onStatusReceived(const QString& object,
         const auto m = wfRe.match(object);
         if (m.hasMatch()) {
             const QString wfId = m.captured(1);
-            if (m_waterfallId.isEmpty()) {
+            if (activeWfId().isEmpty()) {
                 if (kvs.contains("client_handle")) {
                     quint32 owner = kvs["client_handle"].toUInt(nullptr, 16);
                     if (owner == clientHandle()) {
-                        m_waterfallId = wfId;
+                        setActiveWfId(wfId);
                         updateStreamFilters();
-                        qCDebug(lcProtocol) << "RadioModel: claimed waterfall" << m_waterfallId;
+                        qCDebug(lcProtocol) << "RadioModel: claimed waterfall" << activeWfId();
                     } else {
                         return;  // not our waterfall
                     }
                 } else {
-                    m_waterfallId = wfId;
+                    setActiveWfId(wfId);
                 }
-            } else if (wfId != m_waterfallId) {
+            } else if (wfId != activeWfId()) {
                 return;  // not our waterfall
             }
         }
-        if (!m_wfConfigured && !m_waterfallId.isEmpty() && isConnected()) {
-            m_wfConfigured = true;
+        if (!activeWfConfigured() && !activeWfId().isEmpty() && isConnected()) {
+            setActiveWfConfigured(true);
             configureWaterfall();
         }
         return;
@@ -1412,29 +1438,22 @@ void RadioModel::handleGpsStatus(const QString& rawBody)
 
 void RadioModel::handlePanadapterStatus(const QMap<QString, QString>& kvs)
 {
-    bool freqChanged  = false;
-    bool levelChanged = false;
-
-    if (kvs.contains("center")) {
-        m_panCenterMhz = kvs["center"].toDouble();
-        freqChanged = true;
+    // Delegate to active PanadapterModel
+    auto* pan = activePanadapter();
+    if (pan) {
+        pan->applyPanStatus(kvs);
     }
-    if (kvs.contains("bandwidth")) {
-        m_panBandwidthMhz = kvs["bandwidth"].toDouble();
-        freqChanged = true;
-    }
-    if (freqChanged)
-        emit panadapterInfoChanged(m_panCenterMhz, m_panBandwidthMhz);
 
+    // Keep legacy signals for backward compat (MainWindow still uses these)
+    if (kvs.contains("center") || kvs.contains("bandwidth")) {
+        if (pan) emit panadapterInfoChanged(pan->centerMhz(), pan->bandwidthMhz());
+    }
     if (kvs.contains("min_dbm") || kvs.contains("max_dbm")) {
         const float minDbm = kvs.value("min_dbm", "-130").toFloat();
         const float maxDbm = kvs.value("max_dbm", "-20").toFloat();
         m_panStream.setDbmRange(minDbm, maxDbm);
         emit panadapterLevelChanged(minDbm, maxDbm);
-        levelChanged = true;
     }
-    Q_UNUSED(levelChanged)
-
     if (kvs.contains("ant_list")) {
         const QStringList ants = kvs["ant_list"].split(',', Qt::SkipEmptyParts);
         if (ants != m_antList) {
@@ -1444,30 +1463,28 @@ void RadioModel::handlePanadapterStatus(const QMap<QString, QString>& kvs)
     }
 
     // Configure the panadapter once we know its ID.
-    // x_pixels is not settable on firmware v1.4.0.0 (always returns 5000002D),
-    // so we only set fps and disable averaging.
-    if (!m_panResized && !m_panId.isEmpty() && isConnected()) {
-        m_panResized = true;
+    if (pan && !pan->isResized() && isConnected()) {
+        pan->setResized(true);
         configurePan();
     }
 }
 
 void RadioModel::updateStreamFilters()
 {
-    quint32 panId = m_panId.isEmpty() ? 0 : m_panId.toUInt(nullptr, 16);
-    quint32 wfId  = m_waterfallId.isEmpty() ? 0 : m_waterfallId.toUInt(nullptr, 16);
+    quint32 panId = m_activePanId.isEmpty() ? 0 : m_activePanId.toUInt(nullptr, 16);
+    quint32 wfId  = activeWfId().isEmpty() ? 0 : activeWfId().toUInt(nullptr, 16);
     m_panStream.setOwnedStreamIds(panId, wfId);
 }
 
 void RadioModel::configurePan()
 {
-    if (m_panId.isEmpty()) return;
+    if (m_activePanId.isEmpty()) return;
 
     // Set xpixels and ypixels — the radio requires explicit dimensions before
     // it will produce valid FFT data.  Note: the command uses "xpixels" (no
     // underscore) but status messages report "x_pixels" (with underscore).
     sendCmd(
-        QString("display pan set %1 xpixels=1024 ypixels=700").arg(m_panId),
+        QString("display pan set %1 xpixels=1024 ypixels=700").arg(m_activePanId),
         [this](int code, const QString&) {
             if (code != 0)
                 qCWarning(lcProtocol) << "RadioModel: display pan set xpixels/ypixels failed, code"
@@ -1477,7 +1494,7 @@ void RadioModel::configurePan()
         });
 
     sendCmd(
-        QString("display pan set %1 fps=25 min_dbm=-130 max_dbm=-40").arg(m_panId),
+        QString("display pan set %1 fps=25 min_dbm=-130 max_dbm=-40").arg(m_activePanId),
         [](int code, const QString&) {
             if (code != 0)
                 qCWarning(lcProtocol) << "RadioModel: display pan set fps/average/dbm failed, code" << Qt::hex << code;
@@ -1486,12 +1503,12 @@ void RadioModel::configurePan()
 
 void RadioModel::configureWaterfall()
 {
-    if (m_waterfallId.isEmpty()) return;
+    if (activeWfId().isEmpty()) return;
 
     // Disable automatic black-level and set a fixed threshold.
     // FlexLib uses "display panafall set" addressed to the waterfall stream ID.
     const QString cmd = QString("display panafall set %1 auto_black=0 black_level=15 color_gain=50")
-                            .arg(m_waterfallId);
+                            .arg(activeWfId());
     sendCmd(cmd, [this](int code, const QString&) {
         if (code != 0) {
             qCDebug(lcProtocol) << "RadioModel: display panafall set waterfall failed, code"
@@ -1499,7 +1516,7 @@ void RadioModel::configureWaterfall()
             // Fallback for firmware that doesn't support panafall addressing
             sendCmd(
                 QString("display waterfall set %1 auto_black=0 black_level=15 color_gain=50")
-                    .arg(m_waterfallId),
+                    .arg(activeWfId()),
                 [](int code2, const QString&) {
                     if (code2 != 0)
                         qCWarning(lcProtocol) << "RadioModel: display waterfall set also failed, code"
@@ -1640,8 +1657,8 @@ void RadioModel::loadGlobalProfile(const QString& name)
 
 void RadioModel::resetPanState()
 {
-    m_panResized = false;
-    m_wfConfigured = false;
+    setActivePanResized(false);
+    setActiveWfConfigured(false);
 }
 
 void RadioModel::createAudioStream()
