@@ -197,8 +197,8 @@ void RadioModel::addSlice()
 
 void RadioModel::createPanadapter()
 {
-    qCDebug(lcProtocol) << "RadioModel::createPanadapter: sending panadapter create";
-    sendCmd("panadapter create", [this](int code, const QString& body) {
+    qCDebug(lcProtocol) << "RadioModel::createPanadapter: sending display panafall create";
+    sendCmd("display panafall create x=100 y=100", [this](int code, const QString& body) {
         if (code != 0) {
             qCWarning(lcProtocol) << "RadioModel: panadapter create failed, code"
                        << Qt::hex << code << "body:" << body;
