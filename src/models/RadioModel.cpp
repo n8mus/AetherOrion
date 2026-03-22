@@ -1397,6 +1397,12 @@ void RadioModel::handleSliceStatus(int id,
     }
 
     if (!s) {
+        // Only create SliceModel from a full status (has in_use=1 and RF_frequency).
+        // Partial statuses (e.g. "slice 3 rit_on=0") arrive early without enough
+        // data to initialize the VFO widget correctly.
+        if (!kvs.contains("in_use") || kvs["in_use"] != "1")
+            return;
+
         s = new SliceModel(id, this);
         // Forward slice commands to the radio
         connect(s, &SliceModel::commandReady, this, [this](const QString& cmd){

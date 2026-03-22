@@ -1652,6 +1652,8 @@ void VfoWidget::syncFromSlice()
     if (!m_slice) return;
     m_updatingFromModel = true;
 
+             << "rxAnt:" << m_slice->rxAntenna()
+             << "freq:" << m_slice->frequency();
     m_rxAntBtn->setText(m_slice->rxAntenna());
     m_txAntBtn->setText(m_slice->txAntenna());
     updateTxBadgeStyle(m_slice->isTxSlice());
