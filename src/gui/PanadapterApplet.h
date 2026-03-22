@@ -21,6 +21,10 @@ public:
 
     SpectrumWidget* spectrumWidget() const { return m_spectrum; }
 
+    // Panadapter identity (e.g. "0x40000000")
+    QString panId() const { return m_panId; }
+    void setPanId(const QString& id) { m_panId = id; }
+
     // Set the slice ID (0=A, 1=B, 2=C, 3=D) shown in the title bar.
     void setSliceId(int id);
 
@@ -33,6 +37,7 @@ public:
     QSize sizeHint() const override { return {800, 316}; }
 
 private:
+    QString m_panId;
     SpectrumWidget* m_spectrum{nullptr};
     QLabel*         m_titleLabel{nullptr};
 

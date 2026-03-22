@@ -25,6 +25,7 @@ namespace AetherSDR {
 class ConnectionPanel;
 class SpectrumWidget;
 class PanadapterApplet;
+class PanadapterStack;
 class AppletPanel;
 #ifdef HAVE_RADE
 class RADEEngine;
@@ -98,7 +99,8 @@ private:
 
     // GUI — main area
     QSplitter*        m_splitter{nullptr};
-    PanadapterApplet* m_panApplet{nullptr};
+    PanadapterStack*  m_panStack{nullptr};
+    PanadapterApplet* m_panApplet{nullptr};  // backward compat alias to active applet
 
     // GUI — right applet panel
     AppletPanel*     m_appletPanel{nullptr};

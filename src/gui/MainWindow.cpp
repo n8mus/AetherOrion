@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "ConnectionPanel.h"
 #include "PanadapterApplet.h"
+#include "PanadapterStack.h"
 #include "SpectrumWidget.h"
 #include "SpectrumOverlayMenu.h"
 #include "VfoWidget.h"
@@ -1071,9 +1072,10 @@ void MainWindow::buildUI()
     m_connPanel->setFixedSize(300, 420);
     m_connPanel->hide();
 
-    // Centre — panadapter applet (title bar + FFT spectrum + waterfall)
-    m_panApplet = new PanadapterApplet(splitter);
-    splitter->addWidget(m_panApplet);
+    // Centre — panadapter stack (one or more FFT + waterfall panes)
+    m_panStack = new PanadapterStack(splitter);
+    m_panApplet = m_panStack->addPanadapter("default");  // initial pan, replaced on connect
+    splitter->addWidget(m_panStack);
     splitter->setStretchFactor(0, 1);
 
     // Right — applet panel (includes S-Meter)
@@ -1880,7 +1882,8 @@ void MainWindow::wireActiveVfoSignals(VfoWidget* w)
 
 SpectrumWidget* MainWindow::spectrum() const
 {
-    return m_panApplet->spectrumWidget();
+    return m_panStack ? m_panStack->activeSpectrum()
+                      : (m_panApplet ? m_panApplet->spectrumWidget() : nullptr);
 }
 
 // ─── Band settings capture / restore ──────────────────────────────────────────

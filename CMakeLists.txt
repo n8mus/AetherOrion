@@ -161,6 +161,7 @@ set(GUI_SOURCES
     src/gui/SpotSettingsDialog.cpp
     src/gui/ProfileManagerDialog.cpp
     src/gui/PanadapterApplet.cpp
+    src/gui/PanadapterStack.cpp
     src/gui/AppletPanel.cpp
     src/gui/RxApplet.cpp
     src/gui/SMeterWidget.cpp

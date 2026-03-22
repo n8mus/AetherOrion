@@ -1,0 +1,45 @@
+#pragma once
+
+#include <QWidget>
+#include <QMap>
+#include <QSplitter>
+
+namespace AetherSDR {
+
+class PanadapterApplet;
+class SpectrumWidget;
+
+// Vertical stack of N PanadapterApplet instances, each showing an
+// independent FFT + waterfall for a different panadapter on the radio.
+// Single-pan mode: one applet fills the stack (no visible divider).
+class PanadapterStack : public QWidget {
+    Q_OBJECT
+
+public:
+    explicit PanadapterStack(QWidget* parent = nullptr);
+
+    // Add/remove panadapter displays
+    PanadapterApplet* addPanadapter(const QString& panId);
+    void removePanadapter(const QString& panId);
+
+    // Accessors
+    PanadapterApplet* panadapter(const QString& panId) const;
+    SpectrumWidget* spectrum(const QString& panId) const;
+    int count() const { return m_pans.size(); }
+
+    // Active pan (determines which pan the applet column shows controls for)
+    QString activePanId() const { return m_activePanId; }
+    PanadapterApplet* activeApplet() const;
+    SpectrumWidget* activeSpectrum() const;
+    void setActivePan(const QString& panId);
+
+signals:
+    void activePanChanged(const QString& panId);
+
+private:
+    QSplitter* m_splitter{nullptr};
+    QMap<QString, PanadapterApplet*> m_pans;
+    QString m_activePanId;
+};
+
+} // namespace AetherSDR
