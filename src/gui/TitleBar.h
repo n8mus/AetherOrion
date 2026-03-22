@@ -29,6 +29,7 @@ signals:
     void headphoneVolumeChanged(int pct);
 
 private:
+    void showFeatureRequestDialog();
     QHBoxLayout* m_hbox{nullptr};
     QPushButton* m_pcBtn{nullptr};
     QSlider*     m_masterSlider{nullptr};

@@ -6,6 +6,10 @@
 #include <QSlider>
 #include <QLabel>
 #include <QMenuBar>
+#include <QMessageBox>
+#include <QDesktopServices>
+#include <QClipboard>
+#include <QApplication>
 
 namespace AetherSDR {
 
@@ -121,6 +125,18 @@ TitleBar::TitleBar(QWidget* parent)
         m_hpLabel->setText(QString::number(v));
         emit headphoneVolumeChanged(v);
     });
+
+    m_hbox->addSpacing(12);
+
+    // ── Feature Request button ──────────────────────────────────────────────
+    auto* featureBtn = new QPushButton("\xF0\x9F\x92\xA1 Feature Request");  // 💡
+    featureBtn->setFixedHeight(24);
+    featureBtn->setStyleSheet(
+        "QPushButton { background: #3a2a00; color: #ffd060; border: 1px solid #806020; "
+        "border-radius: 4px; font-size: 12px; font-weight: bold; padding: 2px 10px; }"
+        "QPushButton:hover { background: #504000; color: #ffe080; }");
+    connect(featureBtn, &QPushButton::clicked, this, &TitleBar::showFeatureRequestDialog);
+    m_hbox->addWidget(featureBtn);
 }
 
 void TitleBar::setMenuBar(QMenuBar* mb)
@@ -162,6 +178,78 @@ void TitleBar::setHeadphoneVolume(int pct)
     QSignalBlocker b(m_hpSlider);
     m_hpSlider->setValue(pct);
     m_hpLabel->setText(QString::number(pct));
+}
+
+void TitleBar::showFeatureRequestDialog()
+{
+    static const QString kPrompt =
+        "Before responding, please read the AetherSDR project repository at\n"
+        "https://github.com/ten9876/AetherSDR to understand the project's\n"
+        "architecture, existing features, and current roadmap.\n\n"
+        "I want to request a feature for AetherSDR, a Linux-native Qt6/C++20 client\n"
+        "for FlexRadio transceivers. It uses the FlexLib API over TCP/UDP.\n\n"
+        "Before writing the feature request, please check the existing open issues at:\n"
+        "https://github.com/ten9876/AetherSDR/issues\n\n"
+        "Search for keywords related to my idea. If you find an existing issue that\n"
+        "covers the same thing, tell me the issue number and title instead of writing\n"
+        "a new one — I'll go add my +1 and comments there.\n\n"
+        "If no duplicate exists, please write a GitHub issue for this feature request.\n"
+        "Include:\n"
+        "1. A clear title\n"
+        "2. A \"What\" section describing what the feature does from the user's perspective\n"
+        "3. A \"Why\" section explaining why this is useful (what problem it solves)\n"
+        "4. A \"How Other Clients Do It\" section — if this feature exists in other\n"
+        "   SDR applications, describe how it works there (screenshots welcome)\n"
+        "5. A \"Suggested Behavior\" section with specific details about how it should\n"
+        "   work in AetherSDR (what the user clicks, what they see, what happens)\n"
+        "6. A \"Protocol Hints\" section — if you know the FlexLib API calls involved,\n"
+        "   list them. If not, just say \"Unknown — needs research\"\n\n"
+        "Here is my feature idea:\n\n"
+        "[Describe your feature here in plain English]";
+
+    QMessageBox dlg(this);
+    dlg.setWindowTitle("AI-Assisted Feature Request");
+    dlg.setIcon(QMessageBox::Information);
+    dlg.setText(
+        "<h3>Create a Feature Request with AI</h3>"
+        "<p>Use any AI assistant to help you write a detailed, actionable feature request.</p>"
+        "<ol>"
+        "<li><b>Choose your AI</b> — click one of the buttons below to open it</li>"
+        "<li><b>Paste the prompt</b> — it's been copied to your clipboard</li>"
+        "<li><b>Describe your idea</b> — edit the [bracketed] section at the end</li>"
+        "<li><b>Copy the AI's output</b> and click <b>Submit Your Idea</b> to submit it</li>"
+        "</ol>"
+        "<p style='color:#8aa8c0; font-size:11px;'>"
+        "The prompt asks the AI to check for duplicate issues, reference behavior seen in other applications, "
+        "and include protocol hints — everything we need to implement your idea quickly.</p>");
+
+    auto* claudeBtn   = dlg.addButton("Claude", QMessageBox::ActionRole);
+    auto* chatgptBtn  = dlg.addButton("ChatGPT", QMessageBox::ActionRole);
+    auto* geminiBtn   = dlg.addButton("Gemini", QMessageBox::ActionRole);
+    auto* grokBtn     = dlg.addButton("Grok", QMessageBox::ActionRole);
+    auto* perplexBtn  = dlg.addButton("Perplexity", QMessageBox::ActionRole);
+    auto* issueBtn    = dlg.addButton("Submit Your Idea", QMessageBox::ActionRole);
+    dlg.addButton(QMessageBox::Close);
+
+    // Copy prompt to clipboard immediately
+    QApplication::clipboard()->setText(kPrompt);
+
+    dlg.exec();
+
+    auto* clicked = dlg.clickedButton();
+    if (clicked == claudeBtn) {
+        QDesktopServices::openUrl(QUrl("https://claude.ai/new"));
+    } else if (clicked == chatgptBtn) {
+        QDesktopServices::openUrl(QUrl("https://chat.openai.com/"));
+    } else if (clicked == geminiBtn) {
+        QDesktopServices::openUrl(QUrl("https://gemini.google.com/"));
+    } else if (clicked == grokBtn) {
+        QDesktopServices::openUrl(QUrl("https://grok.x.ai/"));
+    } else if (clicked == perplexBtn) {
+        QDesktopServices::openUrl(QUrl("https://www.perplexity.ai/"));
+    } else if (clicked == issueBtn) {
+        QDesktopServices::openUrl(QUrl("https://github.com/ten9876/AetherSDR/issues/new"));
+    }
 }
 
 } // namespace AetherSDR

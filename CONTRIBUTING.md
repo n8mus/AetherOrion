@@ -338,8 +338,8 @@ Include:
 1. A clear title
 2. A "What" section describing what the feature does from the user's perspective
 3. A "Why" section explaining why this is useful (what problem it solves)
-4. A "SmartSDR Reference" section — if this feature exists in SmartSDR for
-   Windows, describe how it works there (screenshots welcome)
+4. A "How Other Clients Do It" section — if this feature exists in other
+   SDR applications, describe how it works there (screenshots welcome)
 5. A "Suggested Behavior" section with specific details about how it should
    work in AetherSDR (what the user clicks, what they see, what happens)
 6. A "Protocol Hints" section — if you know the FlexLib API calls involved,
