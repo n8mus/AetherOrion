@@ -33,7 +33,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf autoconf automake libtool`
 
-Current version: **0.5.6** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.5.7** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -526,7 +526,7 @@ and panadapter. The radio assigns these to our `client_handle`.
 
 ---
 
-## What's Implemented (v0.5.6)
+## What's Implemented (v0.5.7)
 
 - UDP radio discovery and TCP command/control
 - SmartSDR V/H/R/S/M protocol parsing
@@ -617,6 +617,47 @@ and panadapter. The radio assigns these to our `client_handle`.
 - **Audio device persistence**: output/input device selection saved across restarts
 - TX button (sends `xmit 1` / `xmit 0`)
 - Persistent window geometry and display settings
+- **Multi-Flex indicator**: green "multiFLEX" badge in title bar when other
+  clients are connected, with hover tooltip listing station names (#185)
+- **Multi-Flex client tracking**: `sub client all` subscription for real-time
+  connect/disconnect detection (#185)
+- **FDX (Full Duplex) toggle**: status bar indicator with optimistic update
+  (radio accepts but doesn't echo status) (#188)
+- **TNF global toggle fix**: TNF indicator now sends command to radio (#184)
+- **Crash on exit fix**: QPointer for VfoWidget close/lock buttons prevents
+  double-free during Qt widget tree teardown; proper MainWindow destructor
+  stops NR2/RN2/RADE before destruction (#167)
+- **Client-side DSP persistence**: NR2/RN2 state saved on exit and restored
+  on next launch (#167)
+- **Volume slider sync**: fixed `audio_level` status key (was `audio_gain`),
+  sliders now track Maestro/SmartControl and profile changes (#161)
+- **DAX channel persistence**: saved/restored across restarts (#180)
+- **Profile manager UX**: selecting a profile populates the name field for
+  easy re-save (#177)
+- **SQL disable in digital modes**: button dimmed with distinct disabled style
+  in DIGU/DIGL, squelch saved/restored on mode switch (#192)
+- **Configurable quick-mode buttons**: right-click to assign any mode, SSB
+  toggles USB↔LSB, DIG toggles DIGU↔DIGL (#191)
+- **RTTY mark/space lines**: dashed M/S frequency lines on panadapter in
+  RTTY mode, real-time tracking (#189)
+- **RIT/XIT offset lines**: dashed RIT (slice color) and XIT (red) lines on
+  panadapter showing actual RX/TX frequencies (#199)
+- **Band plan overlay toggle**: View menu checkbox to show/hide ARRL band
+  plan overlay (#193)
+- **UI scaling**: View → UI Scale (75%–200%) via QT_SCALE_FACTOR (#194)
+- **PA temp/voltage precision**: XX.X°C and XX.XX V in status bar (#195)
+- **Show TX in Waterfall**: waterfall freezes during TX when disabled,
+  multi-pan aware (only TX pan freezes) (#207)
+- **Network MTU setting**: Radio Setup → Network → Advanced (#202)
+- **RTTY mark default from radio**: reads radio's value on connect instead
+  of hardcoding 2125 (#200)
+- **Station name**: configurable in Radio Setup → Radio tab (#182)
+- **VFO slider value labels**: AF gain, SQL, AGC-T show numeric values (#198)
+- **Fill slider label fix**: display panel Fill slider updates label (#206)
+- **XVTR panel**: 2×4 grid with auto-grow for configured bands (#204)
+- **macOS mic permission**: proper AVAuthorizationStatus check with diagnostic
+  logging (#157)
+- **NR2/RN2 button sync**: overlay ↔ VFO ↔ RX applet all stay in sync
 
 ## What's NOT Yet Implemented
 
