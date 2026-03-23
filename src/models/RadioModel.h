@@ -78,6 +78,7 @@ public:
     QString model()   const { return m_model; }
     QString version() const { return m_version; }
     bool isConnected() const;
+    bool fullDuplexEnabled() const { return m_fullDuplex; }
     float paTemp()    const { return m_paTemp; }
     float txPower()   const { return m_txPower; }
     QStringList antennaList() const { return m_antList; }
@@ -429,6 +430,7 @@ private:
     quint16  m_wanUdpPort{4991};
     QSet<int>          m_ownedSliceIds;   // slice IDs that belong to our client
     bool               m_txOwnedByUs{true};  // true when tx_client_handle matches our handle
+    bool               m_fullDuplex{false};
     quint32            m_txClientHandle{0};  // handle of the client that owns TX
     QMap<quint32, QString> m_clientStations; // handle → station name (from client connected status)
 

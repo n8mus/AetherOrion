@@ -1316,6 +1316,10 @@ void RadioModel::handleRadioStatus(const QMap<QString, QString>& kvs)
         m_binauralRx = kvs["binaural_rx"] == "1";
         changed = true;
     }
+    if (kvs.contains("full_duplex_enabled")) {
+        m_fullDuplex = kvs["full_duplex_enabled"] == "1";
+        changed = true;
+    }
     if (kvs.contains("mute_local_audio_when_remote")) {
         m_muteLocalWhenRemote = kvs["mute_local_audio_when_remote"] == "1";
         changed = true;
