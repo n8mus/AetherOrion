@@ -3,6 +3,7 @@
 #include "TitleBar.h"
 #include "PanadapterApplet.h"
 #include "PanadapterStack.h"
+#include "PanLayoutDialog.h"
 #include "SpectrumWidget.h"
 #include "SpectrumOverlayMenu.h"
 #include "VfoWidget.h"
@@ -902,7 +903,21 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         return true;
     }
     if (obj == m_addPanLabel && event->type() == QEvent::MouseButtonPress) {
-        m_radioModel.createPanadapter();
+        if (!m_radioModel.isConnected()) return true;
+        const QString& model = m_radioModel.model();
+        bool dualScu = model.contains("6600") || model.contains("6700")
+                    || model.contains("8600") || model.contains("AU-520");
+        int maxPans = dualScu ? 4 : 2;
+        QString currentLayout = AppSettings::instance()
+            .value("PanadapterLayout", "1").toString();
+        PanLayoutDialog dlg(maxPans, currentLayout, this);
+        if (dlg.exec() == QDialog::Accepted && !dlg.selectedLayout().isEmpty()) {
+            auto& s = AppSettings::instance();
+            s.setValue("PanadapterLayout", dlg.selectedLayout());
+            s.save();
+            // TODO: implement layout application (tear down + recreate pans)
+            qDebug() << "Layout selected:" << dlg.selectedLayout();
+        }
         return true;
     }
     return QMainWindow::eventFilter(obj, event);
