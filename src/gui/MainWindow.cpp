@@ -1695,7 +1695,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
         m_audio.stopRxStream();
         m_audio.stopTxStream();
 
-        // Show reconnect dialog on unexpected disconnect
+        // Show reconnect dialog on unexpected disconnect (only one at a time)
         if (!m_userDisconnected && !m_reconnectDlg) {
             m_reconnectDlg = new QDialog(this);
             m_reconnectDlg->setWindowTitle("Radio Disconnected");

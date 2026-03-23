@@ -738,7 +738,8 @@ void RadioModel::onConnectionError(const QString& msg)
 {
     qCWarning(lcProtocol) << "RadioModel: connection error:" << msg;
     emit connectionError(msg);
-    emit connectionStateChanged(false);
+    // Don't emit connectionStateChanged here — onDisconnected already handles it.
+    // Emitting from both causes duplicate disconnect UI triggers on failed reconnects.
 }
 
 void RadioModel::onVersionReceived(const QString& v)
