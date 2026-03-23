@@ -966,7 +966,7 @@ void RadioModel::onStatusReceived(const QString& object,
             if (action == "disconnected") {
                 m_clientStations.remove(handle);
                 emitOtherClientsChanged();
-            } else if (kvs.contains("connected")) {
+            } else if (action == "connected" || kvs.contains("connected")) {
                 QString station = kvs.value("station", kvs.value("program", "Unknown"));
                 m_clientStations[handle] = station;
                 emitOtherClientsChanged();
