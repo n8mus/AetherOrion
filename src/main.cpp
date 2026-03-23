@@ -35,6 +35,36 @@ static void messageHandler(QtMsgType type, const QMessageLogContext& ctx, const 
 
 int main(int argc, char* argv[])
 {
+    // Apply saved UI scale factor BEFORE QApplication is created.
+    // QT_SCALE_FACTOR must be set before Qt initializes the display.
+    // We read the settings file directly (can't use AppSettings or
+    // QStandardPaths before QApplication exists).
+    {
+#ifdef Q_OS_MAC
+        QString settingsPath = QDir::homePath() + "/Library/Preferences/AetherSDR/AetherSDR.settings";
+#else
+        QString settingsPath = QDir::homePath() + "/.config/AetherSDR/AetherSDR.settings";
+#endif
+        QFile f(settingsPath);
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QByteArray data = f.readAll();
+            // Quick search for UiScalePercent in the XML
+            int idx = data.indexOf("\"UiScalePercent\"");
+            if (idx >= 0) {
+                int vIdx = data.indexOf("value=\"", idx);
+                if (vIdx >= 0) {
+                    vIdx += 7; // skip past value="
+                    int vEnd = data.indexOf('"', vIdx);
+                    if (vEnd > vIdx) {
+                        int pct = data.mid(vIdx, vEnd - vIdx).toInt();
+                        if (pct > 0 && pct != 100)
+                            qputenv("QT_SCALE_FACTOR", QByteArray::number(pct / 100.0, 'f', 2));
+                    }
+                }
+            }
+        }
+    }
+
     QApplication app(argc, argv);
     app.setApplicationName("AetherSDR");
     app.setApplicationVersion(AETHERSDR_VERSION);

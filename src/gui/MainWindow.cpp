@@ -44,6 +44,7 @@
 #include <QCheckBox>
 #include <QMenu>
 #include <QAction>
+#include <QActionGroup>
 #include <QLabel>
 #include <QCloseEvent>
 #include <QMessageBox>
@@ -1135,6 +1136,23 @@ void MainWindow::buildMenuBar()
         AppSettings::instance().setValue("ShowBandPlan", on ? "True" : "False");
         AppSettings::instance().save();
     });
+
+    // UI Scale submenu — sets QT_SCALE_FACTOR, requires restart
+    auto* scaleMenu = viewMenu->addMenu("UI Scale");
+    int savedScale = AppSettings::instance().value("UiScalePercent", "100").toInt();
+    auto* scaleGroup = new QActionGroup(scaleMenu);
+    for (int pct : {75, 85, 100, 110, 125, 150, 175, 200}) {
+        auto* act = scaleMenu->addAction(QString("%1%").arg(pct));
+        act->setCheckable(true);
+        act->setChecked(pct == savedScale);
+        scaleGroup->addAction(act);
+        connect(act, &QAction::triggered, this, [this, pct] {
+            AppSettings::instance().setValue("UiScalePercent", QString::number(pct));
+            AppSettings::instance().save();
+            QMessageBox::information(this, "UI Scale",
+                QString("UI scale set to %1%. Restart AetherSDR for the change to take effect.").arg(pct));
+        });
+    }
 
     viewMenu->addSeparator();
     auto* themeAct = viewMenu->addAction("Toggle Dark/Light Theme");
