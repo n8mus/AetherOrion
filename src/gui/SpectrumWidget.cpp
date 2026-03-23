@@ -70,6 +70,7 @@ void SpectrumWidget::loadSettings()
     m_wfBlackLevel   = s.value(settingsKey("DisplayWfBlackLevel"), "15").toInt();
     m_wfAutoBlack    = s.value(settingsKey("DisplayWfAutoBlack"), "True").toString() == "True";
     m_wfLineDuration = s.value(settingsKey("DisplayWfLineDuration"), "100").toInt();
+    m_showBandPlan   = s.value("ShowBandPlan", "True").toString() == "True";
 
     // Sync overlay menu sliders with restored settings
     if (m_overlayMenu)
@@ -1176,7 +1177,7 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
 
     drawGrid(p, specRect);
     drawSpectrum(p, specRect);
-    drawBandPlan(p, specRect);
+    if (m_showBandPlan) drawBandPlan(p, specRect);
     drawDbmScale(p, specRect);
 
     // Draggable divider bar

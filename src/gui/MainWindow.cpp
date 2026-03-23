@@ -1111,6 +1111,18 @@ void MainWindow::buildMenuBar()
     });
 
     auto* viewMenu = menuBar()->addMenu("&View");
+
+    auto* bandPlanAct = viewMenu->addAction("Band Plan Overlay");
+    bandPlanAct->setCheckable(true);
+    bandPlanAct->setChecked(
+        AppSettings::instance().value("ShowBandPlan", "True").toString() == "True");
+    connect(bandPlanAct, &QAction::toggled, this, [this](bool on) {
+        spectrum()->setShowBandPlan(on);
+        AppSettings::instance().setValue("ShowBandPlan", on ? "True" : "False");
+        AppSettings::instance().save();
+    });
+
+    viewMenu->addSeparator();
     auto* themeAct = viewMenu->addAction("Toggle Dark/Light Theme");
     connect(themeAct, &QAction::triggered, this, [this]{
         // Placeholder — full theme switching left as an exercise

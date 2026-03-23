@@ -99,6 +99,8 @@ public:
     int  rfGainValue() const { return m_rfGainValue; }
     void setWnbActive(bool on) { m_wnbActive = on; update(); }
     void setRfGain(int gain) { m_rfGainValue = gain; update(); }
+    void setShowBandPlan(bool on) { m_showBandPlan = on; update(); }
+    bool showBandPlan() const { return m_showBandPlan; }
 
     // ── Display control setters ───────────────────────────────────────────
     // FFT controls (save to AppSettings on each change)
@@ -316,6 +318,7 @@ private:
     // On-screen indicators (WNB, RF Gain)
     bool m_wnbActive{false};
     int  m_rfGainValue{0};
+    bool m_showBandPlan{true};
 
     bool     m_transmitting{false};
     float    m_preTxAutoBlack{145.0f}; // auto-black threshold saved before TX
