@@ -127,11 +127,13 @@ QWidget* ProfileManagerDialog::buildProfileTab(const QString& type,
     // Store refs
     m_tabWidgets[type] = {nameEdit, list, loadBtn, saveBtn, deleteBtn};
 
-    // Selection enables Load/Delete
+    // Selection enables Load/Delete and populates the name field
     connect(list, &QListWidget::currentItemChanged, this,
-            [loadBtn, deleteBtn](QListWidgetItem* current, QListWidgetItem*) {
+            [nameEdit, loadBtn, deleteBtn](QListWidgetItem* current, QListWidgetItem*) {
         loadBtn->setEnabled(current != nullptr);
         deleteBtn->setEnabled(current != nullptr);
+        if (current)
+            nameEdit->setText(current->text());
     });
 
     // Double-click loads
