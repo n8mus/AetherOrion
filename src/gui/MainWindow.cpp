@@ -490,46 +490,31 @@ MainWindow::MainWindow(QWidget* parent)
     // since spectrum()/vfoWidget() lookups can return null depending on
     // pan activation state.
     auto syncNr2 = [this](bool on) {
-        for (auto* pan : m_radioModel.panadapters()) {
-            auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr;
-            if (!sw) continue;
-            if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
-                QSignalBlocker sb(vfo->nr2Button());
-                vfo->nr2Button()->setChecked(on);
+        // Iterate PanadapterStack's actual applets — avoids RadioModel→PanStack
+        // ID mismatch during connect when rekey hasn't happened yet.
+        if (m_panStack) {
+            for (auto* applet : m_panStack->allApplets()) {
+                auto* sw = applet->spectrumWidget();
+                if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
+                    QSignalBlocker sb(vfo->nr2Button());
+                    vfo->nr2Button()->setChecked(on);
+                }
+                if (auto* btn = sw->overlayMenu()->dspNr2Button())
+                    { QSignalBlocker sb(btn); btn->setChecked(on); }
             }
-            if (auto* btn = sw->overlayMenu()->dspNr2Button())
-                { QSignalBlocker sb(btn); btn->setChecked(on); }
-        }
-        // Fallback for single-pan mode without PanadapterStack
-        if (!m_panStack && m_panApplet) {
-            auto* sw = m_panApplet->spectrumWidget();
-            if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
-                QSignalBlocker sb(vfo->nr2Button());
-                vfo->nr2Button()->setChecked(on);
-            }
-            if (auto* btn = sw->overlayMenu()->dspNr2Button())
-                { QSignalBlocker sb(btn); btn->setChecked(on); }
         }
     };
     auto syncRn2 = [this](bool on) {
-        for (auto* pan : m_radioModel.panadapters()) {
-            auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr;
-            if (!sw) continue;
-            if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
-                QSignalBlocker sb(vfo->rn2Button());
-                vfo->rn2Button()->setChecked(on);
+        if (m_panStack) {
+            for (auto* applet : m_panStack->allApplets()) {
+                auto* sw = applet->spectrumWidget();
+                if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
+                    QSignalBlocker sb(vfo->rn2Button());
+                    vfo->rn2Button()->setChecked(on);
+                }
+                if (auto* btn = sw->overlayMenu()->dspRn2Button())
+                    { QSignalBlocker sb(btn); btn->setChecked(on); }
             }
-            if (auto* btn = sw->overlayMenu()->dspRn2Button())
-                { QSignalBlocker sb(btn); btn->setChecked(on); }
-        }
-        if (!m_panStack && m_panApplet) {
-            auto* sw = m_panApplet->spectrumWidget();
-            if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
-                QSignalBlocker sb(vfo->rn2Button());
-                vfo->rn2Button()->setChecked(on);
-            }
-            if (auto* btn = sw->overlayMenu()->dspRn2Button())
-                { QSignalBlocker sb(btn); btn->setChecked(on); }
         }
     };
     connect(&m_audio, &AudioEngine::nr2EnabledChanged, this, syncNr2);

@@ -27,6 +27,7 @@ public:
     PanadapterApplet* panadapter(const QString& panId) const;
     SpectrumWidget* spectrum(const QString& panId) const;
     int count() const { return m_pans.size(); }
+    QList<PanadapterApplet*> allApplets() const { return m_pans.values(); }
 
     // Active pan (determines which pan the applet column shows controls for)
     QString activePanId() const { return m_activePanId; }
