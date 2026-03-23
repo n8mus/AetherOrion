@@ -453,21 +453,30 @@ MainWindow::MainWindow(QWidget* parent)
     // ── NR2/RN2 feedback: AudioEngine → active VfoWidget (dynamic lookup) ──
     connect(&m_audio, &AudioEngine::nr2EnabledChanged,
             this, [this](bool on) {
-        if (auto* vfo = spectrum()->vfoWidget()) {
-            QSignalBlocker sb(vfo->nr2Button());
-            vfo->nr2Button()->setChecked(on);
+        // Find VFO via the active slice's spectrum (not spectrum() which
+        // may return null if m_activePanId isn't set yet)
+        auto* sl = activeSlice();
+        auto* sw = sl ? spectrumForSlice(sl) : spectrum();
+        if (sw) {
+            if (auto* vfo = sw->vfoWidget()) {
+                QSignalBlocker sb(vfo->nr2Button());
+                vfo->nr2Button()->setChecked(on);
+            }
+            if (auto* btn = sw->overlayMenu()->dspNr2Button())
+                { QSignalBlocker sb(btn); btn->setChecked(on); }
         }
-    });
-    connect(&m_audio, &AudioEngine::nr2EnabledChanged,
-            this, [this](bool on) {
-        if (auto* btn = spectrum()->overlayMenu()->dspNr2Button())
-            { QSignalBlocker sb(btn); btn->setChecked(on); }
     });
     connect(&m_audio, &AudioEngine::rn2EnabledChanged,
             this, [this](bool on) {
-        if (auto* vfo = spectrum()->vfoWidget()) {
-            QSignalBlocker sb(vfo->rn2Button());
-            vfo->rn2Button()->setChecked(on);
+        auto* sl = activeSlice();
+        auto* sw = sl ? spectrumForSlice(sl) : spectrum();
+        if (sw) {
+            if (auto* vfo = sw->vfoWidget()) {
+                QSignalBlocker sb(vfo->rn2Button());
+                vfo->rn2Button()->setChecked(on);
+            }
+            if (auto* btn = sw->overlayMenu()->dspRn2Button())
+                { QSignalBlocker sb(btn); btn->setChecked(on); }
         }
     });
     // NR2/RN2 overlay sync is wired in wirePanadapter()
@@ -2134,12 +2143,8 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         s.save();
     });
 
-    // ── NR2/RN2 overlay sync ─────────────────────────────────────────────
-    connect(&m_audio, &AudioEngine::rn2EnabledChanged,
-            this, [menu](bool on) {
-        if (auto* btn = menu->dspRn2Button())
-            { QSignalBlocker sb(btn); btn->setChecked(on); }
-    });
+    // ── NR2/RN2 overlay toggle → AudioEngine ───────────────────────────
+    // Button sync back to overlay + VFO handled by nr2/rn2EnabledChanged above.
     connect(menu, &SpectrumOverlayMenu::nr2Toggled,
             this, [this](bool on) {
         if (on) {
