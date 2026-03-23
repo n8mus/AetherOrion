@@ -48,18 +48,16 @@ int main(int argc, char* argv[])
         QFile f(settingsPath);
         if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
             QByteArray data = f.readAll();
-            // Quick search for UiScalePercent in the XML
-            int idx = data.indexOf("\"UiScalePercent\"");
+            // AppSettings XML format: <UiScalePercent>125</UiScalePercent>
+            QByteArray tag = "<UiScalePercent>";
+            int idx = data.indexOf(tag);
             if (idx >= 0) {
-                int vIdx = data.indexOf("value=\"", idx);
-                if (vIdx >= 0) {
-                    vIdx += 7; // skip past value="
-                    int vEnd = data.indexOf('"', vIdx);
-                    if (vEnd > vIdx) {
-                        int pct = data.mid(vIdx, vEnd - vIdx).toInt();
-                        if (pct > 0 && pct != 100)
-                            qputenv("QT_SCALE_FACTOR", QByteArray::number(pct / 100.0, 'f', 2));
-                    }
+                idx += tag.size();
+                int end = data.indexOf('<', idx);
+                if (end > idx) {
+                    int pct = data.mid(idx, end - idx).trimmed().toInt();
+                    if (pct > 0 && pct != 100)
+                        qputenv("QT_SCALE_FACTOR", QByteArray::number(pct / 100.0, 'f', 2));
                 }
             }
         }
