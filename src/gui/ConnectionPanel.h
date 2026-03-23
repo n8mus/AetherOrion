@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QLineEdit>
 #include <QTcpSocket>
 
@@ -51,6 +52,7 @@ private slots:
 private:
     QListWidget* m_radioList;
     QPushButton* m_connectBtn;
+    QCheckBox*   m_lowBwCheck;
     QLabel*      m_statusLabel;
     QWidget*     m_radioGroup;       // "Discovered Radios" group box
 

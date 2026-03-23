@@ -1,8 +1,10 @@
 #include "ConnectionPanel.h"
+#include "core/AppSettings.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
+#include <QCheckBox>
 #include <QEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -36,6 +38,15 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
     m_radioList->setSelectionMode(QAbstractItemView::SingleSelection);
     gbox->addWidget(m_radioList);
     vbox->addWidget(m_radioGroup, 1);
+
+    // Low bandwidth checkbox
+    m_lowBwCheck = new QCheckBox("Low Bandwidth", this);
+    m_lowBwCheck->setChecked(
+        AppSettings::instance().value("LowBandwidthConnect", "False").toString() == "True");
+    m_lowBwCheck->setToolTip("Reduces FFT/waterfall data from the radio.\n"
+                             "Recommended for VPN, LTE, or other metered/limited links.");
+    m_lowBwCheck->setStyleSheet("QCheckBox { color: #8aa8c0; font-size: 11px; }");
+    vbox->addWidget(m_lowBwCheck);
 
     // Connect/disconnect button
     m_connectBtn = new QPushButton("Connect", this);
@@ -197,6 +208,11 @@ void ConnectionPanel::onConnectClicked()
         emit wanConnectRequested(m_wanRadios[wanIdx - 1]);  // 1-based index
         return;
     }
+
+    // Save low bandwidth preference before connecting
+    auto& s = AppSettings::instance();
+    s.setValue("LowBandwidthConnect", m_lowBwCheck->isChecked() ? "True" : "False");
+    s.save();
 
     // LAN radio
     if (row < m_radios.size())
