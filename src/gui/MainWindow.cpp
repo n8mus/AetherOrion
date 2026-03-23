@@ -450,35 +450,55 @@ MainWindow::MainWindow(QWidget* parent)
         if (auto* s = activeSlice()) s->setAudioGain(v);
     });
 
-    // ── NR2/RN2 feedback: AudioEngine → active VfoWidget (dynamic lookup) ──
-    connect(&m_audio, &AudioEngine::nr2EnabledChanged,
-            this, [this](bool on) {
-        // Find VFO via the active slice's spectrum (not spectrum() which
-        // may return null if m_activePanId isn't set yet)
-        auto* sl = activeSlice();
-        auto* sw = sl ? spectrumForSlice(sl) : spectrum();
-        if (sw) {
-            if (auto* vfo = sw->vfoWidget()) {
+    // ── NR2/RN2 feedback: AudioEngine → all VFO + overlay buttons ──────
+    // Iterate all panadapter spectrums to find VFO widgets and overlay menus,
+    // since spectrum()/vfoWidget() lookups can return null depending on
+    // pan activation state.
+    auto syncNr2 = [this](bool on) {
+        for (auto* pan : m_radioModel.panadapters()) {
+            auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr;
+            if (!sw) continue;
+            if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
                 QSignalBlocker sb(vfo->nr2Button());
                 vfo->nr2Button()->setChecked(on);
             }
             if (auto* btn = sw->overlayMenu()->dspNr2Button())
                 { QSignalBlocker sb(btn); btn->setChecked(on); }
         }
-    });
-    connect(&m_audio, &AudioEngine::rn2EnabledChanged,
-            this, [this](bool on) {
-        auto* sl = activeSlice();
-        auto* sw = sl ? spectrumForSlice(sl) : spectrum();
-        if (sw) {
-            if (auto* vfo = sw->vfoWidget()) {
+        // Fallback for single-pan mode without PanadapterStack
+        if (!m_panStack && m_panApplet) {
+            auto* sw = m_panApplet->spectrumWidget();
+            if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
+                QSignalBlocker sb(vfo->nr2Button());
+                vfo->nr2Button()->setChecked(on);
+            }
+            if (auto* btn = sw->overlayMenu()->dspNr2Button())
+                { QSignalBlocker sb(btn); btn->setChecked(on); }
+        }
+    };
+    auto syncRn2 = [this](bool on) {
+        for (auto* pan : m_radioModel.panadapters()) {
+            auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr;
+            if (!sw) continue;
+            if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
                 QSignalBlocker sb(vfo->rn2Button());
                 vfo->rn2Button()->setChecked(on);
             }
             if (auto* btn = sw->overlayMenu()->dspRn2Button())
                 { QSignalBlocker sb(btn); btn->setChecked(on); }
         }
-    });
+        if (!m_panStack && m_panApplet) {
+            auto* sw = m_panApplet->spectrumWidget();
+            if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
+                QSignalBlocker sb(vfo->rn2Button());
+                vfo->rn2Button()->setChecked(on);
+            }
+            if (auto* btn = sw->overlayMenu()->dspRn2Button())
+                { QSignalBlocker sb(btn); btn->setChecked(on); }
+        }
+    };
+    connect(&m_audio, &AudioEngine::nr2EnabledChanged, this, syncNr2);
+    connect(&m_audio, &AudioEngine::rn2EnabledChanged, this, syncRn2);
     // NR2/RN2 overlay sync is wired in wirePanadapter()
     // RxApplet NR button 3-state cycle → NR2 enable/disable
     connect(m_appletPanel->rxApplet(), &RxApplet::nr2CycleToggled,
