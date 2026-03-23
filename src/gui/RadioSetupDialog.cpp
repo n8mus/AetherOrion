@@ -206,6 +206,19 @@ QWidget* RadioSetupDialog::buildRadioTab()
             m_model->connection()->sendCommand("radio callsign " + m_callsignEdit->text());
         });
 
+        grid->addWidget(new QLabel("Station Name:"), 1, 2);
+        auto* stationEdit = new QLineEdit(
+            AppSettings::instance().value("StationName", "AetherSDR").toString());
+        stationEdit->setStyleSheet(kEditStyle);
+        stationEdit->setToolTip("Identifies this client to other Multi-Flex stations");
+        grid->addWidget(stationEdit, 1, 3);
+        connect(stationEdit, &QLineEdit::editingFinished, this, [this, stationEdit] {
+            auto& s = AppSettings::instance();
+            s.setValue("StationName", stationEdit->text());
+            s.save();
+            m_model->connection()->sendCommand("client station " + stationEdit->text());
+        });
+
         for (auto* lbl : group->findChildren<QLabel*>()) {
             if (lbl->styleSheet().isEmpty())
                 lbl->setStyleSheet(kLabelStyle);

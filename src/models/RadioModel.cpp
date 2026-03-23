@@ -423,7 +423,8 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
         }
 
         sendCmd("client program AetherSDR");
-        sendCmd("client station AetherSDR");
+        QString station = AppSettings::instance().value("StationName", "AetherSDR").toString();
+        sendCmd(QString("client station %1").arg(station));
         startNetworkMonitor();
 
     // Full command sequence — each step waits for its R response before sending the next.
