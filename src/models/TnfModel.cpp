@@ -51,6 +51,7 @@ void TnfModel::setGlobalEnabled(bool on)
 {
     if (m_globalEnabled == on) return;
     m_globalEnabled = on;
+    emit commandReady(QString("radio set tnf_enabled=%1").arg(on ? 1 : 0));
     emit globalEnabledChanged(on);
 }
 
