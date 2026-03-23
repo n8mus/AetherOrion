@@ -185,6 +185,11 @@ void SpectrumWidget::resetWfTimeScale() {
 
 void SpectrumWidget::setFrequencyRange(double centerMhz, double bandwidthMhz)
 {
+    if (centerMhz != m_centerMhz || bandwidthMhz != m_bandwidthMhz)
+        qDebug() << "SpectrumWidget::setFrequencyRange center="
+                 << QString::number(centerMhz, 'f', 6)
+                 << "bw=" << QString::number(bandwidthMhz, 'f', 6)
+                 << "bins=" << m_smoothed.size();
     m_centerMhz    = centerMhz;
     m_bandwidthMhz = bandwidthMhz;
     update();
