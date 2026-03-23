@@ -425,6 +425,9 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
         sendCmd("client program AetherSDR");
         QString station = AppSettings::instance().value("StationName", "AetherSDR").toString();
         sendCmd(QString("client station %1").arg(station));
+        // Set network MTU for VITA-49 packets (matches FlexLib behavior)
+        int mtu = AppSettings::instance().value("NetworkMtu", "1500").toInt();
+        sendCmd(QString("client set enforce_network_mtu=1 network_mtu=%1").arg(mtu));
         startNetworkMonitor();
 
     // Full command sequence — each step waits for its R response before sending the next.

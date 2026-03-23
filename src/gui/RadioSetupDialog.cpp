@@ -20,6 +20,7 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QComboBox>
+#include <QSpinBox>
 #include <QDialogButtonBox>
 #include <QCheckBox>
 #include <QTimer>
@@ -493,6 +494,20 @@ QWidget* RadioSetupDialog::buildNetworkTab()
                 QString("radio set enforce_private_ip_connections=%1").arg(on ? 1 : 0));
         });
         grid->addWidget(enforceBtn, 0, 1);
+
+        grid->addWidget(new QLabel("Network MTU:"), 1, 0);
+        auto* mtuSpin = new QSpinBox;
+        mtuSpin->setRange(576, 9000);
+        mtuSpin->setValue(AppSettings::instance().value("NetworkMtu", "1500").toInt());
+        mtuSpin->setSuffix(" bytes");
+        mtuSpin->setToolTip("Maximum Transmission Unit for VITA-49 UDP packets. Default: 1500.");
+        connect(mtuSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
+            m_model->sendCommand(
+                QString("client set enforce_network_mtu=1 network_mtu=%1").arg(val));
+            AppSettings::instance().setValue("NetworkMtu", QString::number(val));
+            AppSettings::instance().save();
+        });
+        grid->addWidget(mtuSpin, 1, 1);
 
         for (auto* lbl : group->findChildren<QLabel*>())
             if (lbl->styleSheet().isEmpty()) lbl->setStyleSheet(kLabelStyle);
