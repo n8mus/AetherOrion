@@ -817,14 +817,7 @@ void RxApplet::buildUI()
         m_afSlider->setStyleSheet(kSliderStyle);
         row->addWidget(m_afSlider, 1);
 
-        m_afValueLabel = new QLabel("70");
-        m_afValueLabel->setStyleSheet(kDimLabelStyle);
-        m_afValueLabel->setFixedWidth(24);
-        m_afValueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        row->addWidget(m_afValueLabel);
-
         connect(m_afSlider, &QSlider::valueChanged, this, [this](int v) {
-            m_afValueLabel->setText(QString::number(v));
             if (m_slice) m_slice->setAudioGain(v);
             emit afGainChanged(v);
         });
@@ -850,19 +843,7 @@ void RxApplet::buildUI()
         rLbl->setStyleSheet(kDimLabelStyle);
         row->addWidget(rLbl);
 
-        m_panValueLabel = new QLabel("C");
-        m_panValueLabel->setStyleSheet(kDimLabelStyle);
-        m_panValueLabel->setFixedWidth(24);
-        m_panValueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        row->addWidget(m_panValueLabel);
-
-        auto fmtPan = [](int v) -> QString {
-            if (v == 50) return "C";
-            if (v < 50)  return QString("L%1").arg(50 - v);
-            return QString("R%1").arg(v - 50);
-        };
-        connect(m_panSlider, &QSlider::valueChanged, this, [this, fmtPan](int v) {
-            m_panValueLabel->setText(fmtPan(v));
+        connect(m_panSlider, &QSlider::valueChanged, this, [this](int v) {
             if (m_slice) m_slice->setAudioPan(v);
         });
         rightCol->addLayout(row);
@@ -884,17 +865,10 @@ void RxApplet::buildUI()
         m_sqlSlider->setStyleSheet(kSliderStyle);
         row->addWidget(m_sqlSlider, 1);
 
-        m_sqlValueLabel = new QLabel("20");
-        m_sqlValueLabel->setStyleSheet(kDimLabelStyle);
-        m_sqlValueLabel->setFixedWidth(24);
-        m_sqlValueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        row->addWidget(m_sqlValueLabel);
-
         connect(m_sqlBtn, &QPushButton::toggled, this, [this](bool on) {
             if (m_slice) m_slice->setSquelch(on, m_sqlSlider->value());
         });
         connect(m_sqlSlider, &QSlider::valueChanged, this, [this](int v) {
-            m_sqlValueLabel->setText(QString::number(v));
             if (m_slice && m_sqlBtn->isChecked())
                 m_slice->setSquelch(true, v);
         });
@@ -927,14 +901,7 @@ void RxApplet::buildUI()
         m_agcTSlider->setStyleSheet(kSliderStyle);
         agcRow->addWidget(m_agcTSlider, 1);
 
-        m_agcTValueLabel = new QLabel("65");
-        m_agcTValueLabel->setStyleSheet(kDimLabelStyle);
-        m_agcTValueLabel->setFixedWidth(24);
-        m_agcTValueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        agcRow->addWidget(m_agcTValueLabel);
-
         connect(m_agcTSlider, &QSlider::valueChanged, this, [this](int v) {
-            m_agcTValueLabel->setText(QString::number(v));
             if (m_slice) m_slice->setAgcThreshold(v);
         });
         rightCol->addWidget(m_agcContainer);
@@ -1295,12 +1262,10 @@ void RxApplet::connectSlice(SliceModel* s)
     {
         QSignalBlocker b(m_agcTSlider);
         m_agcTSlider->setValue(s->agcThreshold());
-        m_agcTValueLabel->setText(QString::number(s->agcThreshold()));
     }
     connect(s, &SliceModel::agcThresholdChanged, this, [this](int v) {
         QSignalBlocker b(m_agcTSlider);
         m_agcTSlider->setValue(v);
-        m_agcTValueLabel->setText(QString::number(v));
     });
 
     // Audio mute
@@ -1339,12 +1304,10 @@ void RxApplet::connectSlice(SliceModel* s)
     {
         QSignalBlocker sb(m_afSlider);
         m_afSlider->setValue(static_cast<int>(s->audioGain()));
-        m_afValueLabel->setText(QString::number(static_cast<int>(s->audioGain())));
     }
     connect(s, &SliceModel::audioGainChanged, this, [this](float g) {
         QSignalBlocker sb(m_afSlider);
         m_afSlider->setValue(static_cast<int>(g));
-        m_afValueLabel->setText(QString::number(static_cast<int>(g)));
     });
 
     connect(s, &SliceModel::squelchChanged, this, [this](bool on, int level) {
@@ -1352,7 +1315,6 @@ void RxApplet::connectSlice(SliceModel* s)
         if (m_sqlBtn->isEnabled())
             m_sqlBtn->setChecked(on);
         m_sqlSlider->setValue(level);
-        m_sqlValueLabel->setText(QString::number(level));
     });
 
     // DSP toggles
