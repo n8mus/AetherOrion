@@ -170,6 +170,8 @@ public:
             m_autoBlackThresh = m_preTxAutoBlack;  // restore after TX
         m_transmitting = tx;
     }
+    void setShowTxInWaterfall(bool on) { m_showTxInWaterfall = on; }
+    void setHasTxSlice(bool has) { m_hasTxSlice = has; }
 
 signals:
     // Emitted when user clicks on an inactive slice marker.
@@ -319,6 +321,8 @@ private:
     bool m_wnbActive{false};
     int  m_rfGainValue{0};
     bool m_showBandPlan{true};
+    bool m_showTxInWaterfall{true};
+    bool m_hasTxSlice{false};  // true if this pan contains the TX slice
 
     bool     m_transmitting{false};
     float    m_preTxAutoBlack{145.0f}; // auto-black threshold saved before TX

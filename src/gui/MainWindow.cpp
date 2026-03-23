@@ -236,7 +236,14 @@ MainWindow::MainWindow(QWidget* parent)
     // TX/RX transition → waterfall tile source switching
     connect(m_radioModel.transmitModel(), &TransmitModel::moxChanged,
             this, [this](bool tx) {
-        spectrum()->setTransmitting(tx);
+        // Set transmitting on ALL spectrums (multi-pan aware).
+        // Each spectrum's m_hasTxSlice flag determines whether it freezes.
+        for (auto* pan : m_radioModel.panadapters()) {
+            if (auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr)
+                sw->setTransmitting(tx);
+        }
+        if (!m_panStack && m_panApplet)
+            m_panApplet->spectrumWidget()->setTransmitting(tx);
         m_audio.setTransmitting(tx);
 
         // Update TX status bar indicator
@@ -265,6 +272,19 @@ MainWindow::MainWindow(QWidget* parent)
         m_serialPort.setTransmitting(tx);
 #endif
     });
+
+    // Sync show-TX-in-waterfall setting to all spectrum widgets
+    auto syncShowTxWf = [this]() {
+        bool show = m_radioModel.transmitModel()->showTxInWaterfall();
+        for (auto* pan : m_radioModel.panadapters()) {
+            if (auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr)
+                sw->setShowTxInWaterfall(show);
+        }
+        if (!m_panStack && m_panApplet)
+            m_panApplet->spectrumWidget()->setShowTxInWaterfall(show);
+    };
+    connect(m_radioModel.transmitModel(), &TransmitModel::stateChanged,
+            this, syncShowTxWf);
 
     // ── Panadapter stream → spectrum widget ───────────────────────────────
     // Route FFT/waterfall data to the correct SpectrumWidget by stream ID
@@ -1727,6 +1747,15 @@ void MainWindow::onSliceAdded(SliceModel* s)
             s->mode(), s->rttyMark(), s->rttyShift());
     });
     connect(s, &SliceModel::txSliceChanged, this, [this, s](bool tx) {
+        // Update hasTxSlice on all spectrums for waterfall freeze logic
+        if (tx) {
+            for (auto* pan : m_radioModel.panadapters()) {
+                if (auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr)
+                    sw->setHasTxSlice(sw == spectrumForSlice(s));
+            }
+            if (!m_panStack && m_panApplet)
+                m_panApplet->spectrumWidget()->setHasTxSlice(true);
+        }
         spectrumForSlice(s)->setSliceOverlay(s->sliceId(), s->frequency(),
             s->filterLow(), s->filterHigh(), tx,
             s->sliceId() == m_activeSliceId,

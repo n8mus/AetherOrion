@@ -340,8 +340,11 @@ void SpectrumWidget::updateSpectrum(const QVector<float>& binsDbm)
     // During TX: immediately use FFT-derived rows (radio stops sending tiles).
     // During RX: use native tiles, fall back to FFT after 2s timeout.
     if (m_transmitting) {
-        // TX: always push FFT rows
-        if (!m_waterfall.isNull())
+        // TX: push FFT-derived rows only if show-tx-in-waterfall is enabled,
+        // or if this pan doesn't contain the TX slice (multi-pan: non-TX pan
+        // keeps scrolling regardless).
+        bool freeze = !m_showTxInWaterfall && m_hasTxSlice;
+        if (!freeze && !m_waterfall.isNull())
             pushWaterfallRow(binsDbm, m_waterfall.width());
     } else {
         if (m_hasNativeWaterfall) {
@@ -364,6 +367,10 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
 {
     // Native waterfall tiles carry intensity values (int16/128.0f, ~96-120 on HF).
     if (binsIntensity.isEmpty() || m_waterfall.isNull()) return;
+
+    // Freeze waterfall during TX if show-tx-in-waterfall is off and this pan
+    // contains the TX slice. Non-TX pans keep scrolling in multi-pan.
+    if (m_transmitting && !m_showTxInWaterfall && m_hasTxSlice) return;
 
     // Derive ms-per-row by measuring wall-clock / timecode delta.
     // Collect data for the first 50 tiles to converge, then lock the value.
