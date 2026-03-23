@@ -37,7 +37,7 @@ TitleBar::TitleBar(QWidget* parent)
     m_mfLabel->setStyleSheet(
         "QLabel { color: #20c060; font-size: 11px; font-weight: bold; "
         "border: 1px solid #20c060; border-radius: 4px; "
-        "background: transparent; padding: 1px 6px; }");
+        "background: transparent; padding: 0px 3px; }");
     m_mfLabel->setVisible(false);
     m_hbox->addWidget(m_mfLabel);
 
