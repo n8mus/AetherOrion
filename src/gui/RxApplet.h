@@ -139,6 +139,7 @@ private:
     // Squelch
     QPushButton* m_sqlBtn{nullptr};
     QSlider*     m_sqlSlider{nullptr};
+    bool         m_savedSquelchOn{false};
 
     // DSP
     QPushButton* m_nbBtn{nullptr};

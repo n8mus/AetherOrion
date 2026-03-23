@@ -1558,6 +1558,24 @@ void RxApplet::updateModeSettings(const QString& mode)
     // QSK visibility — only meaningful in CW mode
     m_qskBtn->setVisible(mode == "CW");
 
+    // Disable squelch in digital modes (audio goes via DAX, SQL not meaningful)
+    bool isDig = (mode == "DIGU" || mode == "DIGL");
+    m_sqlBtn->setEnabled(!isDig);
+    m_sqlSlider->setEnabled(!isDig);
+    if (isDig && m_slice) {
+        if (m_slice->squelchOn()) {
+            m_savedSquelchOn = true;
+            m_slice->setSquelch(false, m_slice->squelchLevel());
+            QSignalBlocker sb(m_sqlBtn);
+            m_sqlBtn->setChecked(false);
+        }
+    } else if (!isDig && m_slice && m_savedSquelchOn) {
+        m_savedSquelchOn = false;
+        m_slice->setSquelch(true, m_slice->squelchLevel());
+        QSignalBlocker sb(m_sqlBtn);
+        m_sqlBtn->setChecked(true);
+    }
+
     // Update step sizes, keeping closest step to previous value
     const int prevStep = (m_stepIdx >= 0 && m_stepIdx < m_stepSizes.size())
                              ? m_stepSizes[m_stepIdx] : 100;
