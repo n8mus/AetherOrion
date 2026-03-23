@@ -136,11 +136,15 @@ public:
         bool   isTxSlice{false};
         bool   isActive{false};
         int    splitPartnerId{-1};  // slice ID of split partner, -1 if not in split
+        QString mode;               // "RTTY", "USB", etc.
+        int    rttyMark{2125};      // RTTY mark audio offset (Hz)
+        int    rttyShift{170};      // RTTY shift (Hz)
     };
 
     // Add or update a slice overlay (called per-slice on any state change).
     void setSliceOverlay(int sliceId, double freq, int fLow, int fHigh,
-                         bool tx, bool active);
+                         bool tx, bool active, const QString& mode = {},
+                         int rttyMark = 2125, int rttyShift = 170);
     // Remove a slice overlay.
     void removeSliceOverlay(int sliceId);
 

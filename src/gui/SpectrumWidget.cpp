@@ -230,15 +230,22 @@ const SpectrumWidget::SliceOverlay* SpectrumWidget::activeOverlay() const
 }
 
 void SpectrumWidget::setSliceOverlay(int sliceId, double freq, int fLow, int fHigh,
-                                     bool tx, bool active)
+                                     bool tx, bool active, const QString& mode,
+                                     int rttyMark, int rttyShift)
 {
     int idx = overlayIndex(sliceId);
     if (idx < 0) {
-        m_sliceOverlays.append({sliceId, freq, fLow, fHigh, tx, active});
+        SliceOverlay o;
+        o.sliceId = sliceId; o.freqMhz = freq;
+        o.filterLowHz = fLow; o.filterHighHz = fHigh;
+        o.isTxSlice = tx; o.isActive = active;
+        o.mode = mode; o.rttyMark = rttyMark; o.rttyShift = rttyShift;
+        m_sliceOverlays.append(o);
     } else {
         auto& o = m_sliceOverlays[idx];
         o.freqMhz = freq; o.filterLowHz = fLow; o.filterHighHz = fHigh;
         o.isTxSlice = tx; o.isActive = active;
+        o.mode = mode; o.rttyMark = rttyMark; o.rttyShift = rttyShift;
     }
     update();
 }
@@ -1589,6 +1596,28 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             << QPoint(markerX + triHalf, specRect.top())
             << QPoint(markerX, specRect.top() + triH);
         p.drawPolygon(tri);
+
+        // ── RTTY mark/space lines ──────────────────────────────────────
+        if (so.mode == "RTTY") {
+            const double markMhz  = so.freqMhz + so.rttyMark / 1.0e6;
+            const double spaceMhz = markMhz - so.rttyShift / 1.0e6;
+            const int markX  = mhzToX(markMhz);
+            const int spaceX = mhzToX(spaceMhz);
+
+            QPen rttyPen(QColor(200, 200, 255, 180), 1, Qt::DashLine);
+            p.setPen(rttyPen);
+            p.drawLine(markX,  specRect.top(), markX,  wfRect.bottom());
+            p.drawLine(spaceX, specRect.top(), spaceX, wfRect.bottom());
+
+            // Labels at top
+            QFont f = p.font();
+            f.setPointSize(7);
+            f.setBold(true);
+            p.setFont(f);
+            p.setPen(QColor(200, 200, 255, 220));
+            p.drawText(markX + 2,  specRect.top() + 10, "M");
+            p.drawText(spaceX + 2, specRect.top() + 10, "S");
+        }
 
         // Slice letter badge and TX badge are now rendered by each
         // slice's VfoWidget — no need to draw them on the spectrum.

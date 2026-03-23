@@ -1641,7 +1641,8 @@ void MainWindow::onSliceAdded(SliceModel* s)
         m_updatingFromModel = true;
         spectrumForSlice(s)->setSliceOverlay(s->sliceId(), mhz,
             s->filterLow(), s->filterHigh(), s->isTxSlice(),
-            s->sliceId() == m_activeSliceId);
+            s->sliceId() == m_activeSliceId,
+            s->mode(), s->rttyMark(), s->rttyShift());
         m_updatingFromModel = false;
 
         // Feed frequency to Antenna Genius for band→antenna recall
@@ -1655,12 +1656,14 @@ void MainWindow::onSliceAdded(SliceModel* s)
 
     connect(s, &SliceModel::filterChanged, this, [this, s](int lo, int hi) {
         spectrumForSlice(s)->setSliceOverlay(s->sliceId(), s->frequency(),
-            lo, hi, s->isTxSlice(), s->sliceId() == m_activeSliceId);
+            lo, hi, s->isTxSlice(), s->sliceId() == m_activeSliceId,
+            s->mode(), s->rttyMark(), s->rttyShift());
     });
     connect(s, &SliceModel::txSliceChanged, this, [this, s](bool tx) {
         spectrumForSlice(s)->setSliceOverlay(s->sliceId(), s->frequency(),
             s->filterLow(), s->filterHigh(), tx,
-            s->sliceId() == m_activeSliceId);
+            s->sliceId() == m_activeSliceId,
+            s->mode(), s->rttyMark(), s->rttyShift());
         updateSplitState();
     });
 
@@ -1675,6 +1678,9 @@ void MainWindow::onSliceAdded(SliceModel* s)
         if (s->sliceId() == m_activeSliceId)
             updateFilterLimitsForMode(mode);
 
+        // Update spectrum overlay with new mode (for RTTY mark/space lines)
+        pushSliceOverlay(s);
+
         // Show/hide CW decode panel and start/stop decoder
         if (s->sliceId() == m_activeSliceId) {
             bool isCw = (mode == "CW" || mode == "CWL");
@@ -1686,6 +1692,10 @@ void MainWindow::onSliceAdded(SliceModel* s)
                 m_cwDecoder.stop();
         }
     });
+
+    // Update RTTY mark/space lines on spectrum when mark/shift changes
+    connect(s, &SliceModel::rttyMarkChanged, this, [this, s](int) { pushSliceOverlay(s); });
+    connect(s, &SliceModel::rttyShiftChanged, this, [this, s](int) { pushSliceOverlay(s); });
 
     // Handle slice migration between panadapters
     connect(s, &SliceModel::panIdChanged, this, [this, s](const QString&) {
@@ -1853,7 +1863,8 @@ void MainWindow::setActiveSlice(int sliceId)
     for (auto* sl : m_radioModel.slices()) {
         const bool isActive = (sl->sliceId() == sliceId);
         spectrumForSlice(sl)->setSliceOverlay(sl->sliceId(), sl->frequency(),
-            sl->filterLow(), sl->filterHigh(), sl->isTxSlice(), isActive);
+            sl->filterLow(), sl->filterHigh(), sl->isTxSlice(), isActive,
+            sl->mode(), sl->rttyMark(), sl->rttyShift());
     }
 
     // Re-wire applet panel, overlay menu to the new active slice
@@ -1930,7 +1941,8 @@ void MainWindow::pushSliceOverlay(SliceModel* s)
 {
     spectrumForSlice(s)->setSliceOverlay(s->sliceId(), s->frequency(),
         s->filterLow(), s->filterHigh(), s->isTxSlice(),
-        s->sliceId() == m_activeSliceId);
+        s->sliceId() == m_activeSliceId,
+        s->mode(), s->rttyMark(), s->rttyShift());
 }
 
 void MainWindow::disableSplit()
@@ -2362,7 +2374,8 @@ void MainWindow::onFrequencyChanged(double mhz)
                         // Also update the overlay marker position
                         csw->setSliceOverlay(other->sliceId(), mhz,
                             other->filterLow(), other->filterHigh(),
-                            other->isTxSlice(), false);
+                            other->isTxSlice(), false,
+                            other->mode(), other->rttyMark(), other->rttyShift());
                     }
                 }
             }
