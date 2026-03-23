@@ -114,6 +114,14 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&m_discovery, &RadioDiscovery::radioDiscovered, this, heartbeatSlot);
     connect(&m_discovery, &RadioDiscovery::radioUpdated, this, heartbeatSlot);
 
+    // Ping-based heartbeat for routed/SmartLink (no UDP discovery available)
+    connect(&m_radioModel, &RadioModel::pingReceived, this, [this]() {
+        if (m_titleBar) {
+            m_titleBar->onHeartbeat();
+            m_heartbeatMissTimer->start(); // reset miss timer
+        }
+    });
+
     connect(m_connPanel, &ConnectionPanel::connectRequested,
             this, [this](const RadioInfo& info){
         m_connPanel->setStatusText("Connecting…");

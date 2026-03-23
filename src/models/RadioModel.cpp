@@ -57,6 +57,7 @@ RadioModel::RadioModel(QObject* parent)
             m_reconnectTimer.stop();
         }
     });
+
 }
 
 bool RadioModel::isConnected() const
@@ -128,6 +129,7 @@ void RadioModel::disconnectFromRadio()
 {
     m_intentionalDisconnect = true;
     m_reconnectTimer.stop();
+    m_pingTimer.stop();
     if (m_wanConn) {
         m_wanConn->disconnectFromRadio();
         m_wanConn = nullptr;
@@ -436,6 +438,8 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
         // Set network MTU for VITA-49 packets (matches FlexLib behavior)
         int mtu = AppSettings::instance().value("NetworkMtu", "1500").toInt();
         sendCmd(QString("client set enforce_network_mtu=1 network_mtu=%1").arg(mtu));
+        // Enable keepalive (matches FlexLib behavior) — ping timer starts in startNetworkMonitor()
+        sendCmd("keepalive enable");
         startNetworkMonitor();
 
     // Full command sequence — each step waits for its R response before sending the next.
@@ -689,6 +693,7 @@ void RadioModel::startNetworkMonitor()
             if (code != 0) return;
             m_lastPingRtt = static_cast<int>(m_pingStopwatch.elapsed());
             evaluateNetworkQuality();
+            emit pingReceived();
         });
     });
     m_pingTimer.start(1000);

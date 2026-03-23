@@ -244,6 +244,8 @@ signals:
     void txAudioStreamReady(quint32 streamId);
     // Emitted when global profile list or active profile changes.
     void globalProfilesChanged();
+    // Emitted on each successful ping response from the radio.
+    void pingReceived();
     // Generic status relay — for dialogs that need to listen for specific objects.
     void statusReceived(const QString& object, const QMap<QString, QString>& kvs);
 
