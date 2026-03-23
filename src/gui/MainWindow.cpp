@@ -1723,6 +1723,14 @@ void MainWindow::onSliceAdded(SliceModel* s)
     // Push overlay for this slice to the spectrum widget
     pushSliceOverlay(s);
 
+    // Set initial hasTxSlice for waterfall freeze logic
+    if (s->isTxSlice())
+        spectrumForSlice(s)->setHasTxSlice(true);
+
+    // Sync show-TX-in-waterfall on first slice
+    spectrumForSlice(s)->setShowTxInWaterfall(
+        m_radioModel.transmitModel()->showTxInWaterfall());
+
     // Connect slice state changes → spectrum overlay updates
     connect(s, &SliceModel::frequencyChanged, this, [this, s](double mhz) {
         m_updatingFromModel = true;

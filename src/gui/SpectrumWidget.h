@@ -321,7 +321,7 @@ private:
     bool m_wnbActive{false};
     int  m_rfGainValue{0};
     bool m_showBandPlan{true};
-    bool m_showTxInWaterfall{true};
+    bool m_showTxInWaterfall{false};  // default matches radio default (off)
     bool m_hasTxSlice{false};  // true if this pan contains the TX slice
 
     bool     m_transmitting{false};
