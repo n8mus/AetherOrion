@@ -69,6 +69,10 @@ private:
     QPushButton* m_atuBtn{nullptr};
     QPushButton* m_memBtn{nullptr};
     QPushButton* m_apdBtn{nullptr};
+    QWidget*     m_apdRow{nullptr};
+public:
+    void setApdVisible(bool v) { if (m_apdRow) m_apdRow->setVisible(v); }
+private:
 
     bool m_updatingFromModel{false};
 };

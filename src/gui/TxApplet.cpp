@@ -242,7 +242,10 @@ void TxApplet::buildUI()
         insetLayout->addWidget(m_availInd);
 
         row->addWidget(inset, 3);  // 60%
-        vbox->addLayout(row);
+
+        m_apdRow = new QWidget;
+        m_apdRow->setLayout(row);
+        vbox->addWidget(m_apdRow);
     }
 
     outer->addWidget(body);

@@ -586,6 +586,12 @@ MainWindow::MainWindow(QWidget* parent)
     m_appletPanel->txApplet()->setTransmitModel(m_radioModel.transmitModel());
     m_appletPanel->rxApplet()->setTransmitModel(m_radioModel.transmitModel());
 
+    // Hide APD row on radios that don't support it
+    connect(m_radioModel.transmitModel(), &TransmitModel::apdStateChanged, this, [this]() {
+        m_appletPanel->txApplet()->setApdVisible(
+            m_radioModel.transmitModel()->apdConfigurable());
+    });
+
     // ── Serial port PTT/CW keying ───────────────────────────────────────
 #ifdef HAVE_SERIALPORT
     m_serialPort.loadSettings();
