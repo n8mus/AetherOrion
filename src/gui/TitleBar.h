@@ -7,6 +7,7 @@ class QSlider;
 class QLabel;
 class QMenuBar;
 class QHBoxLayout;
+class QTimer;
 
 namespace AetherSDR {
 
@@ -24,6 +25,8 @@ public:
     void setHeadphoneVolume(int pct);
     void setOtherClientTx(bool transmitting, const QString& station);
     void setMultiFlexStatus(int clientCount, const QStringList& names);
+    void onHeartbeat();     // Call when a discovery packet arrives
+    void onHeartbeatLost(); // Call when radio lost from discovery
 
 signals:
     void pcAudioToggled(bool on);
@@ -40,6 +43,13 @@ private:
     QSlider*     m_hpSlider{nullptr};
     QLabel*      m_masterLabel{nullptr};
     QLabel*      m_hpLabel{nullptr};
+
+    // Heartbeat indicator
+    QLabel*      m_heartbeat{nullptr};
+    QTimer*      m_heartbeatOffTimer{nullptr};  // 100ms green→grey
+    QTimer*      m_heartbeatAlarmTimer{nullptr}; // 500ms red/grey blink
+    int          m_missedBeats{0};
+    bool         m_alarmRed{false};
 };
 
 } // namespace AetherSDR

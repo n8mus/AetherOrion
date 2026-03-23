@@ -96,6 +96,24 @@ MainWindow::MainWindow(QWidget* parent)
         }
     });
 
+    // ── Heartbeat indicator: flash green on each discovery packet ─────────
+    m_heartbeatMissTimer = new QTimer(this);
+    m_heartbeatMissTimer->setInterval(1500);
+    connect(m_heartbeatMissTimer, &QTimer::timeout, this, [this]() {
+        if (m_titleBar) m_titleBar->onHeartbeatLost();
+    });
+
+    auto heartbeatSlot = [this](const RadioInfo& info) {
+        const QString connSerial = AppSettings::instance()
+            .value("LastConnectedRadioSerial").toString();
+        if (!connSerial.isEmpty() && info.serial == connSerial && m_titleBar) {
+            m_titleBar->onHeartbeat();
+            m_heartbeatMissTimer->start(); // reset miss timer
+        }
+    };
+    connect(&m_discovery, &RadioDiscovery::radioDiscovered, this, heartbeatSlot);
+    connect(&m_discovery, &RadioDiscovery::radioUpdated, this, heartbeatSlot);
+
     connect(m_connPanel, &ConnectionPanel::connectRequested,
             this, [this](const RadioInfo& info){
         m_connPanel->setStatusText("Connecting…");

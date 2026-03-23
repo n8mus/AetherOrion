@@ -10,6 +10,7 @@
 #include <QDesktopServices>
 #include <QClipboard>
 #include <QApplication>
+#include <QTimer>
 
 namespace AetherSDR {
 
@@ -26,6 +27,34 @@ TitleBar::TitleBar(QWidget* parent)
     // ── Left: menu bar will be inserted here via setMenuBar() ───────────────
     // (placeholder — addStretch pushes center/right into place)
     m_hbox->addStretch(1);
+
+    // ── Heartbeat indicator ─────────────────────────────────────────────────
+    m_heartbeat = new QLabel;
+    m_heartbeat->setFixedSize(10, 10);
+    m_heartbeat->setStyleSheet(
+        "QLabel { background: #404858; border-radius: 5px; }");
+    m_heartbeat->setToolTip("Radio discovery heartbeat");
+    m_hbox->addWidget(m_heartbeat);
+    m_hbox->addSpacing(4);
+
+    // 100ms timer to return green flash back to grey
+    m_heartbeatOffTimer = new QTimer(this);
+    m_heartbeatOffTimer->setSingleShot(true);
+    m_heartbeatOffTimer->setInterval(100);
+    connect(m_heartbeatOffTimer, &QTimer::timeout, this, [this]() {
+        m_heartbeat->setStyleSheet(
+            "QLabel { background: #404858; border-radius: 5px; }");
+    });
+
+    // 500ms alarm blink timer (red/grey alternating)
+    m_heartbeatAlarmTimer = new QTimer(this);
+    m_heartbeatAlarmTimer->setInterval(500);
+    connect(m_heartbeatAlarmTimer, &QTimer::timeout, this, [this]() {
+        m_alarmRed = !m_alarmRed;
+        m_heartbeat->setStyleSheet(m_alarmRed
+            ? "QLabel { background: #cc2020; border-radius: 5px; }"
+            : "QLabel { background: #404858; border-radius: 5px; }");
+    });
 
     // ── Center: App name ────────────────────────────────────────────────────
     auto* appName = new QLabel("AetherSDR");
@@ -292,6 +321,25 @@ void TitleBar::showFeatureRequestDialog()
         QDesktopServices::openUrl(QUrl("https://www.perplexity.ai/"));
     } else if (clicked == issueBtn) {
         QDesktopServices::openUrl(QUrl("https://github.com/ten9876/AetherSDR/issues/new"));
+    }
+}
+
+void TitleBar::onHeartbeat()
+{
+    m_missedBeats = 0;
+    m_heartbeatAlarmTimer->stop();
+    m_alarmRed = false;
+    m_heartbeat->setStyleSheet(
+        "QLabel { background: #20c060; border-radius: 5px; }");
+    m_heartbeatOffTimer->start();
+}
+
+void TitleBar::onHeartbeatLost()
+{
+    m_missedBeats++;
+    if (m_missedBeats >= 3 && !m_heartbeatAlarmTimer->isActive()) {
+        m_heartbeatOffTimer->stop();
+        m_heartbeatAlarmTimer->start();
     }
 }
 
