@@ -2141,26 +2141,24 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             { QSignalBlocker sb(btn); btn->setChecked(on); }
     });
     connect(menu, &SpectrumOverlayMenu::nr2Toggled,
-            this, [this, sw](bool on) {
-        if (auto* vfo = sw->vfoWidget())
-            vfo->nr2Button()->setChecked(on);
+            this, [this](bool on) {
         if (on) {
             m_audio.setRn2Enabled(false);
             m_audio.setNr2Enabled(true);
         } else {
             m_audio.setNr2Enabled(false);
         }
+        // VFO button sync happens via AudioEngine::nr2EnabledChanged signal
     });
     connect(menu, &SpectrumOverlayMenu::rn2Toggled,
-            this, [this, sw](bool on) {
-        if (auto* vfo = sw->vfoWidget())
-            vfo->rn2Button()->setChecked(on);
+            this, [this](bool on) {
         if (on) {
             m_audio.setNr2Enabled(false);
             m_audio.setRn2Enabled(true);
         } else {
             m_audio.setRn2Enabled(false);
         }
+        // VFO button sync happens via AudioEngine::rn2EnabledChanged signal
     });
 }
 
