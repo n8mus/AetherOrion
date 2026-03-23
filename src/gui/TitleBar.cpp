@@ -33,6 +33,14 @@ TitleBar::TitleBar(QWidget* parent)
     appName->setAlignment(Qt::AlignCenter);
     m_hbox->addWidget(appName);
 
+    m_mfLabel = new QLabel("multiFLEX");
+    m_mfLabel->setStyleSheet(
+        "QLabel { color: #20c060; font-size: 11px; font-weight: bold; "
+        "border: 1px solid #20c060; border-radius: 4px; "
+        "background: transparent; padding: 1px 6px; }");
+    m_mfLabel->setVisible(false);
+    m_hbox->addWidget(m_mfLabel);
+
     m_hbox->addStretch(1);
 
     // ── Right: Other client TX indicator + PC Audio + Master Vol + HP Vol ──
@@ -188,6 +196,20 @@ void TitleBar::setHeadphoneVolume(int pct)
     QSignalBlocker b(m_hpSlider);
     m_hpSlider->setValue(pct);
     m_hpLabel->setText(QString::number(pct));
+}
+
+void TitleBar::setMultiFlexStatus(int count, const QStringList& names)
+{
+    if (count > 0) {
+        m_mfLabel->setVisible(true);
+        QString tip = QString("multiFLEX — %1 other client%2:\n")
+            .arg(count).arg(count > 1 ? "s" : "");
+        for (const QString& n : names)
+            tip += "  " + n + "\n";
+        m_mfLabel->setToolTip(tip.trimmed());
+    } else {
+        m_mfLabel->setVisible(false);
+    }
 }
 
 void TitleBar::setOtherClientTx(bool transmitting, const QString& station)
