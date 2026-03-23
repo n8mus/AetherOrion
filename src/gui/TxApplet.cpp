@@ -169,7 +169,9 @@ void TxApplet::buildUI()
             "QPushButton { background: #1a3a5a; border: 1px solid #205070; "
             "border-radius: 3px; color: #c8d8e8; font-size: 10px; font-weight: bold; "
             "padding: 2px; }"
-            "QPushButton:hover { background: #204060; }";
+            "QPushButton:hover { background: #204060; }"
+            "QPushButton:disabled { background-color: #1a1a2a; color: #556070; "
+            "border: 1px solid #2a3040; }";
 
         m_tuneBtn = new QPushButton("TUNE");
         m_tuneBtn->setStyleSheet(btnStyle);
