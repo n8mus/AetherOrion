@@ -689,8 +689,8 @@ MainWindow::MainWindow(QWidget* parent)
 
     connect(m_radioModel.meterModel(), &MeterModel::hwTelemetryChanged,
             this, [this](float paTemp, float supplyVolts) {
-        m_paTempLabel->setText(QString("PA %1\u00B0C").arg(paTemp, 0, 'f', 0));
-        m_supplyVoltLabel->setText(QString("%1 V").arg(supplyVolts, 0, 'f', 1));
+        m_paTempLabel->setText(QString("PA %1\u00B0C").arg(paTemp, 0, 'f', 1));
+        m_supplyVoltLabel->setText(QString("%1 V").arg(supplyVolts, 0, 'f', 2));
 
         // Update station label (nickname arrives via status after connect)
         const QString nick = m_radioModel.nickname();
