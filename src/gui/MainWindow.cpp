@@ -835,11 +835,8 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         m_radioModel.tnfModel()->setGlobalEnabled(!m_radioModel.tnfModel()->globalEnabled());
         return true;
     }
-    if (obj == m_fdxIndicator && event->type() == QEvent::MouseButtonPress) {
-        bool on = !m_radioModel.fullDuplexEnabled();
-        m_radioModel.sendCommand(QString("radio set full_duplex_enabled=%1").arg(on ? 1 : 0));
-        return true;
-    }
+    // FDX is a read-only indicator reflecting the radio's full duplex state.
+    // On dual-SCU radios (6600/6700/8600) it's always enabled by hardware.
     if (obj == m_addPanLabel && event->type() == QEvent::MouseButtonPress) {
         // Multi-pan disabled pending stabilization (#152)
         // m_radioModel.createPanadapter();
@@ -1306,9 +1303,7 @@ void MainWindow::buildUI()
 
     m_fdxIndicator = new QLabel("FDX");
     m_fdxIndicator->setStyleSheet(greyIndLg);
-    m_fdxIndicator->setCursor(Qt::PointingHandCursor);
-    m_fdxIndicator->setToolTip("Full Duplex — click to toggle");
-    m_fdxIndicator->installEventFilter(this);
+    m_fdxIndicator->setToolTip("Full Duplex — lights when radio supports simultaneous RX on two bands");
     hbox->addWidget(m_fdxIndicator);
 
     addSep();
