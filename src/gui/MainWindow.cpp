@@ -529,6 +529,10 @@ MainWindow::MainWindow(QWidget* parent)
         m_titleBar->setHeadphoneVolume(m_radioModel.headphoneGain());
     });
 
+    // Multi-Flex: show when another client is transmitting
+    connect(&m_radioModel, &RadioModel::txOwnerChanged,
+            m_titleBar, &TitleBar::setOtherClientTx);
+
     // Apply saved master volume
     int savedMasterVol = AppSettings::instance().value("MasterVolume", "100").toInt();
     m_audio.setRxVolume(savedMasterVol / 100.0f);

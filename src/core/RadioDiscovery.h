@@ -25,8 +25,10 @@ struct RadioInfo {
     bool inUse{false};
     bool isRouted{false};
 
-    // Connected GUI client stations (from discovery broadcast)
+    // Connected GUI client info (from discovery broadcast)
     QStringList guiClientStations;
+    QStringList guiClientHandles;
+    QStringList guiClientPrograms;
 
     QString displayName() const {
         QString suffix;

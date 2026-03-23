@@ -35,7 +35,17 @@ TitleBar::TitleBar(QWidget* parent)
 
     m_hbox->addStretch(1);
 
-    // ── Right: PC Audio + Master Vol + HP Vol ───────────────────────────────
+    // ── Right: Other client TX indicator + PC Audio + Master Vol + HP Vol ──
+    m_otherTxLabel = new QLabel();
+    m_otherTxLabel->setStyleSheet(
+        "QLabel { background: white; color: #cc0000; font-size: 12px; "
+        "font-weight: bold; border-radius: 3px; padding: 2px 8px; }");
+    m_otherTxLabel->setVisible(false);
+    m_hbox->addWidget(m_otherTxLabel);
+
+    m_hbox->addSpacing(8);
+
+    // ── PC Audio + Master Vol + HP Vol ──────────────────────────────────────
     auto& s = AppSettings::instance();
 
     // PC Audio toggle
@@ -178,6 +188,16 @@ void TitleBar::setHeadphoneVolume(int pct)
     QSignalBlocker b(m_hpSlider);
     m_hpSlider->setValue(pct);
     m_hpLabel->setText(QString::number(pct));
+}
+
+void TitleBar::setOtherClientTx(bool transmitting, const QString& station)
+{
+    if (transmitting && !station.isEmpty()) {
+        m_otherTxLabel->setText(QString("TX %1").arg(station));
+        m_otherTxLabel->setVisible(true);
+    } else {
+        m_otherTxLabel->setVisible(false);
+    }
 }
 
 void TitleBar::showFeatureRequestDialog()

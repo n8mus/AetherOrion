@@ -223,6 +223,8 @@ signals:
     void amplifierChanged(bool present);
     void memoryRemoved(int index);
     void audioOutputChanged();
+    // Emitted when TX ownership changes in Multi-Flex (another client transmitting)
+    void txOwnerChanged(bool ownedByUs, const QString& otherStation);
     // Emitted when GPS status changes (from "sub gps all").
     void gpsStatusChanged(const QString& status, int tracked, int visible,
                           const QString& grid, const QString& altitude,
@@ -426,6 +428,9 @@ private:
     QString  m_wanPublicIp;
     quint16  m_wanUdpPort{4991};
     QSet<int>          m_ownedSliceIds;   // slice IDs that belong to our client
+    bool               m_txOwnedByUs{true};  // true when tx_client_handle matches our handle
+    quint32            m_txClientHandle{0};  // handle of the client that owns TX
+    QMap<quint32, QString> m_clientStations; // handle → station name (from client connected status)
 
     RadioInfo m_lastInfo;               // stored for auto-reconnect
     bool      m_intentionalDisconnect{false};

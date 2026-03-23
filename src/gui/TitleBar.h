@@ -22,6 +22,7 @@ public:
     void setPcAudioEnabled(bool on);
     void setMasterVolume(int pct);
     void setHeadphoneVolume(int pct);
+    void setOtherClientTx(bool transmitting, const QString& station);
 
 signals:
     void pcAudioToggled(bool on);
@@ -31,6 +32,7 @@ signals:
 private:
     void showFeatureRequestDialog();
     QHBoxLayout* m_hbox{nullptr};
+    QLabel*      m_otherTxLabel{nullptr};
     QPushButton* m_pcBtn{nullptr};
     QSlider*     m_masterSlider{nullptr};
     QSlider*     m_hpSlider{nullptr};

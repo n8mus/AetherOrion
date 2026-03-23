@@ -81,6 +81,15 @@ void RadioModel::connectToRadio(const RadioInfo& info)
     m_name    = info.name;
     m_model   = info.model;
     m_version = info.version;
+    // Populate client station map from discovery data
+    m_clientStations.clear();
+    for (int i = 0; i < info.guiClientHandles.size(); ++i) {
+        quint32 h = info.guiClientHandles[i].toUInt(nullptr, 16);
+        QString station = (i < info.guiClientStations.size())
+            ? info.guiClientStations[i]
+            : (i < info.guiClientPrograms.size() ? info.guiClientPrograms[i] : "Unknown");
+        m_clientStations[h] = station;
+    }
     m_connection.connectToRadio(info);
 }
 
@@ -928,6 +937,18 @@ void RadioModel::onStatusReceived(const QString& object,
         return;
     }
 
+    // Client connected: "client 0x7594C952 connected program=SmartSDR-Maestro station=Maestro"
+    static const QRegularExpression clientRe(R"(^client\s+(0x[0-9A-Fa-f]+)$)");
+    if (object.startsWith("client 0x")) {
+        const auto cm = clientRe.match(object);
+        if (cm.hasMatch() && kvs.contains("connected")) {
+            quint32 handle = cm.captured(1).toUInt(nullptr, 16);
+            QString station = kvs.value("station", kvs.value("program", "Unknown"));
+            m_clientStations[handle] = station;
+        }
+        return;
+    }
+
     // XVTR status: "xvtr 0 name=2m rf_freq=144.000000 if_freq=28.000000 ..."
     static const QRegularExpression xvtrRe(R"(^xvtr\s+(\d+)$)");
     if (object.startsWith("xvtr")) {
@@ -1201,11 +1222,25 @@ void RadioModel::onStatusReceived(const QString& object,
         return;
     }
 
-    // Interlock status: "interlock state=TRANSMITTING ..."
+    // Interlock status: "interlock tx_client_handle=0x... state=TRANSMITTING ..."
     if (object == "interlock") {
+        // Track TX ownership — only show TX state if we own the transmitter
+        if (kvs.contains("tx_client_handle")) {
+            quint32 txOwner = kvs["tx_client_handle"].toUInt(nullptr, 16);
+            m_txClientHandle = txOwner;
+            m_txOwnedByUs = (txOwner == clientHandle() || txOwner == 0);
+        }
         if (kvs.contains("state")) {
-            bool tx = (kvs["state"] == "TRANSMITTING");
+            bool tx = (kvs["state"] == "TRANSMITTING") && m_txOwnedByUs;
             m_transmitModel.setTransmitting(tx);
+        }
+        // Emit TX ownership state for title bar indicator
+        // txOwnerChanged(otherIsTx, stationName) — true when ANOTHER client has TX
+        if (!m_txOwnedByUs) {
+            QString station = m_clientStations.value(m_txClientHandle, "TX Not Ready");
+            emit txOwnerChanged(true, station);  // another client has TX
+        } else {
+            emit txOwnerChanged(false, {});  // we own TX (or nobody does)
         }
         m_transmitModel.applyInterlockStatus(kvs);
         return;
