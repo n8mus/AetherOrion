@@ -1423,6 +1423,24 @@ void VfoWidget::setSlice(SliceModel* slice)
         // CW: show APF, hide ANF/RNN/ANFL/ANFT
         // RTTY/DIG/FDV: hide ANF/ANFL/ANFT
         bool isVoice = !isRtty && !isCw && !isDig && !isFm && !isFdv;
+        // Disable squelch in digital modes (not meaningful — audio goes via DAX)
+        m_sqlBtn->setEnabled(!isDig);
+        m_sqlSlider->setEnabled(!isDig);
+        if (isDig && m_slice) {
+            // Save and disable squelch when entering digital mode
+            if (m_slice->squelchOn()) {
+                m_savedSquelchOn = true;
+                m_slice->setSquelch(false, m_slice->squelchLevel());
+                QSignalBlocker sb(m_sqlBtn);
+                m_sqlBtn->setChecked(false);
+            }
+        } else if (!isDig && m_slice && m_savedSquelchOn) {
+            // Restore squelch when leaving digital mode
+            m_savedSquelchOn = false;
+            m_slice->setSquelch(true, m_slice->squelchLevel());
+            QSignalBlocker sb(m_sqlBtn);
+            m_sqlBtn->setChecked(true);
+        }
         m_apfBtn->setVisible(isCw);
         m_anfBtn->setVisible(isVoice);
         m_rnnBtn->setVisible(!isCw && !isFm);

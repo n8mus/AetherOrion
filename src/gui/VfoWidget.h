@@ -128,6 +128,7 @@ private:
     QPushButton* m_muteBtn{nullptr};
     QPushButton* m_divBtn{nullptr};
     QPushButton* m_sqlBtn{nullptr};
+    bool         m_savedSquelchOn{false};
 public:
     void setDiversityAllowed(bool allowed);
 private:
