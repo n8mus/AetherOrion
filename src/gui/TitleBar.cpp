@@ -35,7 +35,7 @@ TitleBar::TitleBar(QWidget* parent)
         "QLabel { background: #404858; border-radius: 5px; }");
     m_heartbeat->setToolTip("Radio discovery heartbeat");
     m_hbox->addWidget(m_heartbeat);
-    m_hbox->addSpacing(4);
+    m_hbox->addSpacing(2);
 
     // 100ms timer to return green flash back to grey
     m_heartbeatOffTimer = new QTimer(this);
