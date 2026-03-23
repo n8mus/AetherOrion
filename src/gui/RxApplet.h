@@ -54,10 +54,14 @@ signals:
     void nr2CycleToggled(bool on);
     // Emitted when RNN button cycles to/from RN2 (client RNNoise) state
     void rn2CycleToggled(bool on);
+
 #ifdef HAVE_RADE
     // Emitted when user selects/deselects RADE digital voice mode
     void radeActivated(bool on, int sliceId);
 #endif
+
+public:
+    void setInitialStepSize(int hz);
 
 protected:
     bool eventFilter(QObject* obj, QEvent* ev) override;

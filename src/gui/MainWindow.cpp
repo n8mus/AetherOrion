@@ -580,7 +580,15 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Tuning step size → spectrum widget ─────────────────────────────────
     connect(m_appletPanel->rxApplet(), &RxApplet::stepSizeChanged,
             spectrum(), &SpectrumWidget::setStepSize);
-    spectrum()->setStepSize(100);
+    connect(m_appletPanel->rxApplet(), &RxApplet::stepSizeChanged,
+            this, [](int step) {
+        auto& s = AppSettings::instance();
+        s.setValue("TuningStepSize", QString::number(step));
+        s.save();
+    });
+    int savedStep = AppSettings::instance().value("TuningStepSize", "100").toInt();
+    spectrum()->setStepSize(savedStep);
+    m_appletPanel->rxApplet()->setInitialStepSize(savedStep);
 
     // ── Antenna list from radio → applet panel ─────────────────────────────
     connect(&m_radioModel, &RadioModel::antListChanged,
