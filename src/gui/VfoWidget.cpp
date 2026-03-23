@@ -112,6 +112,10 @@ static const QString kTabLblActive =
     "border-bottom: 2px solid #00b4d8; "
     "color: #00b4d8; font-size: 13px; font-weight: bold; padding: 3px 0; }";
 
+static const QString kDisabledBtn =
+    "QPushButton:disabled { background-color: #0a0a14; color: #404050; "
+    "border: 1px solid #1a1a2a; }";
+
 static const QString kDspToggle =
     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; "
     "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
@@ -515,7 +519,7 @@ void VfoWidget::buildTabContent()
         m_sqlBtn = new QPushButton("SQL");
         m_sqlBtn->setCheckable(true);
         m_sqlBtn->setFixedHeight(20);
-        m_sqlBtn->setStyleSheet(kDspToggle);
+        m_sqlBtn->setStyleSheet(kDspToggle + kDisabledBtn);
         sqlRow->addWidget(m_sqlBtn);
         m_sqlSlider = new QSlider(Qt::Horizontal);
         m_sqlSlider->setRange(0, 100);

@@ -133,6 +133,10 @@ static const QString kGreenActive =
     "QPushButton:checked { background-color: #006040; color: #00ff88; "
     "border: 1px solid #00a060; }";
 
+static const QString kDisabledBtn =
+    "QPushButton:disabled { background-color: #0a0a14; color: #404050; "
+    "border: 1px solid #1a1a2a; }";
+
 static const QString kAmberActive =
     "QPushButton:checked { background-color: #604000; color: #ffb800; "
     "border: 1px solid #906000; }";
@@ -861,7 +865,7 @@ void RxApplet::buildUI()
 
         m_sqlBtn = mkToggle("SQL");
         m_sqlBtn->setFixedWidth(52);
-        m_sqlBtn->setStyleSheet(QString(kButtonBase) + kGreenActive);
+        m_sqlBtn->setStyleSheet(QString(kButtonBase) + kGreenActive + kDisabledBtn);
         row->addWidget(m_sqlBtn);
 
         m_sqlSlider = new QSlider(Qt::Horizontal);
