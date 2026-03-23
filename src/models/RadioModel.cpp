@@ -35,6 +35,26 @@ RadioModel::RadioModel(QObject* parent)
 
     // Forward transmit model commands to the radio
     connect(&m_transmitModel, &TransmitModel::commandReady, this, [this](const QString& cmd){
+        // Intercept TUNE start: inhibit ACC TX first to protect amplifier
+        if (cmd == "transmit tune 1"
+            && AppSettings::instance().value("TuneInhibitAmp", "False").toString() == "True") {
+            // Find TX slice frequency
+            double txFreq = 0.0;
+            for (auto* s : m_slices) {
+                if (s->isTxSlice()) { txFreq = s->frequency(); break; }
+            }
+            int bandId = bandIdForFrequency(txFreq);
+            if (bandId >= 0) {
+                auto it = m_txBandSettings.find(bandId);
+                if (it != m_txBandSettings.end() && it->accTx) {
+                    m_tuneInhibitBandId = bandId;
+                    m_tuneInhibitActive = true;
+                    sendCmd(QString("interlock bandset %1 acc_tx_enabled=0").arg(bandId));
+                    qDebug() << "Tune PA inhibit: disabled ACC TX on band" << bandId
+                             << "before tune";
+                }
+            }
+        }
         sendCmd(cmd);
     });
 
@@ -46,6 +66,16 @@ RadioModel::RadioModel(QObject* parent)
     // Forward TNF model commands to the radio
     connect(&m_tnfModel, &TnfModel::commandReady, this, [this](const QString& cmd){
         sendCmd(cmd);
+    });
+
+    // ── Tune PA inhibit: restore ACC TX when tune completes ──
+    connect(&m_transmitModel, &TransmitModel::tuneChanged, this, [this](bool tuning) {
+        if (!tuning && m_tuneInhibitActive && m_tuneInhibitBandId >= 0) {
+            sendCmd(QString("interlock bandset %1 acc_tx_enabled=1").arg(m_tuneInhibitBandId));
+            qDebug() << "Tune PA inhibit: restored ACC TX on band" << m_tuneInhibitBandId;
+            m_tuneInhibitActive = false;
+            m_tuneInhibitBandId = -1;
+        }
     });
 
     m_reconnectTimer.setInterval(5000);
@@ -634,9 +664,55 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
     }); // client gui
 }
 
+int RadioModel::bandIdForFrequency(double freqMhz) const
+{
+    // Standard amateur HF band ranges → band names matching radio's band_name field
+    struct BandRange { double lo; double hi; const char* name; };
+    static constexpr BandRange bands[] = {
+        {1.8,    2.0,    "160"},
+        {3.5,    4.0,    "80"},
+        {5.0,    5.5,    "60"},
+        {7.0,    7.3,    "40"},
+        {10.1,   10.15,  "30"},
+        {14.0,   14.35,  "20"},
+        {18.068, 18.168, "17"},
+        {21.0,   21.45,  "15"},
+        {24.89,  24.99,  "12"},
+        {28.0,   29.7,   "10"},
+        {50.0,   54.0,   "6"},
+        {144.0,  148.0,  "2m"},
+    };
+
+    for (const auto& b : bands) {
+        if (freqMhz >= b.lo && freqMhz <= b.hi) {
+            // Find the band ID with this name in m_txBandSettings
+            for (auto it = m_txBandSettings.cbegin(); it != m_txBandSettings.cend(); ++it) {
+                if (it->bandName == b.name)
+                    return it->bandId;
+            }
+        }
+    }
+    // Out-of-band or GEN — check for GEN band
+    for (auto it = m_txBandSettings.cbegin(); it != m_txBandSettings.cend(); ++it) {
+        if (it->bandName == "GEN")
+            return it->bandId;
+    }
+    return -1;
+}
+
 void RadioModel::onDisconnected()
 {
     qCDebug(lcProtocol) << "RadioModel: disconnected";
+
+    // Safety: restore ACC TX if we were inhibiting during tune
+    if (m_tuneInhibitActive && m_tuneInhibitBandId >= 0) {
+        // Best effort — connection may already be dead, but try anyway
+        sendCmd(QString("interlock bandset %1 acc_tx_enabled=1").arg(m_tuneInhibitBandId));
+        qDebug() << "Tune PA inhibit: emergency restore ACC TX on band" << m_tuneInhibitBandId;
+        m_tuneInhibitActive = false;
+        m_tuneInhibitBandId = -1;
+    }
+
     stopNetworkMonitor();
     m_panStream.stop();
     m_panStream.clearRegisteredStreams();

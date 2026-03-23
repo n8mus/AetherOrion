@@ -1119,6 +1119,19 @@ void MainWindow::buildMenuBar()
         dlg->show();
     });
 
+    auto* tuneInhibitAct = settingsMenu->addAction("Inhibit amplifier during TUNE");
+    tuneInhibitAct->setCheckable(true);
+    tuneInhibitAct->setChecked(
+        AppSettings::instance().value("TuneInhibitAmp", "False").toString() == "True");
+    tuneInhibitAct->setToolTip(
+        "Temporarily disable ACC TX output during TUNE to protect external amplifiers.\n"
+        "ACC TX is automatically restored when TUNE completes.");
+    connect(tuneInhibitAct, &QAction::toggled, this, [](bool on) {
+        auto& s = AppSettings::instance();
+        s.setValue("TuneInhibitAmp", on ? "True" : "False");
+        s.save();
+    });
+
     settingsMenu->addSeparator();
 
     auto* autoRigctlAction = settingsMenu->addAction("Autostart rigctld with AetherSDR");

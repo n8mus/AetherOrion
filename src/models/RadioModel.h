@@ -384,6 +384,10 @@ private:
         bool    tx3{false};
     };
     QMap<int, TxBandInfo> m_txBandSettings;
+    int  m_tuneInhibitBandId{-1};  // band ID whose acc_tx was inhibited during tune
+    bool m_tuneInhibitActive{false};
+
+    int bandIdForFrequency(double freqMhz) const;  // map TX freq → band ID
 
 public:
     const QMap<int, TxBandInfo>& txBandSettings() const { return m_txBandSettings; }
