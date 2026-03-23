@@ -48,12 +48,13 @@ RadioModel::RadioModel(QObject* parent)
         sendCmd(cmd);
     });
 
-    m_reconnectTimer.setSingleShot(true);
-    m_reconnectTimer.setInterval(3000);
+    m_reconnectTimer.setInterval(5000);
     connect(&m_reconnectTimer, &QTimer::timeout, this, [this]() {
         if (!m_intentionalDisconnect && !m_lastInfo.address.isNull()) {
             qCDebug(lcProtocol) << "RadioModel: auto-reconnecting to" << m_lastInfo.address.toString();
             m_connection.connectToRadio(m_lastInfo);
+        } else {
+            m_reconnectTimer.stop();
         }
     });
 }
@@ -138,8 +139,7 @@ void RadioModel::disconnectFromRadio()
 void RadioModel::forceDisconnect()
 {
     // Close TCP without setting m_intentionalDisconnect — allows auto-reconnect
-    // when the radio reappears in discovery.
-    m_reconnectTimer.stop();
+    // when the radio reappears in discovery or via the repeating reconnect timer.
     m_connection.disconnectFromRadio();
 }
 
