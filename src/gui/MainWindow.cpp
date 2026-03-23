@@ -795,6 +795,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     if (sl) {
         s.setValue("LastFrequency", QString::number(sl->frequency(), 'f', 6));
         s.setValue("LastMode", sl->mode());
+        s.setValue("LastDaxChannel", QString::number(sl->daxChannel()));
     }
 
     s.save();
@@ -1597,9 +1598,13 @@ void MainWindow::onSliceAdded(SliceModel* s)
         // Re-create audio stream if it was invalidated by a profile load
         if (m_needAudioStream) {
             m_needAudioStream = false;
-            m_radioModel.sendCommand(QString("slice set %1 dax=0").arg(s->sliceId()));
             m_radioModel.createAudioStream();
         }
+
+        // Restore saved DAX channel from last session
+        int savedDax = AppSettings::instance().value("LastDaxChannel", "0").toInt();
+        if (savedDax > 0)
+            s->setDaxChannel(savedDax);
     }
 
     // Re-claim TX assignment after profile load or slice recreation (#145).
