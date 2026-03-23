@@ -1024,8 +1024,9 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
         "border: 1px solid #0090e0; }";
 
     static constexpr int XVTR_COLS = 2;
-    static constexpr int XVTR_ROWS = 4;
-    static constexpr int XVTR_SLOTS = XVTR_COLS * XVTR_ROWS;
+    static constexpr int XVTR_MIN_ROWS = 4;
+    int totalSlots = qMax(XVTR_MIN_ROWS * XVTR_COLS,
+                          (bands.size() + 1 + XVTR_COLS - 1) / XVTR_COLS * XVTR_COLS);
 
     const QString disabledStyle = btnStyle +
         "QPushButton:disabled { background: rgba(15, 15, 26, 180); "
@@ -1034,7 +1035,6 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
     // Fill grid: configured bands first, then empty slots, HF button last
     int slot = 0;
     for (const auto& xvtr : bands) {
-        if (slot >= XVTR_SLOTS - 1) break;  // reserve last slot for HF
         auto* btn = new QPushButton(xvtr.name, m_xvtrPanel);
         btn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
         btn->setStyleSheet(btnStyle);
@@ -1052,7 +1052,7 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
     }
 
     // Fill remaining slots (except last) with blank disabled buttons
-    while (slot < XVTR_SLOTS - 1) {
+    while (slot < totalSlots - 1) {
         auto* blank = new QPushButton("", m_xvtrPanel);
         blank->setFixedSize(BAND_BTN_W, BAND_BTN_H);
         blank->setStyleSheet(disabledStyle);
