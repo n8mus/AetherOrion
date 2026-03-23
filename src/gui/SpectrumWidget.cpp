@@ -1612,12 +1612,12 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
 
             // Labels at top
             QFont f = p.font();
-            f.setPointSize(7);
+            f.setPixelSize(10);
             f.setBold(true);
             p.setFont(f);
             p.setPen(QColor(200, 200, 255, 220));
-            p.drawText(markX + 2,  specRect.top() + 10, "M");
-            p.drawText(spaceX + 2, specRect.top() + 10, "S");
+            p.drawText(markX + 2,  specRect.top() + 12, "M");
+            p.drawText(spaceX + 2, specRect.top() + 12, "S");
         }
 
         // Slice letter badge and TX badge are now rendered by each
