@@ -33,7 +33,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf autoconf automake libtool`
 
-Current version: **0.5.7** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.5.8** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -526,7 +526,7 @@ and panadapter. The radio assigns these to our `client_handle`.
 
 ---
 
-## What's Implemented (v0.5.7)
+## What's Implemented (v0.5.8)
 
 - UDP radio discovery and TCP command/control
 - SmartSDR V/H/R/S/M protocol parsing
@@ -658,6 +658,31 @@ and panadapter. The radio assigns these to our `client_handle`.
 - **macOS mic permission**: proper AVAuthorizationStatus check with diagnostic
   logging (#157)
 - **NR2/RN2 button sync**: overlay ↔ VFO ↔ RX applet all stay in sync
+- **NR2 freeze fix**: spectrum overlay NR2 toggle now uses wisdom-gated
+  background thread (was freezing UI on first enable) (#214)
+- **NR2/RN2 persistence**: client-side DSP state saved on exit, restored
+  on launch (#167)
+- **VFO TX badge toggle**: click to assign OR unassign TX (#213)
+- **TGXL OPERATE disables TUNE/ATU/MEM**: TX applet buttons dimmed when
+  external tuner is in OPERATE mode, re-enabled in BYPASS/STANDBY (#197)
+- **Reconnect dialog**: "Radio disconnected — Waiting for reconnect" on
+  unexpected disconnect with Disconnect button, auto-close on reconnect (#209)
+- **Fast disconnect detection**: discovery stale timeout reduced to 5s,
+  force-disconnect on radio loss instead of waiting for TCP timeout (#209)
+- **Repeating reconnect timer**: retries TCP connect every 5s instead of
+  single-shot, alongside discovery-based auto-connect (#209)
+- **Heartbeat indicator**: title bar circle flashes green on each TCP ping
+  response, blinks red/grey after 3 missed beats
+- **Keepalive ping**: sends `keepalive enable` + 1s ping timer (matches
+  FlexLib), drives heartbeat for local/routed/SmartLink connections
+- **Low Bandwidth Connect**: connection panel checkbox sends
+  `client low_bw_connect` to reduce FFT/waterfall data for VPN/LTE links
+- **PA inhibit during TUNE**: opt-in safety feature disables ACC TX output
+  before tune, restores after completion, protects external amplifiers (#156)
+- **Exciter power fix with PGXL**: FWDPWR meter now filtered by source "TX"
+  so amplifier meter doesn't overwrite exciter reading (#181)
+- **Step size persistence**: tuning step saved/restored across restarts (#211)
+- **VFO slider value labels**: AF gain, SQL, AGC-T show numeric values (#198)
 
 ## What's NOT Yet Implemented
 
