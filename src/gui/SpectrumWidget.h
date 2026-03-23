@@ -141,12 +141,18 @@ public:
         QString mode;               // "RTTY", "USB", etc.
         int    rttyMark{2125};      // RTTY mark audio offset (Hz)
         int    rttyShift{170};      // RTTY shift (Hz)
+        bool   ritOn{false};
+        int    ritFreq{0};          // Hz offset
+        bool   xitOn{false};
+        int    xitFreq{0};          // Hz offset
     };
 
     // Add or update a slice overlay (called per-slice on any state change).
     void setSliceOverlay(int sliceId, double freq, int fLow, int fHigh,
                          bool tx, bool active, const QString& mode = {},
-                         int rttyMark = 2125, int rttyShift = 170);
+                         int rttyMark = 2125, int rttyShift = 170,
+                         bool ritOn = false, int ritFreq = 0,
+                         bool xitOn = false, int xitFreq = 0);
     // Remove a slice overlay.
     void removeSliceOverlay(int sliceId);
 

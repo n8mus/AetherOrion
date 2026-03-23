@@ -232,7 +232,9 @@ const SpectrumWidget::SliceOverlay* SpectrumWidget::activeOverlay() const
 
 void SpectrumWidget::setSliceOverlay(int sliceId, double freq, int fLow, int fHigh,
                                      bool tx, bool active, const QString& mode,
-                                     int rttyMark, int rttyShift)
+                                     int rttyMark, int rttyShift,
+                                     bool ritOn, int ritFreq,
+                                     bool xitOn, int xitFreq)
 {
     int idx = overlayIndex(sliceId);
     if (idx < 0) {
@@ -241,12 +243,16 @@ void SpectrumWidget::setSliceOverlay(int sliceId, double freq, int fLow, int fHi
         o.filterLowHz = fLow; o.filterHighHz = fHigh;
         o.isTxSlice = tx; o.isActive = active;
         o.mode = mode; o.rttyMark = rttyMark; o.rttyShift = rttyShift;
+        o.ritOn = ritOn; o.ritFreq = ritFreq;
+        o.xitOn = xitOn; o.xitFreq = xitFreq;
         m_sliceOverlays.append(o);
     } else {
         auto& o = m_sliceOverlays[idx];
         o.freqMhz = freq; o.filterLowHz = fLow; o.filterHighHz = fHigh;
         o.isTxSlice = tx; o.isActive = active;
         o.mode = mode; o.rttyMark = rttyMark; o.rttyShift = rttyShift;
+        o.ritOn = ritOn; o.ritFreq = ritFreq;
+        o.xitOn = xitOn; o.xitFreq = xitFreq;
     }
     update();
 }
@@ -1625,6 +1631,32 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             p.setPen(QColor(200, 200, 255, 220));
             p.drawText(markX + 2,  specRect.top() + 12, "M");
             p.drawText(spaceX + 2, specRect.top() + 12, "S");
+        }
+
+        // ── RIT/XIT offset lines ──────────────────────────────────────
+        if (so.ritOn && so.ritFreq != 0) {
+            const int ritX = mhzToX(so.freqMhz + so.ritFreq / 1.0e6);
+            QPen ritPen(QColor(col.red(), col.green(), col.blue(), 160), 1, Qt::DashLine);
+            p.setPen(ritPen);
+            p.drawLine(ritX, specRect.top(), ritX, wfRect.bottom());
+            QFont f = p.font();
+            f.setPixelSize(10);
+            f.setBold(true);
+            p.setFont(f);
+            p.setPen(QColor(col.red(), col.green(), col.blue(), 200));
+            p.drawText(ritX + 2, specRect.top() + 12, "R");
+        }
+        if (so.xitOn && so.xitFreq != 0) {
+            const int xitX = mhzToX(so.freqMhz + so.xitFreq / 1.0e6);
+            QPen xitPen(QColor(220, 80, 80, 180), 1, Qt::DashLine);
+            p.setPen(xitPen);
+            p.drawLine(xitX, specRect.top(), xitX, wfRect.bottom());
+            QFont f = p.font();
+            f.setPixelSize(10);
+            f.setBold(true);
+            p.setFont(f);
+            p.setPen(QColor(220, 80, 80, 220));
+            p.drawText(xitX + 2, specRect.top() + 12, "X");
         }
 
         // Slice letter badge and TX badge are now rendered by each
