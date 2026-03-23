@@ -1133,7 +1133,7 @@ QWidget* RadioSetupDialog::buildPhoneCwTab()
         auto* markLbl = new QLabel("RTTY Mark Default:");
         markLbl->setStyleSheet(kLabelStyle);
         grid->addWidget(markLbl, 0, 0);
-        auto* markEdit = new QLineEdit("2125");
+        auto* markEdit = new QLineEdit(QString::number(m_model->rttyMarkDefault()));
         markEdit->setStyleSheet(kEditStyle);
         markEdit->setFixedWidth(60);
         connect(markEdit, &QLineEdit::editingFinished, this, [this, markEdit] {

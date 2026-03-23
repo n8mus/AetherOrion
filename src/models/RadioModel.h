@@ -88,6 +88,7 @@ public:
     QString callsign()     const { return m_callsign; }
     QString nickname()     const { return m_nickname; }
     QString region()       const { return m_region; }
+    int     rttyMarkDefault() const { return m_rttyMarkDefault; }
     QString radioOptions() const { return m_radioOptions; }
     QString ip()          const { return m_ip; }
     QString netmask()     const { return m_netmask; }
@@ -435,6 +436,7 @@ private:
     QSet<int>          m_ownedSliceIds;   // slice IDs that belong to our client
     bool               m_txOwnedByUs{true};  // true when tx_client_handle matches our handle
     bool               m_fullDuplex{false};
+    int                m_rttyMarkDefault{2125};
     quint32            m_txClientHandle{0};  // handle of the client that owns TX
     QMap<quint32, QString> m_clientStations; // handle → station name (from client connected status)
 

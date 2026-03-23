@@ -1361,6 +1361,10 @@ void RadioModel::handleRadioStatus(const QMap<QString, QString>& kvs)
         m_lowLatencyDigital = kvs["low_latency_digital_modes"] == "1";
         changed = true;
     }
+    if (kvs.contains("rtty_mark_default")) {
+        m_rttyMarkDefault = kvs["rtty_mark_default"].toInt();
+        changed = true;
+    }
     if (kvs.contains("tnf_enabled")) {
         m_tnfModel.setGlobalEnabled(kvs["tnf_enabled"] == "1");
     }
