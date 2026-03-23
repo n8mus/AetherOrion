@@ -1663,12 +1663,15 @@ void MainWindow::onSliceAdded(SliceModel* s)
         if (savedDax > 0)
             s->setDaxChannel(savedDax);
 
-        // Restore client-side DSP (NR2/RN2) from last session
-        auto& settings = AppSettings::instance();
-        if (settings.value("ClientNr2Enabled", "False").toString() == "True")
-            m_audio.setNr2Enabled(true);
-        else if (settings.value("ClientRn2Enabled", "False").toString() == "True")
-            m_audio.setRn2Enabled(true);
+        // Restore client-side DSP (NR2/RN2) from last session.
+        // Deferred so the VFO widget exists for button sync.
+        QTimer::singleShot(500, this, [this]() {
+            auto& settings = AppSettings::instance();
+            if (settings.value("ClientNr2Enabled", "False").toString() == "True")
+                m_audio.setNr2Enabled(true);
+            else if (settings.value("ClientRn2Enabled", "False").toString() == "True")
+                m_audio.setRn2Enabled(true);
+        });
     }
 
     // Re-claim TX assignment after profile load or slice recreation (#145).
