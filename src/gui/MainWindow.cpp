@@ -1579,6 +1579,13 @@ void MainWindow::onConnectionStateChanged(bool connected)
         // Auto-hide the connection dialog on successful connect
         m_connPanel->hide();
 
+        // Close reconnect dialog if it was showing
+        if (m_reconnectDlg) {
+            m_reconnectDlg->close();
+            m_reconnectDlg->deleteLater();
+            m_reconnectDlg = nullptr;
+        }
+
         // Auto-start 4-channel rigctld TCP servers if enabled
         auto& as = AppSettings::instance();
         if (as.value("AutoStartRigctld", "False").toString() == "True") {
@@ -1651,6 +1658,41 @@ void MainWindow::onConnectionStateChanged(bool connected)
 #endif
         m_audio.stopRxStream();
         m_audio.stopTxStream();
+
+        // Show reconnect dialog on unexpected disconnect
+        if (!m_userDisconnected && !m_reconnectDlg) {
+            m_reconnectDlg = new QDialog(this);
+            m_reconnectDlg->setWindowTitle("Radio Disconnected");
+            m_reconnectDlg->setModal(false);
+            m_reconnectDlg->setFixedSize(400, 150);
+            m_reconnectDlg->setStyleSheet(
+                "QDialog { background: #0f0f1a; border: 2px solid #205070; }"
+                "QLabel { color: #c8d8e8; font-size: 14px; }"
+                "QPushButton { background: #1a3a5a; border: 1px solid #205070; "
+                "border-radius: 3px; color: #c8d8e8; font-size: 12px; "
+                "font-weight: bold; padding: 6px 20px; }"
+                "QPushButton:hover { background: #204060; }");
+            auto* layout = new QVBoxLayout(m_reconnectDlg);
+            layout->setAlignment(Qt::AlignCenter);
+            auto* label = new QLabel("Radio disconnected\nWaiting for reconnect...");
+            label->setAlignment(Qt::AlignCenter);
+            layout->addWidget(label);
+            auto* dismissBtn = new QPushButton("Dismiss");
+            dismissBtn->setFixedWidth(120);
+            layout->addWidget(dismissBtn, 0, Qt::AlignCenter);
+            connect(dismissBtn, &QPushButton::clicked, this, [this]() {
+                m_userDisconnected = true;
+                m_reconnectDlg->close();
+                m_reconnectDlg->deleteLater();
+                m_reconnectDlg = nullptr;
+                auto& s = AppSettings::instance();
+                s.remove("LastConnectedRadioSerial");
+                s.remove("LastRoutedRadioIp");
+                s.save();
+                m_connPanel->show();
+            });
+            m_reconnectDlg->show();
+        }
     }
 }
 

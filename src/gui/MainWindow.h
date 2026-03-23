@@ -153,6 +153,7 @@ private:
     void toggleConnectionDialog();
     bool m_useSystemClock{true};     // true when no GPS installed
     bool m_userDisconnected{false};  // true after explicit disconnect, blocks auto-connect
+    QDialog* m_reconnectDlg{nullptr}; // shown on unexpected disconnect, dismissed on reconnect
     bool m_displaySettingsPushed{false};  // one-shot: push saved display settings after pan created
 
 #ifdef HAVE_RADE
