@@ -1081,6 +1081,27 @@ void RxApplet::setNrState(int state)
     }
 }
 
+void RxApplet::setRnnState(int state)
+{
+    static const QString kOn =
+        "QPushButton { background: #1a6030; color: #ffffff;"
+        " border: 1px solid #20a040; border-radius: 2px;"
+        " font-size: 10px; font-weight: bold; padding: 1px 4px; }";
+    static const QString kOff = QString(kButtonBase) + kGreenActive;
+
+    m_rnnState = state;
+    if (state == 0) {
+        m_rnnBtn->setText("RNN");
+        m_rnnBtn->setStyleSheet(kOff);
+    } else if (state == 1) {
+        m_rnnBtn->setText("RNN");
+        m_rnnBtn->setStyleSheet(kOn);
+    } else {
+        m_rnnBtn->setText("RN2");
+        m_rnnBtn->setStyleSheet(kOn);
+    }
+}
+
 void RxApplet::setAfGain(int pct)
 {
     QSignalBlocker b(m_afSlider);

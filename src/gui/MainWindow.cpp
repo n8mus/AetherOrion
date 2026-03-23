@@ -544,6 +544,16 @@ MainWindow::MainWindow(QWidget* parent)
             this, [this](bool on) {
         m_audio.setRn2Enabled(on);
     });
+    // Sync RxApplet RNN button visual when RN2 state changes
+    connect(&m_audio, &AudioEngine::rn2EnabledChanged,
+            this, [this](bool on) {
+        auto* rx = m_appletPanel->rxApplet();
+        if (on) {
+            rx->setRnnState(2);
+        } else if (rx->rnnState() == 2) {
+            rx->setRnnState(0);
+        }
+    });
 
 #ifdef HAVE_RADE
     connect(m_appletPanel->rxApplet(), &RxApplet::radeActivated,

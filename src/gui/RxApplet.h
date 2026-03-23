@@ -154,6 +154,8 @@ private:
 public:
     int nrState() const { return m_nrState; }
     void setNrState(int state);
+    void setRnnState(int state);
+    int  rnnState() const { return m_rnnState; }
 private:
     QPushButton* m_anfBtn{nullptr};
     QPushButton* m_nrlBtn{nullptr};
