@@ -468,6 +468,8 @@ private:
     NetState      m_netState{NetState::Off};
     NetState      m_nextState{NetState::Off};
     int           m_stateCountdown{0};
+    int           m_pingMissCount{0};          // consecutive unanswered pings
+    static constexpr int PING_MISS_DISCONNECT = 5; // force disconnect after 5 missed pings (~5s)
 
     // Network diagnostics — byte counters for rate calculation
     qint64        m_txBytes{0};          // total TCP bytes sent

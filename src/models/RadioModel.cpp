@@ -761,16 +761,26 @@ void RadioModel::startNetworkMonitor()
     m_stateCountdown = 0;
     m_lastErrorCount = 0;
     m_lastPingRtt = 0;
+    m_pingMissCount = 0;
 
     connect(&m_pingTimer, &QTimer::timeout, this, [this]() {
         if (!isConnected()) {
             stopNetworkMonitor();
             return;
         }
+        // Increment miss counter — reset on successful response
+        ++m_pingMissCount;
+        if (m_pingMissCount >= PING_MISS_DISCONNECT) {
+            qDebug() << "RadioModel:" << PING_MISS_DISCONNECT
+                     << "consecutive pings unanswered — forcing disconnect";
+            forceDisconnect();
+            return;
+        }
         // Send ping and measure RTT
         m_pingStopwatch.restart();
         sendCmd("ping", [this](int code, const QString&) {
             if (code != 0) return;
+            m_pingMissCount = 0;  // reset on successful response
             m_lastPingRtt = static_cast<int>(m_pingStopwatch.elapsed());
             evaluateNetworkQuality();
             emit pingReceived();

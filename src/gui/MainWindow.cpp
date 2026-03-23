@@ -84,19 +84,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&m_discovery, &RadioDiscovery::radioLost,
             m_connPanel, &ConnectionPanel::onRadioLost);
 
-    // If the connected radio disappears from discovery, force-disconnect
-    // immediately rather than waiting for the TCP timeout (30-60s).
-    connect(&m_discovery, &RadioDiscovery::radioLost,
-            this, [this](const QString& serial) {
-        const QString connSerial = AppSettings::instance()
-            .value("LastConnectedRadioSerial").toString();
-        if (m_radioModel.isConnected() && serial == connSerial) {
-            qDebug() << "Connected radio lost from discovery — forcing disconnect";
-            m_radioModel.forceDisconnect();
-        }
-    });
-
-    // ── Heartbeat indicator: flash green on each discovery packet ─────────
+    // ── Heartbeat indicator + disconnect detection via TCP ping ─────────
     m_heartbeatMissTimer = new QTimer(this);
     m_heartbeatMissTimer->setInterval(1500);
     connect(m_heartbeatMissTimer, &QTimer::timeout, this, [this]() {
