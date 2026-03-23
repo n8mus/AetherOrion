@@ -1023,8 +1023,18 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
         "QPushButton:hover { background: rgba(0, 112, 192, 180); "
         "border: 1px solid #0090e0; }";
 
-    int row = 0, col = 0;
+    static constexpr int XVTR_COLS = 2;
+    static constexpr int XVTR_ROWS = 4;
+    static constexpr int XVTR_SLOTS = XVTR_COLS * XVTR_ROWS;
+
+    const QString disabledStyle = btnStyle +
+        "QPushButton:disabled { background: rgba(15, 15, 26, 180); "
+        "color: #252535; border: 1px solid #1a1a2a; }";
+
+    // Fill grid: configured bands first, then empty slots, HF button last
+    int slot = 0;
     for (const auto& xvtr : bands) {
+        if (slot >= XVTR_SLOTS - 1) break;  // reserve last slot for HF
         auto* btn = new QPushButton(xvtr.name, m_xvtrPanel);
         btn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
         btn->setStyleSheet(btnStyle);
@@ -1037,21 +1047,21 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
             m_xvtrPanelVisible = false;
         });
 
-        grid->addWidget(btn, row, col);
-        if (++col >= 3) { col = 0; ++row; }
+        grid->addWidget(btn, slot / XVTR_COLS, slot % XVTR_COLS);
+        ++slot;
     }
 
-    if (bands.isEmpty()) {
-        auto* lbl = new QLabel("No transverters configured.\n"
-                               "Add them in Settings → Radio Setup → XVTR.");
-        lbl->setStyleSheet("QLabel { color: #506070; font-size: 10px; border: none; }");
-        lbl->setAlignment(Qt::AlignCenter);
-        lbl->setWordWrap(true);
-        grid->addWidget(lbl, 0, 0, 1, 3);
-        row = 1;
+    // Fill remaining slots (except last) with blank disabled buttons
+    while (slot < XVTR_SLOTS - 1) {
+        auto* blank = new QPushButton("", m_xvtrPanel);
+        blank->setFixedSize(BAND_BTN_W, BAND_BTN_H);
+        blank->setStyleSheet(disabledStyle);
+        blank->setEnabled(false);
+        grid->addWidget(blank, slot / XVTR_COLS, slot % XVTR_COLS);
+        ++slot;
     }
 
-    // "HF" button to go back to band panel
+    // HF button in last slot (bottom-right)
     auto* hfBtn = new QPushButton("HF", m_xvtrPanel);
     hfBtn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
     hfBtn->setStyleSheet(btnStyle);
@@ -1063,7 +1073,7 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
         m_bandPanel->raise();
         m_bandPanelVisible = true;
     });
-    grid->addWidget(hfBtn, row + (col > 0 ? 1 : 0), 2);
+    grid->addWidget(hfBtn, slot / XVTR_COLS, slot % XVTR_COLS);
 
     m_xvtrPanel->adjustSize();
 }
