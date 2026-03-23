@@ -854,6 +854,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         ++row;
 
         connect(m_fillSlider, &QSlider::valueChanged, this, [this](int v) {
+            m_fillLabel->setText(QString::number(v));
             emit fftFillAlphaChanged(v / 100.0f);
         });
         connect(m_fillColorBtn, &QPushButton::clicked, this, [this] {
