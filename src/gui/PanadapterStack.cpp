@@ -3,6 +3,7 @@
 #include "SpectrumWidget.h"
 
 #include <QVBoxLayout>
+#include <QTimer>
 
 namespace AetherSDR {
 
@@ -142,7 +143,9 @@ void PanadapterStack::rearrangeLayout(const QString& layoutId)
     for (auto* a : applets)
         a->setParent(nullptr);
 
-    // Delete old splitter safely (may be in middle of event delivery)
+    // Hide + remove old splitter from layout, defer deletion
+    m_splitter->hide();
+    layout()->removeWidget(m_splitter);
     m_splitter->deleteLater();
     m_splitter = new QSplitter(Qt::Vertical, this);
     m_splitter->setHandleWidth(3);
@@ -195,7 +198,8 @@ void PanadapterStack::rearrangeLayout(const QString& layoutId)
             m_splitter->addWidget(a);
     }
 
-    equalizeSizes();
+    // Defer equalize until the new splitter has been laid out by Qt
+    QTimer::singleShot(0, this, [this]() { equalizeSizes(); });
 }
 
 void PanadapterStack::removeAll()
