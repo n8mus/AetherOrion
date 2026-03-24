@@ -54,6 +54,7 @@
 #include <QCloseEvent>
 #include <QMessageBox>
 #include <QShortcut>
+#include <QPointer>
 #include <QTextEdit>
 #include <QPlainTextEdit>
 #include <QSpinBox>
@@ -2304,12 +2305,14 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
 
     // ── Spot markers ─────────────────────────────────────────────────────
     auto* spots = m_radioModel.spotModel();
-    auto rebuildSpots = [this, sw]() {
+    QPointer<SpectrumWidget> swGuard(sw);
+    auto rebuildSpots = [this, swGuard]() {
+        if (!swGuard) return;  // widget destroyed (layout change)
         auto* s = m_radioModel.spotModel();
         QVector<SpectrumWidget::SpotMarker> markers;
         for (const auto& spot : s->spots())
             markers.append({spot.index, spot.callsign, spot.rxFreqMhz, spot.color, spot.mode});
-        sw->setSpotMarkers(markers);
+        swGuard->setSpotMarkers(markers);
     };
     connect(spots, &SpotModel::spotAdded,   this, rebuildSpots);
     connect(spots, &SpotModel::spotUpdated, this, rebuildSpots);
