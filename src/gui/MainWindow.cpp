@@ -384,6 +384,10 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Multi-panadapter lifecycle ──────────────────────────────────────────
     connect(&m_radioModel, &RadioModel::panadapterAdded,
             this, [this](PanadapterModel* pan) {
+        // During layout application, applyLayout/createPansSequentially handles
+        // applet creation and wiring — don't duplicate here.
+        if (m_applyingLayout) return;
+
         // Skip if this pan already has an applet
         if (m_panStack->panadapter(pan->panId())) {
             connect(pan, &PanadapterModel::infoChanged,
@@ -2516,6 +2520,8 @@ void MainWindow::applyPanLayout(const QString& layoutId)
 {
     if (!m_radioModel.isConnected()) return;
 
+    m_applyingLayout = true;  // suppress panadapterAdded handler
+
     static const QMap<QString, int> kPanCounts = {
         {"1", 1}, {"2v", 2}, {"2h", 2}, {"2h1", 3}, {"12h", 3}, {"2x2", 4}
     };
@@ -2589,6 +2595,7 @@ void MainWindow::createPansSequentially(const QString& layoutId, int total,
             }
 
             m_panApplet = m_panStack->activeApplet();
+            m_applyingLayout = false;  // re-enable panadapterAdded handler
             qDebug() << "applyPanLayout: layout" << layoutId
                      << "applied with" << panIds->size() << "pans";
         });
