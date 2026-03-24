@@ -1882,8 +1882,13 @@ void MainWindow::onSliceAdded(SliceModel* s)
 
     // When the radio notifies us that this slice became active, switch to it
     connect(s, &SliceModel::activeChanged, this, [this, s](bool active) {
-        if (active)
-            setActiveSlice(s->sliceId());
+        if (!active) return;
+        // In multi-pan mode, ignore radio-side active changes — we manage
+        // active slice client-side. The radio echoes active=1 on every
+        // "slice m" command, which would trigger setActiveSlice and cause
+        // waterfall pauses via wireActiveVfoSignals.
+        if (m_panStack && m_panStack->count() > 1) return;
+        setActiveSlice(s->sliceId());
     });
 
     // Update filter limits when the active slice's mode changes
