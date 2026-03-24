@@ -516,116 +516,114 @@ QWidget* RadioSetupDialog::buildNetworkTab()
     }
 
     // DHCP / Static IP group
-    {
-        auto* group = new QGroupBox("IP Configuration");
-        group->setStyleSheet(kGroupStyle);
-        auto* gvbox = new QVBoxLayout(group);
-        gvbox->setSpacing(6);
-
-        // DHCP / Static buttons
-        auto* btnRow = new QHBoxLayout;
-        btnRow->setSpacing(4);
-
-        const bool isStatic = m_model->hasStaticIp();
-
-        auto* dhcpBtn = new QPushButton("DHCP");
-        dhcpBtn->setCheckable(true);
-        dhcpBtn->setChecked(!isStatic);
-        dhcpBtn->setStyleSheet(
-            "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
-            "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
-            "padding: 4px 16px; }"
-            "QPushButton:checked { background: #0070c0; color: #ffffff; "
-            "border: 1px solid #0090e0; }");
-        btnRow->addWidget(dhcpBtn);
-
-        auto* staticBtn = new QPushButton("Static");
-        staticBtn->setCheckable(true);
-        staticBtn->setChecked(isStatic);
-        staticBtn->setStyleSheet(dhcpBtn->styleSheet());
-        btnRow->addWidget(staticBtn);
-
-        btnRow->addStretch(1);
-        gvbox->addLayout(btnRow);
-
-        // Static IP fields
-        auto* fieldsGrid = new QGridLayout;
-        fieldsGrid->setSpacing(4);
-
-        fieldsGrid->addWidget(new QLabel("IP Address:"), 0, 0);
-        // If static is configured, show those values; otherwise show current DHCP values
-        auto* staticIp = new QLineEdit(isStatic ? m_model->staticIp() : m_model->ip());
-        staticIp->setStyleSheet(kEditStyle);
-        staticIp->setEnabled(isStatic);
-        fieldsGrid->addWidget(staticIp, 0, 1);
-
-        fieldsGrid->addWidget(new QLabel("Mask:"), 1, 0);
-        auto* staticMask = new QLineEdit(isStatic ? m_model->staticNetmask() : m_model->netmask());
-        staticMask->setStyleSheet(kEditStyle);
-        staticMask->setEnabled(isStatic);
-        fieldsGrid->addWidget(staticMask, 1, 1);
-
-        fieldsGrid->addWidget(new QLabel("Gateway:"), 2, 0);
-        auto* staticGw = new QLineEdit(isStatic ? m_model->staticGateway() : m_model->gateway());
-        staticGw->setStyleSheet(kEditStyle);
-        staticGw->setEnabled(isStatic);
-        fieldsGrid->addWidget(staticGw, 2, 1);
-
-        for (auto* lbl : group->findChildren<QLabel*>())
-            if (lbl->styleSheet().isEmpty()) lbl->setStyleSheet(kLabelStyle);
-
-        gvbox->addLayout(fieldsGrid);
-
-        // Apply button
-        auto* applyBtn = new QPushButton("Apply");
-        applyBtn->setEnabled(false);
-        applyBtn->setStyleSheet(
-            "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
-            "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
-            "padding: 4px 16px; }"
-            "QPushButton:hover { background: #203040; }");
-        gvbox->addWidget(applyBtn, 0, Qt::AlignLeft);
-
-        // DHCP/Static toggle logic
-        connect(dhcpBtn, &QPushButton::clicked, this,
-                [dhcpBtn, staticBtn, staticIp, staticMask, staticGw, applyBtn] {
-            dhcpBtn->setChecked(true);
-            staticBtn->setChecked(false);
-            staticIp->setEnabled(false);
-            staticMask->setEnabled(false);
-            staticGw->setEnabled(false);
-            applyBtn->setEnabled(true);
-        });
-        connect(staticBtn, &QPushButton::clicked, this,
-                [dhcpBtn, staticBtn, staticIp, staticMask, staticGw, applyBtn] {
-            dhcpBtn->setChecked(false);
-            staticBtn->setChecked(true);
-            staticIp->setEnabled(true);
-            staticMask->setEnabled(true);
-            staticGw->setEnabled(true);
-            applyBtn->setEnabled(true);
-        });
-
-        // Apply sends the command
-        connect(applyBtn, &QPushButton::clicked, this,
-                [this, dhcpBtn, staticIp, staticMask, staticGw, applyBtn] {
-            if (dhcpBtn->isChecked()) {
-                m_model->connection()->sendCommand("radio static_net_params reset");
-                qDebug() << "RadioSetupDialog: network set to DHCP";
-            } else {
-                const QString cmd = QString("radio static_net_params ip=%1 gateway=%2 netmask=%3")
-                    .arg(staticIp->text(), staticGw->text(), staticMask->text());
-                m_model->connection()->sendCommand(cmd);
-                qDebug() << "RadioSetupDialog: static IP applied" << cmd;
-            }
-            applyBtn->setEnabled(false);
-        });
-
-        vbox->addWidget(group);
-    }
+    vbox->addWidget(buildIpConfigGroup());
 
     vbox->addStretch(1);
     return page;
+}
+
+// Extracted to reduce lambda nesting depth in buildNetworkTab()
+// (avoids GCC 13 internal compiler error on Ubuntu 24.04)
+QGroupBox* RadioSetupDialog::buildIpConfigGroup()
+{
+    auto* group = new QGroupBox("IP Configuration");
+    group->setStyleSheet(kGroupStyle);
+    auto* gvbox = new QVBoxLayout(group);
+    gvbox->setSpacing(6);
+
+    auto* btnRow = new QHBoxLayout;
+    btnRow->setSpacing(4);
+
+    const bool isStatic = m_model->hasStaticIp();
+
+    auto* dhcpBtn = new QPushButton("DHCP");
+    dhcpBtn->setCheckable(true);
+    dhcpBtn->setChecked(!isStatic);
+    dhcpBtn->setStyleSheet(
+        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+        "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+        "padding: 4px 16px; }"
+        "QPushButton:checked { background: #0070c0; color: #ffffff; "
+        "border: 1px solid #0090e0; }");
+    btnRow->addWidget(dhcpBtn);
+
+    auto* staticBtn = new QPushButton("Static");
+    staticBtn->setCheckable(true);
+    staticBtn->setChecked(isStatic);
+    staticBtn->setStyleSheet(dhcpBtn->styleSheet());
+    btnRow->addWidget(staticBtn);
+
+    btnRow->addStretch(1);
+    gvbox->addLayout(btnRow);
+
+    auto* fieldsGrid = new QGridLayout;
+    fieldsGrid->setSpacing(4);
+
+    fieldsGrid->addWidget(new QLabel("IP Address:"), 0, 0);
+    auto* staticIp = new QLineEdit(isStatic ? m_model->staticIp() : m_model->ip());
+    staticIp->setStyleSheet(kEditStyle);
+    staticIp->setEnabled(isStatic);
+    fieldsGrid->addWidget(staticIp, 0, 1);
+
+    fieldsGrid->addWidget(new QLabel("Mask:"), 1, 0);
+    auto* staticMask = new QLineEdit(isStatic ? m_model->staticNetmask() : m_model->netmask());
+    staticMask->setStyleSheet(kEditStyle);
+    staticMask->setEnabled(isStatic);
+    fieldsGrid->addWidget(staticMask, 1, 1);
+
+    fieldsGrid->addWidget(new QLabel("Gateway:"), 2, 0);
+    auto* staticGw = new QLineEdit(isStatic ? m_model->staticGateway() : m_model->gateway());
+    staticGw->setStyleSheet(kEditStyle);
+    staticGw->setEnabled(isStatic);
+    fieldsGrid->addWidget(staticGw, 2, 1);
+
+    for (auto* lbl : group->findChildren<QLabel*>())
+        if (lbl->styleSheet().isEmpty()) lbl->setStyleSheet(kLabelStyle);
+
+    gvbox->addLayout(fieldsGrid);
+
+    auto* applyBtn = new QPushButton("Apply");
+    applyBtn->setEnabled(false);
+    applyBtn->setStyleSheet(
+        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+        "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+        "padding: 4px 16px; }"
+        "QPushButton:hover { background: #203040; }");
+    gvbox->addWidget(applyBtn, 0, Qt::AlignLeft);
+
+    connect(dhcpBtn, &QPushButton::clicked, this,
+            [dhcpBtn, staticBtn, staticIp, staticMask, staticGw, applyBtn] {
+        dhcpBtn->setChecked(true);
+        staticBtn->setChecked(false);
+        staticIp->setEnabled(false);
+        staticMask->setEnabled(false);
+        staticGw->setEnabled(false);
+        applyBtn->setEnabled(true);
+    });
+    connect(staticBtn, &QPushButton::clicked, this,
+            [dhcpBtn, staticBtn, staticIp, staticMask, staticGw, applyBtn] {
+        dhcpBtn->setChecked(false);
+        staticBtn->setChecked(true);
+        staticIp->setEnabled(true);
+        staticMask->setEnabled(true);
+        staticGw->setEnabled(true);
+        applyBtn->setEnabled(true);
+    });
+    connect(applyBtn, &QPushButton::clicked, this,
+            [this, dhcpBtn, staticIp, staticMask, staticGw, applyBtn] {
+        if (dhcpBtn->isChecked()) {
+            m_model->connection()->sendCommand("radio static_net_params reset");
+            qDebug() << "RadioSetupDialog: network set to DHCP";
+        } else {
+            const QString cmd = QString("radio static_net_params ip=%1 gateway=%2 netmask=%3")
+                .arg(staticIp->text(), staticGw->text(), staticMask->text());
+            m_model->connection()->sendCommand(cmd);
+            qDebug() << "RadioSetupDialog: static IP applied" << cmd;
+        }
+        applyBtn->setEnabled(false);
+    });
+
+    return group;
 }
 QWidget* RadioSetupDialog::buildGpsTab()
 {
