@@ -1649,6 +1649,24 @@ void RxApplet::setInitialStepSize(int hz)
     m_stepLabel->setText(formatStepLabel(m_stepSizes[m_stepIdx]));
 }
 
+void RxApplet::syncStepFromSlice(int stepHz, const QVector<int>& stepList)
+{
+    // Update step list if the radio sent one (mode-specific)
+    if (!stepList.isEmpty() && stepList != m_stepSizes) {
+        m_stepSizes = stepList;
+    }
+    // Find closest matching step index
+    if (m_stepSizes.isEmpty()) return;
+    int bestIdx = 0;
+    int bestDist = std::abs(m_stepSizes[0] - stepHz);
+    for (int i = 1; i < m_stepSizes.size(); ++i) {
+        int dist = std::abs(m_stepSizes[i] - stepHz);
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    }
+    m_stepIdx = bestIdx;
+    m_stepLabel->setText(formatStepLabel(m_stepSizes[m_stepIdx]));
+}
+
 void RxApplet::updateAgcCombo()
 {
     const QString cur = m_slice ? m_slice->agcMode() : "";

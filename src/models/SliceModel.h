@@ -68,6 +68,8 @@ public:
     int     ritFreq()     const { return m_ritFreq; }
     bool    xitOn()       const { return m_xitOn; }
     int     xitFreq()     const { return m_xitFreq; }
+    int     stepHz()      const { return m_stepHz; }
+    QVector<int> stepList() const { return m_stepList; }
     int     daxChannel()  const { return m_daxChannel; }
     int     rttyMark()    const { return m_rttyMark; }
     int     rttyShift()   const { return m_rttyShift; }
@@ -181,6 +183,7 @@ signals:
     void diversityChanged(bool on);
     void rfGainChanged(float gain);
     void squelchChanged(bool on, int level);
+    void stepChanged(int hz, const QVector<int>& stepList);
     void ritChanged(bool on, int hz);
     void xitChanged(bool on, int hz);
     void daxChannelChanged(int ch);
@@ -246,6 +249,8 @@ private:
     int     m_agcThreshold{65};
     bool    m_squelchOn{false};
     int     m_squelchLevel{20};
+    int     m_stepHz{100};
+    QVector<int> m_stepList;
     bool    m_ritOn{false};
     int     m_ritFreq{0};
     bool    m_xitOn{false};

@@ -38,6 +38,7 @@ public:
     // Attach to a slice; pass nullptr to detach.
     void setSlice(SliceModel* slice);
     void setAfGain(int pct);
+    void syncStepFromSlice(int stepHz, const QVector<int>& stepList);
 
     // Connect to transmit model for QSK (break_in) indicator.
     void setTransmitModel(class TransmitModel* txModel);

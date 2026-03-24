@@ -2135,6 +2135,12 @@ void MainWindow::setActiveSlice(int sliceId)
     m_appletPanel->setSlice(s);
     spectrum()->overlayMenu()->setSlice(s);
 
+    // Sync step size from the new active slice
+    if (s->stepHz() > 0) {
+        if (spectrum()) spectrum()->setStepSize(s->stepHz());
+        m_appletPanel->rxApplet()->syncStepFromSlice(s->stepHz(), s->stepList());
+    }
+
     // Switch active VFO widget display (NR2/RN2/RADE are wired permanently
     // in wireVfoWidget, no disconnect/reconnect needed)
     spectrum()->setActiveVfoWidget(sliceId);

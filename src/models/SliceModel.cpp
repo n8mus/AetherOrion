@@ -661,6 +661,21 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
         emit fmDeviationChanged(m_fmDeviation);
     }
 
+    if (kvs.contains("step") || kvs.contains("step_list")) {
+        bool changed = false;
+        if (kvs.contains("step")) {
+            int s = kvs["step"].toInt();
+            if (s != m_stepHz) { m_stepHz = s; changed = true; }
+        }
+        if (kvs.contains("step_list")) {
+            QVector<int> list;
+            for (const auto& v : kvs["step_list"].split(','))
+                if (!v.isEmpty()) list.append(v.toInt());
+            if (list != m_stepList) { m_stepList = list; changed = true; }
+        }
+        if (changed) emit stepChanged(m_stepHz, m_stepList);
+    }
+
     if (freqChanged)
         emit frequencyChanged(m_frequency);
     if (modeChanged_)   emit modeChanged(m_mode);
