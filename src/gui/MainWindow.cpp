@@ -2561,12 +2561,6 @@ void MainWindow::applyPanLayout(const QString& layoutId)
         return;
     }
 
-    // Set splitter orientation before creating pans so they land in the right layout
-    if (layoutId == "2h")
-        m_panStack->setSplitterOrientation(Qt::Horizontal);
-    else
-        m_panStack->setSplitterOrientation(Qt::Vertical);
-
     // Create additional pans to reach the needed count.
     // Keep existing pan(s) alive — no tear-down, no dangling signals.
     const int toCreate = needed - existing;
@@ -2602,8 +2596,10 @@ void MainWindow::createPansSequentially(const QString& layoutId, int total,
                 }
             }
 
+            // Rearrange splitter structure for the selected layout
+            m_panStack->rearrangeLayout(layoutId);
+
             m_panApplet = m_panStack->activeApplet();
-            m_panStack->equalizeSizes();
 
             qDebug() << "applyPanLayout: layout" << layoutId
                      << "complete, total pans:" << m_panStack->count();

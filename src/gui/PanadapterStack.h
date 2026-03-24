@@ -42,6 +42,7 @@ public:
     void setActivePan(const QString& panId);
     void setSplitterOrientation(Qt::Orientation o) { m_splitter->setOrientation(o); }
     void equalizeSizes();
+    void rearrangeLayout(const QString& layoutId);
 
 signals:
     void activePanChanged(const QString& panId);

@@ -123,6 +123,72 @@ void PanadapterStack::equalizeSizes()
     m_splitter->setSizes(sizes);
 }
 
+void PanadapterStack::rearrangeLayout(const QString& layoutId)
+{
+    // Collect applets in order
+    QList<PanadapterApplet*> applets = m_pans.values();
+    if (applets.isEmpty()) return;
+
+    // Remove all applets from current splitter (don't delete them)
+    for (auto* a : applets)
+        a->setParent(nullptr);
+
+    // Delete old splitter and create fresh one
+    delete m_splitter;
+    m_splitter = new QSplitter(Qt::Vertical, this);
+    m_splitter->setHandleWidth(3);
+    m_splitter->setChildrenCollapsible(false);
+    layout()->addWidget(m_splitter);
+
+    if (layoutId == "2h" && applets.size() >= 2) {
+        m_splitter->setOrientation(Qt::Horizontal);
+        m_splitter->addWidget(applets[0]);
+        m_splitter->addWidget(applets[1]);
+    }
+    else if (layoutId == "2h1" && applets.size() >= 3) {
+        // A|B on top, C on bottom
+        auto* topSplit = new QSplitter(Qt::Horizontal);
+        topSplit->setHandleWidth(3);
+        topSplit->setChildrenCollapsible(false);
+        topSplit->addWidget(applets[0]);
+        topSplit->addWidget(applets[1]);
+        m_splitter->addWidget(topSplit);
+        m_splitter->addWidget(applets[2]);
+    }
+    else if (layoutId == "12h" && applets.size() >= 3) {
+        // A on top, B|C on bottom
+        m_splitter->addWidget(applets[0]);
+        auto* botSplit = new QSplitter(Qt::Horizontal);
+        botSplit->setHandleWidth(3);
+        botSplit->setChildrenCollapsible(false);
+        botSplit->addWidget(applets[1]);
+        botSplit->addWidget(applets[2]);
+        m_splitter->addWidget(botSplit);
+    }
+    else if (layoutId == "2x2" && applets.size() >= 4) {
+        // A|B on top, C|D on bottom
+        auto* topSplit = new QSplitter(Qt::Horizontal);
+        topSplit->setHandleWidth(3);
+        topSplit->setChildrenCollapsible(false);
+        topSplit->addWidget(applets[0]);
+        topSplit->addWidget(applets[1]);
+        m_splitter->addWidget(topSplit);
+        auto* botSplit = new QSplitter(Qt::Horizontal);
+        botSplit->setHandleWidth(3);
+        botSplit->setChildrenCollapsible(false);
+        botSplit->addWidget(applets[2]);
+        botSplit->addWidget(applets[3]);
+        m_splitter->addWidget(botSplit);
+    }
+    else {
+        // Default: vertical stack (2v, 1, or fallback)
+        for (auto* a : applets)
+            m_splitter->addWidget(a);
+    }
+
+    equalizeSizes();
+}
+
 void PanadapterStack::removeAll()
 {
     qDeleteAll(m_pans);
