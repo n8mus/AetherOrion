@@ -417,6 +417,20 @@ MainWindow::MainWindow(QWidget* parent)
                 applet->spectrumWidget(), &SpectrumWidget::setFrequencyRange);
         connect(pan, &PanadapterModel::levelChanged,
                 applet->spectrumWidget(), &SpectrumWidget::setDbmRange);
+
+        // Push display dimensions to the radio so it sends full-size FFT bins.
+        // Without this, the radio uses xpixels=50 ypixels=20 (default) and
+        // FFT data is essentially empty/unusable. Use actual widget dimensions
+        // for 1:1 bin-to-pixel mapping (matches SmartSDR behavior from pcap).
+        auto* sw = applet->spectrumWidget();
+        int xpix = sw ? sw->width() : 1024;
+        int ypix = sw ? sw->height() : 700;
+        if (xpix < 100) xpix = 1024;  // widget may not be laid out yet
+        if (ypix < 100) ypix = 700;
+        m_radioModel.sendCommand(
+            QString("display pan set %1 xpixels=%2 ypixels=%3")
+                .arg(pan->panId()).arg(xpix).arg(ypix));
+
         qDebug() << "MainWindow: added panadapter applet for" << pan->panId();
     });
     connect(&m_radioModel, &RadioModel::panadapterRemoved,
