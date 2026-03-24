@@ -2555,7 +2555,11 @@ void MainWindow::applyPanLayout(const QString& layoutId)
     const int needed = kPanCounts.value(layoutId, 1);
     const int existing = m_panStack->count();
 
+    // Hide during creation to avoid visible step-by-step buildup
+    m_panStack->hide();
+
     if (needed <= existing) {
+        m_panStack->show();
         qDebug() << "applyPanLayout: already have" << existing << "pans, need" << needed;
         // TODO: handle reducing pans (close extras)
         return;
@@ -2600,6 +2604,7 @@ void MainWindow::createPansSequentially(const QString& layoutId, int total,
             m_panStack->rearrangeLayout(layoutId);
 
             m_panApplet = m_panStack->activeApplet();
+            m_panStack->show();
 
             qDebug() << "applyPanLayout: layout" << layoutId
                      << "complete, total pans:" << m_panStack->count();
