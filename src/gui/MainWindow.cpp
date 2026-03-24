@@ -432,6 +432,21 @@ MainWindow::MainWindow(QWidget* parent)
                 .arg(pan->panId()).arg(xpix).arg(ypix));
 
         qDebug() << "MainWindow: added panadapter applet for" << pan->panId();
+
+        // Debounced layout restore: after all pans are added on connect,
+        // rearrange to the saved layout (e.g. 2h instead of default vertical).
+        if (!m_layoutRestoreTimer) {
+            m_layoutRestoreTimer = new QTimer(this);
+            m_layoutRestoreTimer->setSingleShot(true);
+            m_layoutRestoreTimer->setInterval(1000);
+            connect(m_layoutRestoreTimer, &QTimer::timeout, this, [this]() {
+                const QString saved = AppSettings::instance()
+                    .value("PanadapterLayout", "1").toString();
+                if (saved != "1" && m_panStack->count() > 1)
+                    m_panStack->rearrangeLayout(saved);
+            });
+        }
+        m_layoutRestoreTimer->start();  // restart on each new pan
     });
     connect(&m_radioModel, &RadioModel::panadapterRemoved,
             this, [this](const QString& panId) {

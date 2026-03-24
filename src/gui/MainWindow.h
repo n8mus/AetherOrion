@@ -159,6 +159,7 @@ private:
     QDialog* m_reconnectDlg{nullptr}; // shown on unexpected disconnect, dismissed on reconnect
     bool m_displaySettingsPushed{false};  // one-shot: push saved display settings after pan created
     bool m_applyingLayout{false};        // true during layout tear-down/recreate — suppresses panadapterAdded handler
+    QTimer* m_layoutRestoreTimer{nullptr}; // debounced layout rearrange after pans added on connect
     QTimer* m_heartbeatMissTimer{nullptr}; // fires every 1.5s to detect missed discovery beats
 
 #ifdef HAVE_RADE
