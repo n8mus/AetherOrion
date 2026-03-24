@@ -8,6 +8,8 @@ class QSpinBox;
 class QLabel;
 class QLineEdit;
 class QStackedWidget;
+class QScrollArea;
+class QVBoxLayout;
 
 namespace AetherSDR {
 
@@ -41,7 +43,9 @@ private:
 
     // Send/Live view
     QWidget*        m_sendPage{nullptr};
-    QTextEdit*      m_historyEdit{nullptr};  // read-only display of sent text
+    QScrollArea*    m_historyScroll{nullptr};
+    QWidget*        m_historyContainer{nullptr};
+    QVBoxLayout*    m_historyLayout{nullptr};
     QTextEdit*      m_textEdit{nullptr};     // input area at bottom
     int             m_sendStartIndex{0};     // cumulative index offset for highlighting
 

@@ -12,10 +12,53 @@
 #include <QScrollArea>
 #include <QDateTime>
 #include <QKeyEvent>
+#include <QPainter>
 #include <QScrollBar>
 #include <QSignalBlocker>
+#include <QTimer>
 
 namespace AetherSDR {
+
+// ── Painted chat bubble widget ──────────────────────────────────────────
+class CwxBubble : public QWidget {
+public:
+    CwxBubble(const QString& text, const QString& time, QWidget* parent = nullptr)
+        : QWidget(parent), m_text(text), m_time(time)
+    {
+        QFont f("monospace", 12);
+        f.setBold(true);
+        QFontMetrics fm(f);
+        int textW = fm.horizontalAdvance(m_text + "  " + m_time) + 24;
+        int maxW = parent ? parent->width() - 30 : 220;
+        setFixedHeight(fm.height() + 16);
+        setMinimumWidth(qMin(textW, maxW));
+    }
+
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        QRect r(4, 2, width() - 24, height() - 4);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0x00, 0xb4, 0xd8));
+        p.drawRoundedRect(r, 10, 10);
+
+        QFont f("monospace", 12);
+        f.setBold(true);
+        p.setFont(f);
+        p.setPen(QColor(0, 0, 0));
+        p.drawText(r.adjusted(10, 0, -10, 0), Qt::AlignVCenter | Qt::AlignLeft, m_text);
+
+        QFont tf("monospace", 8);
+        p.setFont(tf);
+        p.setPen(QColor(0x00, 0x30, 0x40));
+        p.drawText(r.adjusted(10, 0, -6, 0), Qt::AlignVCenter | Qt::AlignRight, m_time);
+    }
+
+private:
+    QString m_text, m_time;
+};
 
 static const char* kBtnStyle =
     "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
@@ -163,14 +206,19 @@ void CwxPanel::buildSendView()
     vbox->setContentsMargins(0, 0, 0, 0);
     vbox->setSpacing(2);
 
-    // History/sent text display (read-only, fills most of the panel)
-    // Text scrolls from bottom up — newest at bottom, like a typewriter
-    m_historyEdit = new QTextEdit;
-    m_historyEdit->setStyleSheet(kTextStyle);
-    m_historyEdit->setReadOnly(true);
-    m_historyEdit->setAlignment(Qt::AlignBottom);
-    m_historyEdit->document()->setDocumentMargin(8);
-    vbox->addWidget(m_historyEdit, 1);
+    // History — scroll area with painted bubbles, scrolls from bottom up
+    m_historyScroll = new QScrollArea;
+    m_historyScroll->setWidgetResizable(true);
+    m_historyScroll->setStyleSheet("QScrollArea { background: #0a0a14; border: none; }");
+    m_historyScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_historyContainer = new QWidget;
+    m_historyContainer->setStyleSheet("QWidget { background: #0a0a14; }");
+    m_historyLayout = new QVBoxLayout(m_historyContainer);
+    m_historyLayout->setContentsMargins(0, 0, 0, 4);
+    m_historyLayout->setSpacing(4);
+    m_historyLayout->addStretch(1);  // push bubbles to bottom
+    m_historyScroll->setWidget(m_historyContainer);
+    vbox->addWidget(m_historyScroll, 1);
 
     // Input area at the bottom (editable, where user types)
     m_textEdit = new QTextEdit;
@@ -285,51 +333,26 @@ void CwxPanel::sendBuffer()
     QString text = m_textEdit->toPlainText().trimmed();
     if (text.isEmpty()) return;
 
-    // Move text to history display — scroll from bottom up, chat bubble style
-    if (m_historyEdit) {
-        // On first message, pad to push text to bottom
-        if (m_historyEdit->toPlainText().isEmpty()) {
-            int visibleLines = m_historyEdit->height() / m_historyEdit->fontMetrics().lineSpacing();
-            QString pad;
-            for (int i = 0; i < visibleLines - 1; ++i) pad += "<br>";
-            m_historyEdit->setHtml(pad);
-        }
-        // Chat bubble: rounded background, text + timestamp inline
+    // Move text to history — painted bubble in scroll area
+    if (m_historyLayout) {
+        // Add painted bubble to history scroll area
         QString ts = QDateTime::currentDateTime().toString("HH:mm:ss");
-        QString bubble = QString(
-            "<table cellpadding='0' cellspacing='0' style='margin: 2px 20px 2px 4px;'><tr><td>"
-            "<div style='background-color: #00b4d8; color: #000; "
-            "border-radius: 8px; padding: 6px 10px; "
-            "font-family: monospace; font-size: 13px;'>"
-            "%1 &nbsp;<span style='font-size: 9px; color: #003040;'>%2</span>"
-            "</div></td></tr></table>").arg(text.toHtmlEscaped(), ts);
-        m_historyEdit->append(bubble);
+        auto* bubble = new CwxBubble(text, ts, m_historyContainer);
+        m_historyLayout->addWidget(bubble);
         // Keep scrolled to bottom
-        auto* sb = m_historyEdit->verticalScrollBar();
-        sb->setValue(sb->maximum());
+        QTimer::singleShot(10, this, [this]() {
+            auto* sb = m_historyScroll->verticalScrollBar();
+            sb->setValue(sb->maximum());
+        });
     }
     m_textEdit->clear();
 
     m_model->send(text);
 }
 
-void CwxPanel::onCharSent(int index)
+void CwxPanel::onCharSent(int /*index*/)
 {
-    if (!m_textEdit) return;
-
-    // Highlight sent characters with cyan background
-    // The index is cumulative — subtract our start offset
-    int localIdx = index - (m_sendStartIndex - m_textEdit->toPlainText().length());
-    if (localIdx < 0 || localIdx >= m_textEdit->toPlainText().length()) return;
-
-    QTextCursor cursor(m_textEdit->document());
-    cursor.setPosition(localIdx);
-    cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor);
-
-    QTextCharFormat fmt;
-    fmt.setBackground(QColor(0x00, 0xb4, 0xd8, 180));
-    fmt.setForeground(QColor(0, 0, 0));
-    cursor.mergeCharFormat(fmt);
+    // TODO: highlight individual characters in bubbles as they're keyed
 }
 
 void CwxPanel::onSpeedChanged(int wpm)
