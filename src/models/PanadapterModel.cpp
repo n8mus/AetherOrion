@@ -11,14 +11,14 @@ PanadapterModel::PanadapterModel(const QString& panId, QObject* parent)
 quint32 PanadapterModel::panStreamId() const
 {
     bool ok = false;
-    quint32 id = m_panId.toUInt(&ok, 16);
+    quint32 id = m_panId.toUInt(&ok, 0);  // base 0: auto-detect 0x prefix
     return ok ? id : 0;
 }
 
 quint32 PanadapterModel::wfStreamId() const
 {
     bool ok = false;
-    quint32 id = m_waterfallId.toUInt(&ok, 16);
+    quint32 id = m_waterfallId.toUInt(&ok, 0);  // base 0: auto-detect 0x prefix
     return ok ? id : 0;
 }
 
