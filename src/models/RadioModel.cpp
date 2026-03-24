@@ -1711,8 +1711,7 @@ void RadioModel::handlePanadapterStatus(const QString& panId, const QMap<QString
     if (kvs.contains("min_dbm") || kvs.contains("max_dbm")) {
         const float minDbm = kvs.value("min_dbm", "-130").toFloat();
         const float maxDbm = kvs.value("max_dbm", "-20").toFloat();
-        auto* p = activePanadapter();
-        if (p) m_panStream.setDbmRange(p->panStreamId(), minDbm, maxDbm);
+        if (pan) m_panStream.setDbmRange(pan->panStreamId(), minDbm, maxDbm);
         emit panadapterLevelChanged(minDbm, maxDbm);
     }
     if (kvs.contains("ant_list")) {
