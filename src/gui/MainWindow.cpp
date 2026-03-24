@@ -2578,11 +2578,13 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             int step     = settings.value(pfx + "Step", "100").toInt();
 
             s->setMode(recallMode);
-            // Tune this pan's slice specifically (not activeSlice)
+            // Tune this pan's slice and recenter the pan on the new frequency
             if (m_panStack && m_panStack->count() > 1 && !applet->panId().isEmpty()
                 && applet->panId() != "default") {
                 m_radioModel.sendCommand(
                     QString("slice m %1 pan=%2").arg(recallFreq, 0, 'f', 6).arg(applet->panId()));
+                m_radioModel.sendCommand(
+                    QString("display pan set %1 center=%2").arg(applet->panId()).arg(recallFreq, 0, 'f', 6));
             } else {
                 onFrequencyChanged(recallFreq);
             }
@@ -2679,6 +2681,8 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 && applet->panId() != "default") {
                 m_radioModel.sendCommand(
                     QString("slice m %1 pan=%2").arg(freqMhz, 0, 'f', 6).arg(applet->panId()));
+                m_radioModel.sendCommand(
+                    QString("display pan set %1 center=%2").arg(applet->panId()).arg(freqMhz, 0, 'f', 6));
             } else {
                 onFrequencyChanged(freqMhz);
             }
