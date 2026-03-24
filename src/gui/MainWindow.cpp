@@ -2293,6 +2293,12 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(sw, &SpectrumWidget::tnfDepthRequested,    tnf, &TnfModel::setTnfDepth);
     connect(sw, &SpectrumWidget::tnfPermanentRequested,tnf, &TnfModel::setTnfPermanent);
 
+    // ── Per-pan display controls (client-side) ───────────────────────────
+    connect(menu, &SpectrumOverlayMenu::fftFillAlphaChanged,
+            sw, &SpectrumWidget::setFftFillAlpha);
+    connect(menu, &SpectrumOverlayMenu::fftFillColorChanged,
+            sw, &SpectrumWidget::setFftFillColor);
+
     // ── Per-pan display controls → radio commands ────────────────────────
     // Each pan's overlay sends commands with its own panId/wfId, not the
     // global active pan. This ensures display settings work independently.
