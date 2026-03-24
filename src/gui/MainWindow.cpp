@@ -31,6 +31,8 @@
 #include "models/TransmitModel.h"
 #include "models/EqualizerModel.h"
 
+#include <memory>
+#include <functional>
 #include <QApplication>
 #include <QTimer>
 #include <QDateTime>
@@ -393,14 +395,17 @@ MainWindow::MainWindow(QWidget* parent)
 
         PanadapterApplet* applet = nullptr;
 
+        // If applyLayout already created this applet, just wire signals
+        if (m_panStack->panadapter(pan->panId())) {
+            applet = m_panStack->panadapter(pan->panId());
+        }
         // Reuse the "default" placeholder for the first real pan
-        if (m_panStack->panadapter("default")) {
+        else if (m_panStack->panadapter("default")) {
             applet = m_panStack->panadapter("default");
             applet->setPanId(pan->panId());
             m_panStack->rekey("default", pan->panId());
         } else {
             applet = m_panStack->addPanadapter(pan->panId());
-            wirePanadapter(applet);
         }
         m_panApplet = applet;
         wirePanadapter(applet);
@@ -2507,79 +2512,120 @@ void MainWindow::applyPanLayout(const QString& layoutId)
 {
     if (!m_radioModel.isConnected()) return;
 
-    // Determine how many pans the layout needs
     static const QMap<QString, int> kPanCounts = {
         {"1", 1}, {"2v", 2}, {"2h", 2}, {"2h1", 3}, {"12h", 3}, {"2x2", 4}
     };
     const int needed = kPanCounts.value(layoutId, 1);
 
-    // Close all existing pans on the radio (they'll be recreated)
+    // Step 1: Close all existing pans sequentially, then create new ones.
+    // Chain close commands so each waits for the previous to complete.
     const auto existingPans = m_radioModel.panadapters();
+    QStringList closeIds;
     for (auto* pan : existingPans)
-        m_radioModel.removePanadapter(pan->panId());
+        closeIds.append(pan->panId());
 
-    // Clear the UI
+    // Clear the UI immediately
     m_panStack->removeAll();
 
-    // Create the needed number of pans on the radio.
-    // Each create command returns asynchronously — we collect IDs via a shared
-    // counter and apply the layout once all are created.
+    // Shared state for the async chain
+    auto state = std::make_shared<QStringList>(closeIds);
     auto panIds = std::make_shared<QStringList>();
-    auto remaining = std::make_shared<int>(needed);
 
-    for (int i = 0; i < needed; ++i) {
-        m_radioModel.sendCmdPublic(
-            "display panafall create x=100 y=100",
-            [this, panIds, remaining, needed, layoutId](int code, const QString& body) {
-                if (code != 0) {
-                    qWarning() << "applyPanLayout: panafall create failed, code"
-                               << Qt::hex << code;
-                    return;
-                }
-                // Parse pan ID from response
-                const auto kvs = CommandParser::parseKVs(body);
-                QString panId;
-                if (kvs.contains("pan"))       panId = kvs["pan"];
-                else if (kvs.contains("id"))   panId = kvs["id"];
-                else                           panId = body.trimmed();
+    // Recursive lambda: close one pan at a time, then create
+    std::function<void()> closeNext;
+    closeNext = [this, state, panIds, needed, layoutId, closeNext]() {
+        if (!state->isEmpty()) {
+            // Still have pans to close
+            QString id = state->takeFirst();
+            qDebug() << "applyPanLayout: closing pan" << id;
+            m_radioModel.sendCmdPublic(
+                QString("display pan close %1").arg(id),
+                [this, closeNext](int, const QString&) {
+                    // Pan closed — close next
+                    QTimer::singleShot(100, this, closeNext);
+                });
+        } else {
+            // All pans closed — now create new ones sequentially
+            qDebug() << "applyPanLayout: all pans closed, creating" << needed << "new pans";
+            createPansSequentially(layoutId, needed, panIds, 0);
+        }
+    };
 
-                if (!panId.isEmpty())
-                    panIds->append(panId);
-
-                // Configure the new pan
-                if (!panId.isEmpty()) {
-                    m_radioModel.sendCommand(
-                        QString("display pan set %1 xpixels=1024 ypixels=700").arg(panId));
-                }
-
-                if (--(*remaining) <= 0 && panIds->size() == needed) {
-                    // All pans created — apply the layout after a brief delay
-                    // to let radio status messages establish PanadapterModels
-                    QTimer::singleShot(500, this, [this, panIds, layoutId]() {
-                        m_panStack->applyLayout(layoutId, *panIds);
-
-                        // Wire each new applet
-                        for (auto* applet : m_panStack->allApplets()) {
-                            wirePanadapter(applet);
-                            const QString pid = applet->panId();
-                            auto* pan = m_radioModel.panadapter(pid);
-                            if (pan) {
-                                connect(pan, &PanadapterModel::infoChanged,
-                                        applet->spectrumWidget(),
-                                        &SpectrumWidget::setFrequencyRange);
-                                connect(pan, &PanadapterModel::levelChanged,
-                                        applet->spectrumWidget(),
-                                        &SpectrumWidget::setDbmRange);
-                            }
-                        }
-
-                        m_panApplet = m_panStack->activeApplet();
-                        qDebug() << "applyPanLayout: layout" << layoutId
-                                 << "applied with" << panIds->size() << "pans";
-                    });
-                }
-            });
+    if (closeIds.isEmpty()) {
+        // No existing pans — go straight to create
+        createPansSequentially(layoutId, needed, panIds, 0);
+    } else {
+        closeNext();
     }
+}
+
+void MainWindow::createPansSequentially(const QString& layoutId, int total,
+                                        std::shared_ptr<QStringList> panIds, int created)
+{
+    if (created >= total) {
+        // All pans created — wait for radio status to establish PanadapterModels,
+        // then apply the layout
+        qDebug() << "applyPanLayout: all" << total << "pans created:" << *panIds;
+        QTimer::singleShot(800, this, [this, panIds, layoutId]() {
+            m_panStack->applyLayout(layoutId, *panIds);
+
+            // Wire each new applet
+            for (auto* applet : m_panStack->allApplets()) {
+                wirePanadapter(applet);
+                const QString pid = applet->panId();
+                auto* pan = m_radioModel.panadapter(pid);
+                if (pan) {
+                    connect(pan, &PanadapterModel::infoChanged,
+                            applet->spectrumWidget(),
+                            &SpectrumWidget::setFrequencyRange);
+                    connect(pan, &PanadapterModel::levelChanged,
+                            applet->spectrumWidget(),
+                            &SpectrumWidget::setDbmRange);
+                    // Push current dBm range to the spectrum widget
+                    applet->spectrumWidget()->setDbmRange(pan->minDbm(), pan->maxDbm());
+                    applet->spectrumWidget()->setFrequencyRange(
+                        pan->centerMhz(), pan->bandwidthMhz());
+                }
+            }
+
+            m_panApplet = m_panStack->activeApplet();
+            qDebug() << "applyPanLayout: layout" << layoutId
+                     << "applied with" << panIds->size() << "pans";
+        });
+        return;
+    }
+
+    m_radioModel.sendCmdPublic(
+        "display panafall create x=100 y=100",
+        [this, panIds, layoutId, total, created](int code, const QString& body) {
+            if (code != 0) {
+                qWarning() << "applyPanLayout: panafall create failed, code"
+                           << Qt::hex << code << body;
+                return;
+            }
+            const auto kvs = CommandParser::parseKVs(body);
+            QString panId;
+            if (kvs.contains("pan"))       panId = kvs["pan"];
+            else if (kvs.contains("id"))   panId = kvs["id"];
+            else                           panId = body.trimmed();
+
+            qDebug() << "applyPanLayout: created pan" << (created + 1) << "of" << total
+                     << "id:" << panId;
+
+            if (!panId.isEmpty()) {
+                panIds->append(panId);
+                // Configure the pan
+                m_radioModel.sendCommand(
+                    QString("display pan set %1 xpixels=1024 ypixels=700").arg(panId));
+                m_radioModel.sendCommand(
+                    QString("display pan set %1 fps=25").arg(panId));
+            }
+
+            // Create next pan after a brief delay
+            QTimer::singleShot(200, this, [this, layoutId, total, panIds, created]() {
+                createPansSequentially(layoutId, total, panIds, created + 1);
+            });
+        });
 }
 
 // ─── Band settings capture / restore ──────────────────────────────────────────

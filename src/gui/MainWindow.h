@@ -78,6 +78,8 @@ private:
     void wireActiveVfoSignals(VfoWidget* w);
     void enableNr2WithWisdom();  // Wisdom-gated NR2 enable (shared by VFO + overlay)
     void applyPanLayout(const QString& layoutId);
+    void createPansSequentially(const QString& layoutId, int total,
+                                std::shared_ptr<QStringList> panIds, int created);
 
     BandSnapshot captureCurrentBandState() const;
     void restoreBandState(const BandSnapshot& snap);
