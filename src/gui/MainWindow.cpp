@@ -2293,6 +2293,56 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(sw, &SpectrumWidget::tnfDepthRequested,    tnf, &TnfModel::setTnfDepth);
     connect(sw, &SpectrumWidget::tnfPermanentRequested,tnf, &TnfModel::setTnfPermanent);
 
+    // ── Per-pan display controls → radio commands ────────────────────────
+    // Each pan's overlay sends commands with its own panId/wfId, not the
+    // global active pan. This ensures display settings work independently.
+    connect(menu, &SpectrumOverlayMenu::fftAverageChanged,
+            this, [this, applet, sw](int v) {
+        sw->setFftAverage(v);
+        m_radioModel.sendCommand(
+            QString("display pan set %1 average=%2").arg(applet->panId()).arg(v));
+    });
+    connect(menu, &SpectrumOverlayMenu::fftFpsChanged,
+            this, [this, applet, sw](int v) {
+        sw->setFftFps(v);
+        m_radioModel.sendCommand(
+            QString("display pan set %1 fps=%2").arg(applet->panId()).arg(v));
+    });
+    connect(menu, &SpectrumOverlayMenu::fftWeightedAverageChanged,
+            this, [this, applet, sw](bool on) {
+        sw->setFftWeightedAvg(on);
+        m_radioModel.sendCommand(
+            QString("display pan set %1 weighted_average=%2").arg(applet->panId()).arg(on ? 1 : 0));
+    });
+    connect(menu, &SpectrumOverlayMenu::wfColorGainChanged,
+            this, [this, applet, sw](int v) {
+        sw->setWfColorGain(v);
+        auto* pan = m_radioModel.panadapter(applet->panId());
+        if (pan && !pan->waterfallId().isEmpty())
+            m_radioModel.sendCommand(
+                QString("display panafall set %1 color_gain=%2").arg(pan->waterfallId()).arg(v));
+    });
+    connect(menu, &SpectrumOverlayMenu::wfBlackLevelChanged,
+            this, [this, applet, sw](int v) {
+        sw->setWfBlackLevel(v);
+        auto* pan = m_radioModel.panadapter(applet->panId());
+        if (pan && !pan->waterfallId().isEmpty())
+            m_radioModel.sendCommand(
+                QString("display panafall set %1 black_level=%2").arg(pan->waterfallId()).arg(v));
+    });
+    connect(menu, &SpectrumOverlayMenu::wfAutoBlackChanged,
+            this, [this, sw](bool on) {
+        sw->setWfAutoBlack(on);
+    });
+    connect(menu, &SpectrumOverlayMenu::wfLineDurationChanged,
+            this, [this, applet, sw](int ms) {
+        sw->setWfLineDuration(ms);
+        auto* pan = m_radioModel.panadapter(applet->panId());
+        if (pan && !pan->waterfallId().isEmpty())
+            m_radioModel.sendCommand(
+                QString("display panafall set %1 line_duration=%2").arg(pan->waterfallId()).arg(ms));
+    });
+
     // ── Click-to-tune ────────────────────────────────────────────────────
     // Uses "slice m <freq> pan=<panId>" (matches SmartSDR protocol).
     // The radio routes the tune to the correct slice for that pan.
