@@ -174,6 +174,10 @@ first `=` sign.
 - Slice frequency is `RF_frequency` (not `freq`) in status messages
 - All VITA-49 streams use `ExtDataWithStream` (type 3, top nibble `0x3`)
 - Streams are discriminated by **PacketClassCode** (PCC), NOT by packet type
+- `slice m <freq> pan=<panId>` — the radio echoes `active=0/1` for slice
+  switching as a side effect, even though the client didn't request it
+- `radio set full_duplex_enabled` — accepted (R|0) but no status echo
+- `audio_level` is the status key for AF gain (not `audio_gain`)
 
 ---
 
@@ -388,24 +392,28 @@ lacks status feedback and the expected status message format.
 
 ---
 
-## Multi-Panadapter Support (In Progress — #152)
+## Multi-Panadapter Support (#152)
 
-### Architecture (Phases 1-7 complete)
+### Architecture
 
-The multi-pan infrastructure is in place:
 - **PanadapterModel** — per-pan state (center, bandwidth, dBm, antenna, WNB)
 - **PanadapterStream** — routes VITA-49 FFT/waterfall by stream ID
-- **PanadapterStack** — vertical QSplitter hosting N PanadapterApplets
-- **wirePanadapter()** — per-pan signal wiring extracted from constructor
+- **PanadapterStack** — nested QSplitter hosting N PanadapterApplets
+- **PanLayoutDialog** — visual layout picker (6 layouts for dual-SCU, 3 for single)
+- **wirePanadapter()** — per-pan signal wiring (display controls, overlays, click-to-tune)
 - **spectrumForSlice()** — routes slice overlays/VFOs to correct SpectrumWidget
-- **+PAN button** — uses `display panafall create x=100 y=100` (NOT `panadapter create`)
 
 ### What Works
-- Creating a second panadapter via +PAN button
-- Independent FFT/waterfall on each pan
-- Independent zoom/pan/center per pan
-- Click-to-tune correctly activates the clicked pan's slice
-- VFO flag deconfliction across pans
+- All 6 layout options: single, 2v, 2h, 2h1 (A|B/C), 12h (A/B|C), 2x2 (A|B/C|D)
+- Per-pan native waterfall tiles correctly routed by wfStreamId
+- Per-pan FFT correctly routed by panStreamId
+- Per-pan dBm scaling
+- Per-pan display controls (AVG, FPS, fill, gain, black level, line duration, etc.)
+- Per-pan xpixels/ypixels pushed on creation
+- Click-to-tune via `slice m <freq> pan=<panId>` (SmartSDR protocol)
+- Independent tuning per pan
+- Client-side auto-black per-pan
+- Layout picker persists choice in AppSettings
 
 ### VFO Frequency Sync — RESOLVED
 
@@ -447,6 +455,33 @@ We investigated `client gui <uuid>` as a way to mirror another client's session
 
 See issue #146 (closed) for full analysis.
 
+### Protocol Findings (from SmartSDR pcap capture)
+
+**Click-to-tune:** SmartSDR uses `slice m <freq> pan=<panId>` — NOT
+`slice tune <freq>`. The `pan=` parameter tells the radio which panadapter
+the click occurred in. The radio routes the tune to the correct slice.
+SmartSDR **never sends `slice set <id> active=1`** — active slice is managed
+entirely client-side.
+
+**Per-pan dimensions:** SmartSDR sends `display pan set <panId> xpixels=<W>
+ypixels=<H>` immediately after creating each pan, using actual widget
+dimensions. Without this, the radio defaults to xpixels=50 ypixels=20 and
+FFT data is essentially empty. SmartSDR also resizes ypixels on both pans
+when the layout changes.
+
+**Keepalive:** SmartSDR sends `keepalive enable` on connect, then
+`ping ms_timestamp=<ms>` every 1 second. The radio responds with `R<seq>|0|`.
+
+**Display settings are per-pan:** Each pan has independent fps, average,
+weighted_average, color_gain, black_level, line_duration. Commands use the
+specific pan's ID: `display pan set 0x40000001 fps=25`. Waterfall settings
+use the waterfall ID: `display panafall set 0x42000001 black_level=15`.
+
+**Stream IDs:** FFT bins arrive with stream ID = pan ID (0x40xxxxxx, PCC
+0x8003). Waterfall tiles arrive with stream ID = waterfall ID (0x42xxxxxx,
+PCC 0x8004). These are DIFFERENT IDs — route waterfall by `wfStreamId()`,
+FFT by `panStreamId()`.
+
 ### Protocol Notes for +PAN
 
 - `panadapter create` — returns `0x50000015` (use `display panafall create` instead)
@@ -456,11 +491,28 @@ See issue #146 (closed) for full analysis.
 - `radio slices=N panadapters=N` — these count DOWN (available slots, not in-use)
 - FLEX-8600 (dual SCU): max 4 pans, max 4 slices
 
-### +PAN Button Status
+### Multi-Pan Implementation Pitfalls (lessons learned)
 
-**Currently DISABLED** in the event filter (`MainWindow::eventFilter`).
-The button is visible in the status bar but clicking it does nothing.
-Re-enable after VFO tracking and focus switching issues are resolved.
+1. **`QString::toUInt("0x40000001", 16)` returns 0.** Qt's `toUInt` with
+   explicit base 16 does NOT handle the `0x` prefix. Use base 0 (auto-detect).
+   This silently broke all stream ID comparisons.
+
+2. **`handlePanadapterStatus()` must dispatch by panId.** The `display pan`
+   status object name contains the pan ID — pass it through. Never apply pan
+   status to `activePanadapter()` unconditionally.
+
+3. **Waterfall ID arrives AFTER pan creation.** The `display pan` status
+   message contains `waterfall=0x42xxxxxx` but it arrives after the
+   PanadapterModel is created. Connect `waterfallIdChanged` to
+   `updateStreamFilters()` to register the wf stream when it arrives.
+
+4. **Don't force-associate waterfalls to pans.** The radio's `display pan`
+   status correctly sets `waterfallId` via `applyPanStatus`. Manual
+   association logic assigns to the wrong pan (first-empty-slot race).
+
+5. **Display overlay connections must be per-pan.** Wire each
+   PanadapterApplet's overlay menu in `wirePanadapter()`, not globally in
+   the constructor. Each overlay sends commands with its own panId/waterfallId.
 
 ---
 
