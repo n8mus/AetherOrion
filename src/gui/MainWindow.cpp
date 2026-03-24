@@ -346,41 +346,10 @@ MainWindow::MainWindow(QWidget* parent)
             }
         }
     });
-    connect(&m_radioModel, &RadioModel::panadapterInfoChanged,
-            spectrum(), &SpectrumWidget::setFrequencyRange);
-    connect(&m_radioModel, &RadioModel::panadapterInfoChanged,
-            this, [this]() {
-        if (!m_displaySettingsPushed) {
-            m_displaySettingsPushed = true;
-            m_radioModel.setPanAverage(spectrum()->fftAverage());
-            m_radioModel.setPanFps(spectrum()->fftFps());
-            m_radioModel.setPanWeightedAverage(spectrum()->fftWeightedAvg());
-            m_radioModel.setWaterfallColorGain(spectrum()->wfColorGain());
-            m_radioModel.setWaterfallBlackLevel(spectrum()->wfBlackLevel());
-            m_radioModel.setWaterfallAutoBlack(spectrum()->wfAutoBlack());
-            int rate = spectrum()->wfLineDuration();
-            m_radioModel.setWaterfallLineDuration(rate);
-            // Restore saved WNB and RF gain
-            auto& s = AppSettings::instance();
-            bool wnbOn = s.value(spectrum()->settingsKey("DisplayWnbEnabled"), "False").toString() == "True";
-            int wnbLevel = s.value(spectrum()->settingsKey("DisplayWnbLevel"), "50").toInt();
-            int rfGain = s.value(spectrum()->settingsKey("DisplayRfGain"), "0").toInt();
-            m_radioModel.setPanWnb(wnbOn);
-            m_radioModel.setPanWnbLevel(wnbLevel);
-            m_radioModel.setPanRfGain(rfGain);
-            spectrum()->setWnbActive(wnbOn);
-            spectrum()->setRfGain(rfGain);
-            spectrum()->overlayMenu()->setWnbState(wnbOn, wnbLevel);
-            spectrum()->overlayMenu()->setRfGain(rfGain);
-            // Nudge rate to force waterfall tile re-sync
-            QTimer::singleShot(500, this, [this, rate]() {
-                m_radioModel.setWaterfallLineDuration(rate + 1);
-                m_radioModel.setWaterfallLineDuration(rate);
-            });
-        }
-    });
-    connect(&m_radioModel, &RadioModel::panadapterLevelChanged,
-            spectrum(), &SpectrumWidget::setDbmRange);
+    // NOTE: panadapterInfoChanged and panadapterLevelChanged are now connected
+    // per-pan in the panadapterAdded handler. The old global connections routed
+    // to spectrum() which changes target on active pan switch — causing the
+    // outgoing pan's waterfall to pause when display settings were re-pushed.
     // ── Multi-panadapter lifecycle ──────────────────────────────────────────
     connect(&m_radioModel, &RadioModel::panadapterAdded,
             this, [this](PanadapterModel* pan) {
@@ -417,6 +386,30 @@ MainWindow::MainWindow(QWidget* parent)
                 applet->spectrumWidget(), &SpectrumWidget::setFrequencyRange);
         connect(pan, &PanadapterModel::levelChanged,
                 applet->spectrumWidget(), &SpectrumWidget::setDbmRange);
+        // Push saved display settings to the radio for this pan (one-shot per pan)
+        if (!m_displaySettingsPushed) {
+            m_displaySettingsPushed = true;
+            auto* sw = applet->spectrumWidget();
+            m_radioModel.setPanAverage(sw->fftAverage());
+            m_radioModel.setPanFps(sw->fftFps());
+            m_radioModel.setPanWeightedAverage(sw->fftWeightedAvg());
+            m_radioModel.setWaterfallColorGain(sw->wfColorGain());
+            m_radioModel.setWaterfallBlackLevel(sw->wfBlackLevel());
+            m_radioModel.setWaterfallAutoBlack(sw->wfAutoBlack());
+            int rate = sw->wfLineDuration();
+            m_radioModel.setWaterfallLineDuration(rate);
+            auto& s = AppSettings::instance();
+            bool wnbOn = s.value(sw->settingsKey("DisplayWnbEnabled"), "False").toString() == "True";
+            int wnbLevel = s.value(sw->settingsKey("DisplayWnbLevel"), "50").toInt();
+            int rfGain = s.value(sw->settingsKey("DisplayRfGain"), "0").toInt();
+            m_radioModel.setPanWnb(wnbOn);
+            m_radioModel.setPanWnbLevel(wnbLevel);
+            m_radioModel.setPanRfGain(rfGain);
+            sw->setWnbActive(wnbOn);
+            sw->setRfGain(rfGain);
+            sw->overlayMenu()->setWnbState(wnbOn, wnbLevel);
+            sw->overlayMenu()->setRfGain(rfGain);
+        }
         qDebug() << "MainWindow: added panadapter applet for" << pan->panId();
     });
     connect(&m_radioModel, &RadioModel::panadapterRemoved,
