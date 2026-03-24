@@ -58,9 +58,14 @@ void PanadapterModel::applyPanStatus(const QMap<QString, QString>& kvs)
     }
     if (kvs.contains("rfgain")) {
         int g = kvs["rfgain"].toInt();
-        QString pre = kvs.value("pre", m_preamp);
-        if (g != m_rfGain || pre != m_preamp) {
+        if (g != m_rfGain) {
             m_rfGain = g;
+            emit rfGainChanged(m_rfGain, m_preamp);
+        }
+    }
+    if (kvs.contains("pre")) {
+        QString pre = kvs["pre"];
+        if (pre != m_preamp) {
             m_preamp = pre;
             emit rfGainChanged(m_rfGain, m_preamp);
         }

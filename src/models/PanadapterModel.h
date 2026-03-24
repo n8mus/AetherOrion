@@ -35,6 +35,9 @@ public:
     bool wnbActive() const { return m_wnbActive; }
     int wnbLevel() const { return m_wnbLevel; }
     QString preamp() const { return m_preamp; }
+    void setPreamp(const QString& pre) {
+        if (m_preamp != pre) { m_preamp = pre; emit rfGainChanged(m_rfGain, m_preamp); }
+    }
 
     // Configuration flags
     bool isResized() const { return m_resized; }

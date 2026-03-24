@@ -1216,6 +1216,14 @@ void RadioModel::onStatusReceived(const QString& object,
                 return;
             }
 
+            // Preamp is shared antenna hardware — apply to ALL our pans
+            // regardless of which client's pan status this came from.
+            if (kvs.contains("pre")) {
+                const QString pre = kvs["pre"];
+                for (auto* pan : m_panadapters)
+                    pan->setPreamp(pre);
+            }
+
             if (!m_panadapters.contains(panId)) {
                 // Only create PanadapterModel when client_handle is present
                 // AND matches our handle. Early status messages may arrive
