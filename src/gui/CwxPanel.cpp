@@ -294,16 +294,15 @@ void CwxPanel::sendBuffer()
             for (int i = 0; i < visibleLines - 1; ++i) pad += "<br>";
             m_historyEdit->setHtml(pad);
         }
-        // Chat bubble: rounded background, timestamp
+        // Chat bubble: rounded background, text + timestamp inline
         QString ts = QDateTime::currentDateTime().toString("HH:mm:ss");
         QString bubble = QString(
+            "<table cellpadding='0' cellspacing='0' style='margin: 2px 20px 2px 4px;'><tr><td>"
             "<div style='background-color: #00b4d8; color: #000; "
-            "border-radius: 8px; padding: 6px 10px; margin: 2px 20px 2px 4px; "
+            "border-radius: 8px; padding: 6px 10px; "
             "font-family: monospace; font-size: 13px;'>"
-            "%1"
-            "<div style='font-size: 9px; color: #003040; text-align: right; "
-            "margin-top: 2px;'>%2</div>"
-            "</div>").arg(text.toHtmlEscaped(), ts);
+            "%1 &nbsp;<span style='font-size: 9px; color: #003040;'>%2</span>"
+            "</div></td></tr></table>").arg(text.toHtmlEscaped(), ts);
         m_historyEdit->append(bubble);
         // Keep scrolled to bottom
         auto* sb = m_historyEdit->verticalScrollBar();
