@@ -459,6 +459,15 @@ MainWindow::MainWindow(QWidget* parent)
     });
     connect(&m_radioModel, &RadioModel::panadapterRemoved,
             this, [this](const QString& panId) {
+        // Disconnect all signals from the dying applet's widgets to prevent
+        // dangling pointer crashes in wirePanadapter lambdas (#242)
+        if (auto* applet = m_panStack->panadapter(panId)) {
+            if (auto* sw = applet->spectrumWidget()) {
+                sw->disconnect(this);
+                if (auto* menu = sw->overlayMenu())
+                    menu->disconnect(this);
+            }
+        }
         m_panStack->removePanadapter(panId);
         qDebug() << "MainWindow: removed panadapter applet for" << panId;
     });
