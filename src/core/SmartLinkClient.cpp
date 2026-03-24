@@ -288,14 +288,29 @@ void SmartLinkClient::parseRadioList(const QString& msg)
         info.model             = kv.value("model");
         info.status            = kv.value("status", "Unknown");
         info.publicIp          = kv.value("public_ip");
-        info.publicTlsPort     = kv.value("public_tls_port", "-1").toInt();
-        info.publicUdpPort     = kv.value("public_udp_port", "-1").toInt();
+        int manualTls          = kv.value("public_tls_port", "-1").toInt();
+        int manualUdp          = kv.value("public_udp_port", "-1").toInt();
         info.upnpSupported     = kv.value("upnp_supported") == "1";
+        int upnpTls            = kv.value("public_upnp_tls_port", "-1").toInt();
+        int upnpUdp            = kv.value("public_upnp_udp_port", "-1").toInt();
         info.licensedClients   = kv.value("licensed_clients", "1").toInt();
         info.maxLicensedVersion = kv.value("max_licensed_version", "v1");
         info.guiClientPrograms = kv.value("gui_client_programs");
         info.guiClientStations = kv.value("gui_client_stations");
         info.guiClientHandles  = kv.value("gui_client_handles");
+
+        // Port selection: prefer manual port forwards, fall back to UPnP
+        // (matches FlexLib WanServer.cs logic)
+        if (manualTls > 0 && manualUdp > 0) {
+            info.publicTlsPort = manualTls;
+            info.publicUdpPort = manualUdp;
+        } else if (info.upnpSupported && upnpTls > 0 && upnpUdp > 0) {
+            info.publicTlsPort = upnpTls;
+            info.publicUdpPort = upnpUdp;
+        } else {
+            info.publicTlsPort = -1;
+            info.publicUdpPort = -1;
+        }
 
         // Determine if hole punch is needed
         bool hasForwardedPorts = info.publicTlsPort > 0 && info.publicUdpPort > 0;
