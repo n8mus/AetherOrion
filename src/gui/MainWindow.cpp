@@ -2072,8 +2072,11 @@ void MainWindow::setActiveSlice(int sliceId)
     const int prevId = m_activeSliceId;
     m_activeSliceId = sliceId;
 
-    // Tell the radio this slice is now active (don't move TX — user controls that)
-    if (sliceId != prevId)
+    // In multi-pan mode, don't tell the radio about active slice changes —
+    // it causes the outgoing pan's waterfall to pause for ~3-5 seconds.
+    // The radio's "active" flag mainly affects CW keying target.
+    // In single-pan mode, always notify the radio.
+    if (sliceId != prevId && (!m_panStack || m_panStack->count() <= 1))
         s->setActive(true);
 
     // Update all overlay isActive flags on each slice's correct spectrum
