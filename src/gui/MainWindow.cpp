@@ -2263,32 +2263,40 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(sw, &SpectrumWidget::tnfPermanentRequested,tnf, &TnfModel::setTnfPermanent);
 
     // ── Click-to-tune ────────────────────────────────────────────────────
+    // Uses "slice m <freq> pan=<panId>" (matches SmartSDR protocol).
+    // The radio routes the tune to the correct slice for that pan.
     connect(sw, &SpectrumWidget::frequencyClicked,
             this, [this, sw](double mhz) {
-        // Multi-pan: activate the slice that belongs to this pan before tuning
-        if (m_panStack && m_panStack->count() > 1) {
-            QString panId = sw->property("panId").toString();
-            if (panId.isEmpty()) {
-                // Find panId by matching the spectrum widget
-                for (auto* applet : m_panStack->allApplets()) {
-                    if (applet->spectrumWidget() == sw) {
-                        panId = applet->panId();
-                        break;
-                    }
-                }
-            }
-            if (!panId.isEmpty()) {
-                // Find a slice on this pan and activate it
-                for (auto* s : m_radioModel.slices()) {
-                    if (s->panId() == panId && s->sliceId() != m_activeSliceId) {
-                        setActiveSlice(s->sliceId());
-                        break;
-                    }
-                }
-                m_panStack->setActivePan(panId);
+        // Find the panId for this spectrum widget
+        QString panId;
+        for (auto* applet : m_panStack->allApplets()) {
+            if (applet->spectrumWidget() == sw) {
+                panId = applet->panId();
+                break;
             }
         }
-        onFrequencyChanged(mhz);
+
+        if (!panId.isEmpty()) {
+            // Activate the slice on this pan (client-side only — no active=1 sent)
+            for (auto* s : m_radioModel.slices()) {
+                if (s->panId() == panId && s->sliceId() != m_activeSliceId) {
+                    setActiveSlice(s->sliceId());
+                    break;
+                }
+            }
+            m_panStack->setActivePan(panId);
+
+            // Send "slice m <freq> pan=<panId>" — radio tunes the correct slice
+            // Radio status echo will update SliceModel::frequency via applyStatus
+            if (auto* s = activeSlice(); s && !s->isLocked()) {
+                m_radioModel.sendCommand(
+                    QString("slice m %1 pan=%2").arg(mhz, 0, 'f', 6).arg(panId));
+                sw->setVfoFrequency(mhz);  // immediate visual feedback
+            }
+        } else {
+            // Fallback: single pan or panId not found — use legacy path
+            onFrequencyChanged(mhz);
+        }
     });
 
     // ── +RX / +TNF buttons ───────────────────────────────────────────────
