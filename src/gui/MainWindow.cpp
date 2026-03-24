@@ -908,6 +908,17 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         m_cwxIndicator->setStyleSheet(show
             ? "QLabel { color: #00b4d8; font-weight: bold; font-size: 24px; }"
             : "QLabel { color: rgba(255,255,255,40); font-weight: bold; font-size: 24px; }");
+        // Resize splitter to give CWX its fixed width
+        if (show) {
+            auto sizes = m_splitter->sizes();
+            if (sizes.size() >= 3) {
+                int cwxW = 250;
+                int total = sizes[0] + sizes[1];
+                sizes[0] = cwxW;
+                sizes[1] = total - cwxW;
+                m_splitter->setSizes(sizes);
+            }
+        }
         return true;
     }
     if (obj == m_tnfIndicator && event->type() == QEvent::MouseButtonPress) {
