@@ -11,6 +11,7 @@
 #include <QStackedWidget>
 #include <QScrollArea>
 #include <QKeyEvent>
+#include <QScrollBar>
 #include <QSignalBlocker>
 
 namespace AetherSDR {
@@ -162,10 +163,12 @@ void CwxPanel::buildSendView()
     vbox->setSpacing(2);
 
     // History/sent text display (read-only, fills most of the panel)
+    // Text scrolls from bottom up — newest at bottom, like a typewriter
     m_historyEdit = new QTextEdit;
     m_historyEdit->setStyleSheet(kTextStyle);
     m_historyEdit->setReadOnly(true);
-    m_historyEdit->setPlaceholderText("Sent CW text appears here...");
+    m_historyEdit->setAlignment(Qt::AlignBottom);
+    m_historyEdit->document()->setDocumentMargin(8);
     vbox->addWidget(m_historyEdit, 1);
 
     // Input area at the bottom (editable, where user types)
@@ -281,12 +284,19 @@ void CwxPanel::sendBuffer()
     QString text = m_textEdit->toPlainText().trimmed();
     if (text.isEmpty()) return;
 
-    // Move text to history display
+    // Move text to history display — scroll from bottom up
     if (m_historyEdit) {
-        if (!m_historyEdit->toPlainText().isEmpty())
-            m_historyEdit->append("");  // blank line between sends
+        // On first message, pad with newlines to push text to bottom
+        if (m_historyEdit->toPlainText().isEmpty()) {
+            int visibleLines = m_historyEdit->height() / m_historyEdit->fontMetrics().lineSpacing();
+            QString pad;
+            for (int i = 0; i < visibleLines - 1; ++i) pad += '\n';
+            m_historyEdit->setPlainText(pad);
+        }
         m_historyEdit->append(text);
-        m_historyEdit->moveCursor(QTextCursor::End);
+        // Keep scrolled to bottom
+        auto* sb = m_historyEdit->verticalScrollBar();
+        sb->setValue(sb->maximum());
     }
     m_textEdit->clear();
 
