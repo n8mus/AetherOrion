@@ -515,8 +515,11 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
 
 int SpectrumWidget::mhzToX(double mhz) const
 {
+    if (m_bandwidthMhz <= 0.0) return -1;
     const double startMhz = m_centerMhz - m_bandwidthMhz / 2.0;
-    return static_cast<int>((mhz - startMhz) / m_bandwidthMhz * width());
+    const double px = (mhz - startMhz) / m_bandwidthMhz * width();
+    if (std::isnan(px) || std::isinf(px)) return -1;
+    return static_cast<int>(std::clamp(px, -1.0e6, 1.0e6));
 }
 
 double SpectrumWidget::xToMhz(int x) const

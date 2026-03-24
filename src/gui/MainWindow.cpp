@@ -2462,6 +2462,9 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     // ── Band selection ───────────────────────────────────────────────────
     connect(menu, &SpectrumOverlayMenu::bandSelected,
             this, [this](const QString& bandName, double freqMhz, const QString& mode) {
+        // Guard against double-fire from multiple pan overlays
+        if (bandName == m_bandSettings.currentBand()) return;
+
         qDebug() << "MainWindow: switching to band" << bandName
                  << "freq:" << freqMhz << "mode:" << mode;
 
@@ -2503,13 +2506,21 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 settings.setValue(pfx + "SqlOn",    s->squelchOn() ? "True" : "False");
                 settings.setValue(pfx + "SqlLevel", QString::number(s->squelchLevel()));
                 // Pan display: bandwidth and dBm scale
+                // Read from SpectrumWidget (client-side truth) not PanadapterModel
+                if (auto* sw = spectrum()) {
+                    float top = sw->refLevel();
+                    float bot = top - sw->dynamicRange();
+                    settings.setValue(pfx + "MinDbm",    QString::number(bot, 'f', 1));
+                    settings.setValue(pfx + "MaxDbm",    QString::number(top, 'f', 1));
+                }
                 if (auto* pan = m_radioModel.activePanadapter()) {
                     settings.setValue(pfx + "Bandwidth", QString::number(pan->bandwidthMhz(), 'f', 6));
-                    settings.setValue(pfx + "MinDbm",    QString::number(pan->minDbm(), 'f', 1));
-                    settings.setValue(pfx + "MaxDbm",    QString::number(pan->maxDbm(), 'f', 1));
                 }
                 settings.save();
-                qDebug() << "BandStack: saved" << curBand << s->frequency() << s->mode();
+                qDebug() << "BandStack: saved" << curBand << s->frequency() << s->mode()
+                         << "bw:" << settings.value(pfx + "Bandwidth", "?").toString()
+                         << "dBm:" << settings.value(pfx + "MinDbm", "?").toString()
+                         << settings.value(pfx + "MaxDbm", "?").toString();
             }
         }
 
