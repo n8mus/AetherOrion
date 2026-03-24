@@ -2504,6 +2504,15 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             const QString curBand = m_bandSettings.currentBand();
             if (!curBand.isEmpty()) {
                 const QString pfx = "BandStack_" + curBand + "_";
+                // Only save if the slice's frequency belongs to this band
+                // (prevents cross-band contamination in multi-pan mode)
+                const QString actualBand = BandSettings::bandForFrequency(s->frequency());
+                const bool freqMatchesBand = (actualBand == curBand
+                                              || curBand == "GEN" || curBand == "WWV");
+                if (!freqMatchesBand) {
+                    qDebug() << "BandStack: skipping save — freq" << s->frequency()
+                             << "belongs to" << actualBand << "not" << curBand;
+                } else {
                 settings.setValue(pfx + "Freq",     QString::number(s->frequency(), 'f', 6));
                 settings.setValue(pfx + "Mode",     s->mode());
                 settings.setValue(pfx + "FilterLo", QString::number(s->filterLow()));
@@ -2551,6 +2560,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                          << "bw:" << settings.value(pfx + "Bandwidth", "?").toString()
                          << "dBm:" << settings.value(pfx + "MinDbm", "?").toString()
                          << settings.value(pfx + "MaxDbm", "?").toString();
+                } // end if (freqMatchesBand)
             }
         }
 
