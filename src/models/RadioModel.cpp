@@ -650,6 +650,15 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
             sendCmd("profile global info");
             sendCmd("sub tnf all");
             sendCmd("sub memories all");
+            // Additional subscriptions (matches SmartSDR connection sequence)
+            sendCmd("sub cwx all");
+            sendCmd("sub dax all");
+            sendCmd("sub daxiq all");
+            sendCmd("sub radio all");
+            sendCmd("sub codec all");
+            sendCmd("sub dvk all");
+            sendCmd("sub usb_cable all");
+            sendCmd("sub spot all");
             }); // sub xvtr all
             }); // sub client all
             }); // sub apd all
