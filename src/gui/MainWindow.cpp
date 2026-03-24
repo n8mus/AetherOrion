@@ -2495,8 +2495,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 settings.setValue(pfx + "Mode",     s->mode());
                 settings.setValue(pfx + "FilterLo", QString::number(s->filterLow()));
                 settings.setValue(pfx + "FilterHi", QString::number(s->filterHigh()));
+                // Step: save from SpectrumWidget (client truth — reflects user's
+                // last manual step change, not the radio's mode-change default)
                 settings.setValue(pfx + "Step",     QString::number(
-                    spectrum() ? spectrum()->stepSize() : 100));
+                    spectrum() ? spectrum()->stepSize() : s->stepHz()));
                 // DSP flags — save each independently
                 settings.setValue(pfx + "NR",   s->nrOn()   ? "True" : "False");
                 settings.setValue(pfx + "NB",   s->nbOn()   ? "True" : "False");
@@ -2557,17 +2559,15 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             // Filter offsets: let the radio apply the correct default for
             // the recalled mode. Recalling saved filter widths across mode
             // changes produces wrong results (e.g. 3kHz USB filter on CW).
-            // Defer step recall until after mode echo (mode change resets step)
+            // Send step to radio after a short delay (mode change resets step,
+            // so we wait for the mode echo before sending our step)
             if (step > 0) {
-                auto conn = std::make_shared<QMetaObject::Connection>();
-                *conn = connect(s, &SliceModel::stepChanged, this,
-                    [this, s, conn, step](int, const QVector<int>&) {
-                        disconnect(*conn);
-                        // Set step on radio (persists through mode change)
-                        m_radioModel.sendCommand(
-                            QString("slice set %1 step=%2").arg(s->sliceId()).arg(step));
-                        if (spectrum()) spectrum()->setStepSize(step);
-                    });
+                QTimer::singleShot(300, this, [this, s, step]() {
+                    m_radioModel.sendCommand(
+                        QString("slice set %1 step=%2").arg(s->sliceId()).arg(step));
+                    if (spectrum()) spectrum()->setStepSize(step);
+                    m_appletPanel->rxApplet()->syncStepFromSlice(step, s->stepList());
+                });
             }
 
             // Radio-side DSP flags
