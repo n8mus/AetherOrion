@@ -162,6 +162,7 @@ private:
     bool m_applyingLayout{false};        // true during layout tear-down/recreate — suppresses panadapterAdded handler
     QTimer* m_layoutRestoreTimer{nullptr}; // debounced layout rearrange after pans added on connect
     QTimer* m_heartbeatMissTimer{nullptr}; // fires every 1.5s to detect missed discovery beats
+    bool m_keyboardShortcutsEnabled{false}; // global enable for keyboard shortcuts (View menu)
 
 #ifdef HAVE_RADE
     RADEEngine* m_radeEngine{nullptr};

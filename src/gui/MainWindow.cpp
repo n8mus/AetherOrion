@@ -1248,6 +1248,18 @@ void MainWindow::buildMenuBar()
     }
 
     viewMenu->addSeparator();
+    m_keyboardShortcutsEnabled = AppSettings::instance()
+        .value("KeyboardShortcutsEnabled", "False").toString() == "True";
+    auto* kbAct = viewMenu->addAction("Keyboard Shortcuts");
+    kbAct->setCheckable(true);
+    kbAct->setChecked(m_keyboardShortcutsEnabled);
+    connect(kbAct, &QAction::toggled, this, [this](bool on) {
+        m_keyboardShortcutsEnabled = on;
+        AppSettings::instance().setValue("KeyboardShortcutsEnabled", on ? "True" : "False");
+        AppSettings::instance().save();
+    });
+
+    viewMenu->addSeparator();
     auto* themeAct = viewMenu->addAction("Toggle Dark/Light Theme");
     connect(themeAct, &QAction::triggered, this, [this]{
         // Placeholder — full theme switching left as an exercise
@@ -2661,7 +2673,7 @@ void MainWindow::setupKeyboardShortcuts()
 {
     // Helper: nudge active slice frequency by N steps on the active pan
     auto nudgeFreq = [this](int steps) {
-        if (isTextInputFocused() || !m_radioModel.isConnected()) return;
+        if (!m_keyboardShortcutsEnabled || isTextInputFocused() || !m_radioModel.isConnected()) return;
         auto* s = activeSlice();
         if (!s || s->isLocked()) return;
         int stepHz = spectrum() ? spectrum()->stepSize() : 100;
@@ -2688,13 +2700,13 @@ void MainWindow::setupKeyboardShortcuts()
     // Up/Down arrow — AF gain ±5
     auto* up = new QShortcut(Qt::Key_Up, this);
     connect(up, &QShortcut::activated, this, [this]() {
-        if (isTextInputFocused()) return;
+        if (!m_keyboardShortcutsEnabled || isTextInputFocused()) return;
         auto* s = activeSlice();
         if (s) s->setAudioGain(std::min(100.0f, s->audioGain() + 5.0f));
     });
     auto* down = new QShortcut(Qt::Key_Down, this);
     connect(down, &QShortcut::activated, this, [this]() {
-        if (isTextInputFocused()) return;
+        if (!m_keyboardShortcutsEnabled || isTextInputFocused()) return;
         auto* s = activeSlice();
         if (s) s->setAudioGain(std::max(0.0f, s->audioGain() - 5.0f));
     });
@@ -2703,7 +2715,7 @@ void MainWindow::setupKeyboardShortcuts()
     auto* pttOn = new QShortcut(Qt::Key_Space, this);
     pttOn->setAutoRepeat(false);
     connect(pttOn, &QShortcut::activated, this, [this]() {
-        if (isTextInputFocused() || !m_radioModel.isConnected()) return;
+        if (!m_keyboardShortcutsEnabled || isTextInputFocused() || !m_radioModel.isConnected()) return;
         m_radioModel.sendCommand("xmit 1");
     });
     // Note: QShortcut doesn't have a "released" signal. For PTT release,
@@ -2713,7 +2725,7 @@ void MainWindow::setupKeyboardShortcuts()
     // T — toggle MOX
     auto* mox = new QShortcut(Qt::Key_T, this);
     connect(mox, &QShortcut::activated, this, [this]() {
-        if (isTextInputFocused() || !m_radioModel.isConnected()) return;
+        if (!m_keyboardShortcutsEnabled || isTextInputFocused() || !m_radioModel.isConnected()) return;
         bool tx = m_radioModel.transmitModel()->isTransmitting();
         m_radioModel.sendCommand(QString("xmit %1").arg(tx ? 0 : 1));
     });
@@ -2721,7 +2733,7 @@ void MainWindow::setupKeyboardShortcuts()
     // M — toggle mute
     auto* mute = new QShortcut(Qt::Key_M, this);
     connect(mute, &QShortcut::activated, this, [this]() {
-        if (isTextInputFocused()) return;
+        if (!m_keyboardShortcutsEnabled || isTextInputFocused()) return;
         auto* s = activeSlice();
         if (s) s->setAudioMute(!s->audioMute());
     });
@@ -2729,7 +2741,7 @@ void MainWindow::setupKeyboardShortcuts()
     // [ / ] — cycle step size down / up
     auto* stepDown = new QShortcut(Qt::Key_BracketLeft, this);
     connect(stepDown, &QShortcut::activated, this, [this]() {
-        if (isTextInputFocused()) return;
+        if (!m_keyboardShortcutsEnabled || isTextInputFocused()) return;
         auto* sw = spectrum();
         if (!sw) return;
         static const int steps[] = {10, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
@@ -2740,7 +2752,7 @@ void MainWindow::setupKeyboardShortcuts()
     });
     auto* stepUp = new QShortcut(Qt::Key_BracketRight, this);
     connect(stepUp, &QShortcut::activated, this, [this]() {
-        if (isTextInputFocused()) return;
+        if (!m_keyboardShortcutsEnabled || isTextInputFocused()) return;
         auto* sw = spectrum();
         if (!sw) return;
         static const int steps[] = {10, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
@@ -2753,7 +2765,7 @@ void MainWindow::setupKeyboardShortcuts()
     // L — toggle tune lock
     auto* lock = new QShortcut(Qt::Key_L, this);
     connect(lock, &QShortcut::activated, this, [this]() {
-        if (isTextInputFocused()) return;
+        if (!m_keyboardShortcutsEnabled || isTextInputFocused()) return;
         auto* s = activeSlice();
         if (s) s->setLocked(!s->isLocked());
     });
