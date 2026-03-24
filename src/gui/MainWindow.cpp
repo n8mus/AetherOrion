@@ -2621,9 +2621,33 @@ void MainWindow::applyPanLayout(const QString& layoutId)
     const int needed = kPanCounts.value(layoutId, 1);
     const int existing = m_panStack->count();
 
-    if (needed <= existing) {
-        qDebug() << "applyPanLayout: already have" << existing << "pans, need" << needed;
-        // TODO: handle reducing pans (close extras)
+    if (needed < existing) {
+        qDebug() << "applyPanLayout: reducing from" << existing << "to" << needed << "pans";
+
+        // Close extra pans from the end (keep the first N)
+        auto allApplets = m_panStack->allApplets();
+        int toRemove = existing - needed;
+        for (int i = allApplets.size() - 1; i >= 0 && toRemove > 0; --i) {
+            auto* applet = allApplets[i];
+            QString panId = applet->panId();
+            if (panId == "default") continue;
+            qDebug() << "applyPanLayout: closing pan" << panId;
+            m_radioModel.sendCommand(
+                QString("display pan remove %1").arg(panId));
+            // Radio will send "removed" status → panadapterRemoved signal
+            // → PanadapterStack::removePanadapter()
+            --toRemove;
+        }
+
+        // Rearrange remaining pans after a short delay for radio to process
+        QTimer::singleShot(500, this, [this, layoutId]() {
+            m_panStack->rearrangeLayout(layoutId);
+        });
+        return;
+    }
+    if (needed == existing) {
+        // Same count, just rearrange
+        m_panStack->rearrangeLayout(layoutId);
         return;
     }
 
