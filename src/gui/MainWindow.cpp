@@ -1765,6 +1765,9 @@ void MainWindow::onConnectionError(const QString& msg)
 
 void MainWindow::onSliceAdded(SliceModel* s)
 {
+    // During layout transition, spectrums are being destroyed/recreated — skip
+    if (m_applyingLayout) return;
+
     qDebug() << "MainWindow: slice added" << s->sliceId();
 
     // First slice — wire everything up
@@ -2005,6 +2008,8 @@ void MainWindow::onSliceAdded(SliceModel* s)
 
 void MainWindow::onSliceRemoved(int id)
 {
+    if (m_applyingLayout) return;
+
     qDebug() << "MainWindow: slice removed" << id;
 
     // If the split TX slice was closed, disable split
@@ -2152,7 +2157,10 @@ void MainWindow::updateFilterLimitsForMode(const QString& mode)
 
 void MainWindow::pushSliceOverlay(SliceModel* s)
 {
-    spectrumForSlice(s)->setSliceOverlay(s->sliceId(), s->frequency(),
+    if (m_applyingLayout) return;
+    auto* sw = spectrumForSlice(s);
+    if (!sw) return;
+    sw->setSliceOverlay(s->sliceId(), s->frequency(),
         s->filterLow(), s->filterHigh(), s->isTxSlice(),
         s->sliceId() == m_activeSliceId,
         s->mode(), s->rttyMark(), s->rttyShift(),
