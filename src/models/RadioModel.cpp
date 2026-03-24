@@ -1192,14 +1192,15 @@ void RadioModel::onStatusReceived(const QString& object,
 
     // "display pan 0x40000000 center=14.1 bandwidth=0.2 ..."
     // Only process status for OUR panadapter (matching client_handle or first unclaimed).
-    static const QRegularExpression panRe(R"(^display pan\s+(0x[0-9A-Fa-f]+)$)");
+    static const QRegularExpression panRe(R"(^display pan\s+(0x[0-9A-Fa-f]+))");
     if (object.startsWith("display pan")) {
         const auto m = panRe.match(object);
         if (m.hasMatch()) {
             const QString panId = m.captured(1);
 
-            // Handle pan removal
-            if (kvs.contains("removed")) {
+            // Handle pan removal — "display pan 0x40000001 removed" arrives
+            // with no '=' so the parser puts the whole string in 'object'
+            if (kvs.contains("removed") || object.endsWith("removed")) {
                 auto* pan = m_panadapters.take(panId);
                 if (pan) {
                     m_panStream.unregisterPanStream(pan->panStreamId());
