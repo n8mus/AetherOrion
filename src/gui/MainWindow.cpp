@@ -1900,7 +1900,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
         // In multi-pan mode, ignore radio-side active changes — we manage
         // active slice client-side. The radio echoes active=1 on every
         // "slice m" command, which would trigger setActiveSlice and cause
-        // waterfall pauses via wireActiveVfoSignals.
+        // waterfall pauses via setActiveSlice overhead.
         if (m_panStack && m_panStack->count() > 1) return;
         setActiveSlice(s->sliceId());
     });
@@ -1953,10 +1953,8 @@ void MainWindow::onSliceAdded(SliceModel* s)
 
     wireVfoWidget(vfo, s);
 
-    // Wire active VFO signals (NR2, RN2, RADE) — these may have been
-    // missed during setActiveSlice if the VFO didn't exist yet
-    if (s->sliceId() == m_activeSliceId)
-        wireActiveVfoSignals(vfo);
+    // NR2/RN2/RADE are now wired permanently in wireVfoWidget — no
+    // special handling needed here for active slice timing.
 
     // Show DIV button on dual-SCU radios
     {
@@ -2119,17 +2117,9 @@ void MainWindow::setActiveSlice(int sliceId)
     m_appletPanel->setSlice(s);
     spectrum()->overlayMenu()->setSlice(s);
 
-    // Switch active VFO widget — disconnect global signals from old, connect to new
-    if (auto* prevVfo = spectrum()->vfoWidget()) {
-        disconnect(prevVfo, &VfoWidget::nr2Toggled, this, nullptr);
-        disconnect(prevVfo, &VfoWidget::rn2Toggled, this, nullptr);
-#ifdef HAVE_RADE
-        disconnect(prevVfo, &VfoWidget::radeActivated, this, nullptr);
-#endif
-    }
+    // Switch active VFO widget display (NR2/RN2/RADE are wired permanently
+    // in wireVfoWidget, no disconnect/reconnect needed)
     spectrum()->setActiveVfoWidget(sliceId);
-    if (auto* vfo = spectrum()->vfoWidget())
-        wireActiveVfoSignals(vfo);
 
     // Update filter limits for the active slice's mode
     updateFilterLimitsForMode(s->mode());
@@ -2547,23 +2537,9 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
         }
     });
 
-    // Wire slice data into widget
-    w->setSlice(s);
-    w->setAntennaList(m_radioModel.antennaList());
-    w->setTransmitModel(m_radioModel.transmitModel());
-}
-
-void MainWindow::wireActiveVfoSignals(VfoWidget* w)
-{
-    // PC Audio toggle is now in TitleBar (global, not per-slice).
-    // Split toggle is wired per-widget in wireVfoWidget (slice-aware).
-
-    // NR2 toggle with FFTW wisdom generation
+    // NR2 toggle with FFTW wisdom generation — wired once per VFO, never disconnected
     connect(w, &VfoWidget::nr2Toggled, this, [this](bool on) {
-        if (!on) {
-            m_audio.setNr2Enabled(false);
-            return;
-        }
+        if (!on) { m_audio.setNr2Enabled(false); return; }
         enableNr2WithWisdom();
     });
 
@@ -2577,7 +2553,15 @@ void MainWindow::wireActiveVfoSignals(VfoWidget* w)
         if (on) activateRADE(sliceId); else deactivateRADE();
     });
 #endif
+
+    // Wire slice data into widget
+    w->setSlice(s);
+    w->setAntennaList(m_radioModel.antennaList());
+    w->setTransmitModel(m_radioModel.transmitModel());
 }
+
+// wireActiveVfoSignals removed — NR2/RN2/RADE are now wired permanently
+// in wireVfoWidget() so connections survive focus switches (#227).
 
 void MainWindow::enableNr2WithWisdom()
 {
