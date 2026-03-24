@@ -21,7 +21,13 @@ public:
     // Add/remove panadapter displays
     PanadapterApplet* addPanadapter(const QString& panId);
     void removePanadapter(const QString& panId);
+    void removeAll();  // remove all applets and reset splitter
     void rekey(const QString& oldId, const QString& newId);
+
+    // Layout: rebuild splitter structure for a given layout ID
+    // layoutId: "1", "2v", "2h", "2h1", "12h", "2x2"
+    // panIds: the pan IDs to place in order (A, B, C, D)
+    void applyLayout(const QString& layoutId, const QStringList& panIds);
 
     // Accessors
     PanadapterApplet* panadapter(const QString& panId) const;

@@ -106,4 +106,146 @@ void PanadapterStack::setActivePan(const QString& panId)
     emit activePanChanged(panId);
 }
 
+void PanadapterStack::removeAll()
+{
+    qDeleteAll(m_pans);
+    m_pans.clear();
+    m_activePanId.clear();
+
+    // Delete the old splitter and create a fresh one
+    delete m_splitter;
+    m_splitter = new QSplitter(Qt::Vertical, this);
+    m_splitter->setHandleWidth(3);
+    m_splitter->setChildrenCollapsible(false);
+    layout()->addWidget(m_splitter);
+}
+
+void PanadapterStack::applyLayout(const QString& layoutId, const QStringList& panIds)
+{
+    // Build structure based on layout ID.
+    // Each layout adds applets to the correct splitter position.
+    // panIds must have at least as many entries as the layout requires.
+
+    if (layoutId == "1" && panIds.size() >= 1) {
+        // Single pan — just add to vertical splitter
+        addPanadapter(panIds[0]);
+    }
+    else if (layoutId == "2v" && panIds.size() >= 2) {
+        // A / B — vertical stack
+        addPanadapter(panIds[0]);
+        addPanadapter(panIds[1]);
+    }
+    else if (layoutId == "2h" && panIds.size() >= 2) {
+        // A | B — horizontal split
+        // Replace the vertical splitter orientation
+        m_splitter->setOrientation(Qt::Horizontal);
+        addPanadapter(panIds[0]);
+        addPanadapter(panIds[1]);
+    }
+    else if (layoutId == "2h1" && panIds.size() >= 3) {
+        // A|B / C — horizontal top, single bottom
+        auto* topSplit = new QSplitter(Qt::Horizontal);
+        topSplit->setHandleWidth(3);
+        topSplit->setChildrenCollapsible(false);
+        m_splitter->addWidget(topSplit);
+
+        auto* a = new PanadapterApplet(topSplit);
+        a->setPanId(panIds[0]);
+        a->spectrumWidget()->setPanIndex(0);
+        a->spectrumWidget()->loadSettings();
+        topSplit->addWidget(a);
+        m_pans[panIds[0]] = a;
+
+        auto* b = new PanadapterApplet(topSplit);
+        b->setPanId(panIds[1]);
+        b->spectrumWidget()->setPanIndex(1);
+        b->spectrumWidget()->loadSettings();
+        topSplit->addWidget(b);
+        m_pans[panIds[1]] = b;
+
+        auto* c = addPanadapter(panIds[2]);
+        Q_UNUSED(c);
+
+        // Equal row heights
+        m_splitter->setStretchFactor(0, 1);
+        m_splitter->setStretchFactor(1, 1);
+
+        if (m_activePanId.isEmpty()) setActivePan(panIds[0]);
+    }
+    else if (layoutId == "12h" && panIds.size() >= 3) {
+        // A / B|C — single top, horizontal bottom
+        addPanadapter(panIds[0]);
+
+        auto* botSplit = new QSplitter(Qt::Horizontal);
+        botSplit->setHandleWidth(3);
+        botSplit->setChildrenCollapsible(false);
+        m_splitter->addWidget(botSplit);
+
+        auto* b = new PanadapterApplet(botSplit);
+        b->setPanId(panIds[1]);
+        b->spectrumWidget()->setPanIndex(1);
+        b->spectrumWidget()->loadSettings();
+        botSplit->addWidget(b);
+        m_pans[panIds[1]] = b;
+
+        auto* c = new PanadapterApplet(botSplit);
+        c->setPanId(panIds[2]);
+        c->spectrumWidget()->setPanIndex(2);
+        c->spectrumWidget()->loadSettings();
+        botSplit->addWidget(c);
+        m_pans[panIds[2]] = c;
+
+        // Equal row heights
+        m_splitter->setStretchFactor(0, 1);
+        m_splitter->setStretchFactor(1, 1);
+
+        if (m_activePanId.isEmpty()) setActivePan(panIds[0]);
+    }
+    else if (layoutId == "2x2" && panIds.size() >= 4) {
+        // A|B / C|D — 2×2 grid
+        auto* topSplit = new QSplitter(Qt::Horizontal);
+        topSplit->setHandleWidth(3);
+        topSplit->setChildrenCollapsible(false);
+        m_splitter->addWidget(topSplit);
+
+        auto* a = new PanadapterApplet(topSplit);
+        a->setPanId(panIds[0]);
+        a->spectrumWidget()->setPanIndex(0);
+        a->spectrumWidget()->loadSettings();
+        topSplit->addWidget(a);
+        m_pans[panIds[0]] = a;
+
+        auto* b = new PanadapterApplet(topSplit);
+        b->setPanId(panIds[1]);
+        b->spectrumWidget()->setPanIndex(1);
+        b->spectrumWidget()->loadSettings();
+        topSplit->addWidget(b);
+        m_pans[panIds[1]] = b;
+
+        auto* botSplit = new QSplitter(Qt::Horizontal);
+        botSplit->setHandleWidth(3);
+        botSplit->setChildrenCollapsible(false);
+        m_splitter->addWidget(botSplit);
+
+        auto* c = new PanadapterApplet(botSplit);
+        c->setPanId(panIds[2]);
+        c->spectrumWidget()->setPanIndex(2);
+        c->spectrumWidget()->loadSettings();
+        botSplit->addWidget(c);
+        m_pans[panIds[2]] = c;
+
+        auto* d = new PanadapterApplet(botSplit);
+        d->setPanId(panIds[3]);
+        d->spectrumWidget()->setPanIndex(3);
+        d->spectrumWidget()->loadSettings();
+        botSplit->addWidget(d);
+        m_pans[panIds[3]] = d;
+
+        m_splitter->setStretchFactor(0, 1);
+        m_splitter->setStretchFactor(1, 1);
+
+        if (m_activePanId.isEmpty()) setActivePan(panIds[0]);
+    }
+}
+
 } // namespace AetherSDR
