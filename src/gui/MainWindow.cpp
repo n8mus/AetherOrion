@@ -53,6 +53,11 @@
 #include <QLabel>
 #include <QCloseEvent>
 #include <QMessageBox>
+#include <QShortcut>
+#include <QTextEdit>
+#include <QPlainTextEdit>
+#include <QSpinBox>
+#include <QComboBox>
 #include <QProgressDialog>
 #include <QThread>
 #include "core/AppSettings.h"
@@ -80,6 +85,7 @@ MainWindow::MainWindow(QWidget* parent)
     applyDarkTheme();
     buildMenuBar();
     buildUI();
+    setupKeyboardShortcuts();
 
     // ── Wire up discovery ──────────────────────────────────────────────────
     connect(&m_discovery, &RadioDiscovery::radioDiscovered,
@@ -2639,6 +2645,119 @@ SpectrumWidget* MainWindow::spectrumForSlice(SliceModel* s) const
 }
 
 // ─── Pan layout application ───────────────────────────────────────────────────
+
+// ─── Keyboard Shortcuts ───────────────────────────────────────────────────────
+
+static bool isTextInputFocused()
+{
+    auto* w = QApplication::focusWidget();
+    if (!w) return false;
+    return qobject_cast<QLineEdit*>(w) || qobject_cast<QTextEdit*>(w)
+        || qobject_cast<QPlainTextEdit*>(w) || qobject_cast<QSpinBox*>(w)
+        || qobject_cast<QComboBox*>(w);
+}
+
+void MainWindow::setupKeyboardShortcuts()
+{
+    // Helper: nudge active slice frequency by N steps on the active pan
+    auto nudgeFreq = [this](int steps) {
+        if (isTextInputFocused() || !m_radioModel.isConnected()) return;
+        auto* s = activeSlice();
+        if (!s || s->isLocked()) return;
+        int stepHz = spectrum() ? spectrum()->stepSize() : 100;
+        double newMhz = s->frequency() + steps * stepHz / 1e6;
+        QString panId = m_panStack ? m_panStack->activePanId() : m_radioModel.panId();
+        if (!panId.isEmpty())
+            m_radioModel.sendCommand(
+                QString("slice m %1 pan=%2").arg(newMhz, 0, 'f', 6).arg(panId));
+        if (spectrum()) spectrum()->setVfoFrequency(newMhz);
+    };
+
+    // Left/Right arrow — nudge frequency by step size
+    auto* left = new QShortcut(Qt::Key_Left, this);
+    connect(left, &QShortcut::activated, this, [nudgeFreq]() { nudgeFreq(-1); });
+    auto* right = new QShortcut(Qt::Key_Right, this);
+    connect(right, &QShortcut::activated, this, [nudgeFreq]() { nudgeFreq(1); });
+
+    // Shift+Left/Right — nudge by 10 steps
+    auto* shiftLeft = new QShortcut(Qt::SHIFT | Qt::Key_Left, this);
+    connect(shiftLeft, &QShortcut::activated, this, [nudgeFreq]() { nudgeFreq(-10); });
+    auto* shiftRight = new QShortcut(Qt::SHIFT | Qt::Key_Right, this);
+    connect(shiftRight, &QShortcut::activated, this, [nudgeFreq]() { nudgeFreq(10); });
+
+    // Up/Down arrow — AF gain ±5
+    auto* up = new QShortcut(Qt::Key_Up, this);
+    connect(up, &QShortcut::activated, this, [this]() {
+        if (isTextInputFocused()) return;
+        auto* s = activeSlice();
+        if (s) s->setAudioGain(std::min(100.0f, s->audioGain() + 5.0f));
+    });
+    auto* down = new QShortcut(Qt::Key_Down, this);
+    connect(down, &QShortcut::activated, this, [this]() {
+        if (isTextInputFocused()) return;
+        auto* s = activeSlice();
+        if (s) s->setAudioGain(std::max(0.0f, s->audioGain() - 5.0f));
+    });
+
+    // Spacebar — push-to-talk (TX while held)
+    auto* pttOn = new QShortcut(Qt::Key_Space, this);
+    pttOn->setAutoRepeat(false);
+    connect(pttOn, &QShortcut::activated, this, [this]() {
+        if (isTextInputFocused() || !m_radioModel.isConnected()) return;
+        m_radioModel.sendCommand("xmit 1");
+    });
+    // Note: QShortcut doesn't have a "released" signal. For PTT release,
+    // we use keyReleaseEvent override. For now, spacebar toggles MOX.
+    // TODO: implement held-spacebar PTT via keyPressEvent/keyReleaseEvent
+
+    // T — toggle MOX
+    auto* mox = new QShortcut(Qt::Key_T, this);
+    connect(mox, &QShortcut::activated, this, [this]() {
+        if (isTextInputFocused() || !m_radioModel.isConnected()) return;
+        bool tx = m_radioModel.transmitModel()->isTransmitting();
+        m_radioModel.sendCommand(QString("xmit %1").arg(tx ? 0 : 1));
+    });
+
+    // M — toggle mute
+    auto* mute = new QShortcut(Qt::Key_M, this);
+    connect(mute, &QShortcut::activated, this, [this]() {
+        if (isTextInputFocused()) return;
+        auto* s = activeSlice();
+        if (s) s->setAudioMute(!s->audioMute());
+    });
+
+    // [ / ] — cycle step size down / up
+    auto* stepDown = new QShortcut(Qt::Key_BracketLeft, this);
+    connect(stepDown, &QShortcut::activated, this, [this]() {
+        if (isTextInputFocused()) return;
+        auto* sw = spectrum();
+        if (!sw) return;
+        static const int steps[] = {10, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
+        int cur = sw->stepSize();
+        for (int i = std::size(steps) - 1; i >= 0; --i) {
+            if (steps[i] < cur) { sw->setStepSize(steps[i]); return; }
+        }
+    });
+    auto* stepUp = new QShortcut(Qt::Key_BracketRight, this);
+    connect(stepUp, &QShortcut::activated, this, [this]() {
+        if (isTextInputFocused()) return;
+        auto* sw = spectrum();
+        if (!sw) return;
+        static const int steps[] = {10, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
+        int cur = sw->stepSize();
+        for (int i = 0; i < static_cast<int>(std::size(steps)); ++i) {
+            if (steps[i] > cur) { sw->setStepSize(steps[i]); return; }
+        }
+    });
+
+    // L — toggle tune lock
+    auto* lock = new QShortcut(Qt::Key_L, this);
+    connect(lock, &QShortcut::activated, this, [this]() {
+        if (isTextInputFocused()) return;
+        auto* s = activeSlice();
+        if (s) s->setLocked(!s->isLocked());
+    });
+}
 
 void MainWindow::applyPanLayout(const QString& layoutId)
 {

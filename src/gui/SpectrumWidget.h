@@ -74,7 +74,8 @@ public:
     // Set the FFT/waterfall split ratio programmatically.
     void setSpectrumFrac(float f);
 
-    // Set the click/scroll tuning step size in Hz (default 100).
+    // Get/set the click/scroll tuning step size in Hz (default 100).
+    int stepSize() const { return m_stepHz; }
     void setStepSize(int hz) { m_stepHz = hz; }
 
     // Set the per-mode filter limits (Hz). Called when mode changes.
