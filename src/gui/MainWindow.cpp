@@ -323,12 +323,27 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_radioModel.panStream(), &PanadapterStream::waterfallRowReady,
             this, [this](quint32 streamId, const QVector<float>& bins,
                          double low, double high, quint32 tc) {
+        static QSet<quint32> debugged;
         for (auto* pan : m_radioModel.panadapters()) {
             if (pan->wfStreamId() == streamId) {
-                if (auto* sw = m_panStack->spectrum(pan->panId()))
-                    sw->updateWaterfallRow(bins, low, high, tc);
+                auto* sw = m_panStack->spectrum(pan->panId());
+                if (!debugged.contains(streamId)) {
+                    debugged.insert(streamId);
+                    qDebug() << "WF tile routed: streamId=0x" + QString::number(streamId, 16)
+                             << "panId=" << pan->panId()
+                             << "wfStreamId=0x" + QString::number(pan->wfStreamId(), 16)
+                             << "sw=" << sw;
+                }
+                if (sw) sw->updateWaterfallRow(bins, low, high, tc);
                 return;
             }
+        }
+        // Fallback — log unrouted tiles
+        if (!debugged.contains(streamId)) {
+            debugged.insert(streamId);
+            qDebug() << "WF tile UNROUTED: streamId=0x" + QString::number(streamId, 16);
+            for (auto* pan : m_radioModel.panadapters())
+                qDebug() << "  pan" << pan->panId() << "wfStreamId=0x" + QString::number(pan->wfStreamId(), 16);
         }
         if (auto* sw = spectrum()) sw->updateWaterfallRow(bins, low, high, tc);
     });
