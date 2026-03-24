@@ -1581,10 +1581,15 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
     if (m_spotMarkers.isEmpty()) return;
 
     QFont spotFont = p.font();
-    spotFont.setPixelSize(9);
+    spotFont.setPixelSize(m_spotFontSize);
     spotFont.setBold(true);
     p.setFont(spotFont);
     const QFontMetrics fm(spotFont);
+
+    // Starting Y position based on percentage setting
+    const int startY = specRect.top() + specRect.height() * m_spotStartPct / 100;
+    const int th = fm.height() + 2;
+    const int maxBottom = startY + th * m_spotMaxLevels;
 
     // Track label positions to avoid overlap
     QVector<QRect> placed;
@@ -1593,9 +1598,9 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
         const int x = mhzToX(spot.freqMhz);
         if (x < 0 || x > width()) continue;
 
-        // Parse color or use default cyan
-        QColor col(0x00, 0xb4, 0xd8);
-        if (!spot.color.isEmpty() && spot.color.startsWith('#')) {
+        // Color: use spot-provided color unless override is on
+        QColor col(0x00, 0xb4, 0xd8);  // default cyan
+        if (!m_spotOverrideColors && !spot.color.isEmpty() && spot.color.startsWith('#')) {
             QColor parsed(spot.color);
             if (parsed.isValid()) col = parsed;
         }
@@ -1607,17 +1612,15 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
         // Draw callsign label
         const QString label = spot.callsign;
         const int tw = fm.horizontalAdvance(label) + 6;
-        const int th = fm.height() + 2;
-        int ly = specRect.top() + 2;
 
-        // Nudge down to avoid overlap
-        QRect labelRect(x - tw / 2, ly, tw, th);
+        // Start at configured position, nudge down to avoid overlap
+        QRect labelRect(x - tw / 2, startY, tw, th);
         for (const auto& r : placed) {
             if (labelRect.intersects(r))
                 labelRect.moveTop(r.bottom() + 1);
         }
-        // Don't draw if pushed below spectrum area
-        if (labelRect.bottom() > specRect.top() + specRect.height() / 3)
+        // Don't draw if exceeds max levels
+        if (labelRect.bottom() > maxBottom)
             continue;
 
         placed.append(labelRect);

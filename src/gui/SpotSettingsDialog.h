@@ -14,6 +14,7 @@ class SpotSettingsDialog : public QDialog {
 
 public:
     explicit SpotSettingsDialog(RadioModel* model, QWidget* parent = nullptr);
+    void setTotalSpots(int count) { m_totalSpotsLabel->setText(QString::number(count)); }
 
 private:
     RadioModel* m_model;

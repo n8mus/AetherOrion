@@ -1013,11 +1013,25 @@ void MainWindow::buildMenuBar()
     settingsMenu->addAction("USB Cables...");
     auto* spotsAction = settingsMenu->addAction("Spots...");
     connect(spotsAction, &QAction::triggered, this, [this] {
+        // Update total spots count in dialog
         SpotSettingsDialog dlg(&m_radioModel, this);
+        dlg.setTotalSpots(m_radioModel.spotModel()->spots().size());
         dlg.exec();
-        // Refresh spots visibility after dialog closes
-        bool on = AppSettings::instance().value("IsSpotsEnabled", "True").toString() == "True";
-        for (auto* a : m_panStack->allApplets()) a->spectrumWidget()->setShowSpots(on);
+        // Refresh all spot settings after dialog closes
+        auto& s = AppSettings::instance();
+        bool on       = s.value("IsSpotsEnabled", "True").toString() == "True";
+        int fontSize  = s.value("SpotFontSize", "16").toInt();
+        int levels    = s.value("SpotsMaxLevel", "3").toInt();
+        int position  = s.value("SpotsStartingHeightPercentage", "50").toInt();
+        bool override = s.value("IsSpotsOverrideColorsEnabled", "False").toString() == "True";
+        for (auto* a : m_panStack->allApplets()) {
+            auto* sw = a->spectrumWidget();
+            sw->setShowSpots(on);
+            sw->setSpotFontSize(fontSize);
+            sw->setSpotMaxLevels(levels);
+            sw->setSpotStartPct(position);
+            sw->setSpotOverrideColors(override);
+        }
     });
     settingsMenu->addAction("multiFLEX...");
     auto* txBandAct = settingsMenu->addAction("TX Band Settings...");
@@ -2301,7 +2315,14 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(spots, &SpotModel::spotUpdated, this, rebuildSpots);
     connect(spots, &SpotModel::spotRemoved, this, rebuildSpots);
     connect(spots, &SpotModel::spotsCleared,this, rebuildSpots);
-    sw->setShowSpots(AppSettings::instance().value("IsSpotsEnabled", "True").toString() == "True");
+    {
+        auto& s = AppSettings::instance();
+        sw->setShowSpots(s.value("IsSpotsEnabled", "True").toString() == "True");
+        sw->setSpotFontSize(s.value("SpotFontSize", "16").toInt());
+        sw->setSpotMaxLevels(s.value("SpotsMaxLevel", "3").toInt());
+        sw->setSpotStartPct(s.value("SpotsStartingHeightPercentage", "50").toInt());
+        sw->setSpotOverrideColors(s.value("IsSpotsOverrideColorsEnabled", "False").toString() == "True");
+    }
 
     // ── Per-pan display controls (client-side) ───────────────────────────
     connect(menu, &SpectrumOverlayMenu::fftFillAlphaChanged,

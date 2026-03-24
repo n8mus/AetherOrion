@@ -181,6 +181,10 @@ public:
     void setSpotMarkers(const QVector<SpotMarker>& markers);
     void setShowSpots(bool on) { m_showSpots = on; update(); }
     bool showSpots() const { return m_showSpots; }
+    void setSpotFontSize(int px) { m_spotFontSize = px; update(); }
+    void setSpotMaxLevels(int n) { m_spotMaxLevels = n; update(); }
+    void setSpotStartPct(int pct) { m_spotStartPct = pct; update(); }
+    void setSpotOverrideColors(bool on) { m_spotOverrideColors = on; update(); }
     void setTransmitting(bool tx) {
         if (tx && !m_transmitting)
             m_preTxAutoBlack = m_autoBlackThresh;  // save before TX
@@ -366,6 +370,10 @@ private:
     bool m_tnfGlobalEnabled{true};
     QVector<SpotMarker> m_spotMarkers;
     bool m_showSpots{true};
+    int  m_spotFontSize{16};
+    int  m_spotMaxLevels{3};
+    int  m_spotStartPct{50};      // % down from top of spectrum
+    bool m_spotOverrideColors{false};
     int  m_draggingTnfId{-1};
     double m_dragTnfOrigFreq{0.0};
 
