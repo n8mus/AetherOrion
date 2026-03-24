@@ -40,6 +40,10 @@ PanadapterApplet* PanadapterStack::addPanadapter(const QString& panId)
     if (m_activePanId.isEmpty())
         setActivePan(panId);
 
+    // Equalize sizes whenever a pan is added
+    if (m_pans.size() > 1)
+        equalizeSizes();
+
     return applet;
 }
 
