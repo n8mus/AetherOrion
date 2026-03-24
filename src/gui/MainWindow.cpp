@@ -324,7 +324,7 @@ MainWindow::MainWindow(QWidget* parent)
             this, [this](quint32 streamId, const QVector<float>& bins,
                          double low, double high, quint32 tc) {
         for (auto* pan : m_radioModel.panadapters()) {
-            if (pan->panStreamId() == streamId) {
+            if (pan->wfStreamId() == streamId) {
                 if (auto* sw = m_panStack->spectrum(pan->panId()))
                     sw->updateWaterfallRow(bins, low, high, tc);
                 return;
@@ -335,7 +335,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_radioModel.panStream(), &PanadapterStream::waterfallAutoBlackLevel,
             this, [this](quint32 streamId, quint32 autoBlack) {
         for (auto* pan : m_radioModel.panadapters()) {
-            if (pan->panStreamId() == streamId) {
+            if (pan->wfStreamId() == streamId) {
                 if (auto* sw = m_panStack->spectrum(pan->panId())) {
                     if (sw->wfAutoBlack()) {
                         const int level = std::clamp(static_cast<int>(autoBlack), 0, 125);
