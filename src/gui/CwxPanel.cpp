@@ -159,14 +159,24 @@ void CwxPanel::buildSendView()
     m_sendPage = new QWidget;
     auto* vbox = new QVBoxLayout(m_sendPage);
     vbox->setContentsMargins(0, 0, 0, 0);
-    vbox->setSpacing(0);
+    vbox->setSpacing(2);
 
+    // History/sent text display (read-only, fills most of the panel)
+    m_historyEdit = new QTextEdit;
+    m_historyEdit->setStyleSheet(kTextStyle);
+    m_historyEdit->setReadOnly(true);
+    m_historyEdit->setPlaceholderText("Sent CW text appears here...");
+    vbox->addWidget(m_historyEdit, 1);
+
+    // Input area at the bottom (editable, where user types)
     m_textEdit = new QTextEdit;
-    m_textEdit->setStyleSheet(kTextStyle);
+    m_textEdit->setStyleSheet(kTextStyle +
+        QString(" QTextEdit { border-top: 1px solid #304050; }"));
     m_textEdit->setPlaceholderText("Type CW message...");
     m_textEdit->setAcceptRichText(false);
+    m_textEdit->setFixedHeight(60);
     m_textEdit->installEventFilter(this);
-    vbox->addWidget(m_textEdit);
+    vbox->addWidget(m_textEdit, 0);
 }
 
 void CwxPanel::buildSetupView()
@@ -271,7 +281,15 @@ void CwxPanel::sendBuffer()
     QString text = m_textEdit->toPlainText().trimmed();
     if (text.isEmpty()) return;
 
-    m_sendStartIndex += m_textEdit->toPlainText().length();
+    // Move text to history display
+    if (m_historyEdit) {
+        if (!m_historyEdit->toPlainText().isEmpty())
+            m_historyEdit->append("");  // blank line between sends
+        m_historyEdit->append(text);
+        m_historyEdit->moveCursor(QTextCursor::End);
+    }
+    m_textEdit->clear();
+
     m_model->send(text);
 }
 

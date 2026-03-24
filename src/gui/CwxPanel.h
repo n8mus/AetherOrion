@@ -41,8 +41,9 @@ private:
 
     // Send/Live view
     QWidget*        m_sendPage{nullptr};
-    QTextEdit*      m_textEdit{nullptr};
-    int             m_sendStartIndex{0};  // cumulative index offset for highlighting
+    QTextEdit*      m_historyEdit{nullptr};  // read-only display of sent text
+    QTextEdit*      m_textEdit{nullptr};     // input area at bottom
+    int             m_sendStartIndex{0};     // cumulative index offset for highlighting
 
     // Setup view
     QWidget*        m_setupPage{nullptr};
