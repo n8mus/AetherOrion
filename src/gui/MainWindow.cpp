@@ -2261,9 +2261,30 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
 
     // ── Click-to-tune ────────────────────────────────────────────────────
     connect(sw, &SpectrumWidget::frequencyClicked,
-            this, [this](double mhz) {
-        // Always tune the active VFO — don't switch slices on click-to-tune.
-        // The user explicitly sets the active VFO by clicking on a VFO widget.
+            this, [this, sw](double mhz) {
+        // Multi-pan: activate the slice that belongs to this pan before tuning
+        if (m_panStack && m_panStack->count() > 1) {
+            QString panId = sw->property("panId").toString();
+            if (panId.isEmpty()) {
+                // Find panId by matching the spectrum widget
+                for (auto* applet : m_panStack->allApplets()) {
+                    if (applet->spectrumWidget() == sw) {
+                        panId = applet->panId();
+                        break;
+                    }
+                }
+            }
+            if (!panId.isEmpty()) {
+                // Find a slice on this pan and activate it
+                for (auto* s : m_radioModel.slices()) {
+                    if (s->panId() == panId && s->sliceId() != m_activeSliceId) {
+                        setActiveSlice(s->sliceId());
+                        break;
+                    }
+                }
+                m_panStack->setActivePan(panId);
+            }
+        }
         onFrequencyChanged(mhz);
     });
 
