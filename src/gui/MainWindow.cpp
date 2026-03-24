@@ -2297,6 +2297,15 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 m_radioModel.sendCommand(
                     QString("slice m %1 pan=%2").arg(mhz, 0, 'f', 6).arg(panId));
                 sw->setVfoFrequency(mhz);  // immediate visual feedback
+
+                // The radio drops FPS on the non-active pan after slice m.
+                // Restore FPS on all pans to prevent waterfall slowdown.
+                QTimer::singleShot(200, this, [this]() {
+                    for (auto* pan : m_radioModel.panadapters()) {
+                        m_radioModel.sendCommand(
+                            QString("display pan set %1 fps=25").arg(pan->panId()));
+                    }
+                });
             }
         } else {
             // Fallback: single pan or panId not found — use legacy path
