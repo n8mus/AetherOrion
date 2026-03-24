@@ -2584,9 +2584,11 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             // Tune this pan's slice and recenter the pan on the new frequency
             if (m_panStack && m_panStack->count() > 1 && !applet->panId().isEmpty()
                 && applet->panId() != "default") {
-                // Use slice tune on the specific slice — this auto-recenters the pan
+                // slice tune recenters the pan; slice m updates the VFO
                 m_radioModel.sendCommand(
                     QString("slice tune %1 %2").arg(s->sliceId()).arg(recallFreq, 0, 'f', 6));
+                m_radioModel.sendCommand(
+                    QString("slice m %1 pan=%2").arg(recallFreq, 0, 'f', 6).arg(applet->panId()));
             } else {
                 onFrequencyChanged(recallFreq);
             }
@@ -2683,6 +2685,8 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 && applet->panId() != "default") {
                 m_radioModel.sendCommand(
                     QString("slice tune %1 %2").arg(s->sliceId()).arg(freqMhz, 0, 'f', 6));
+                m_radioModel.sendCommand(
+                    QString("slice m %1 pan=%2").arg(freqMhz, 0, 'f', 6).arg(applet->panId()));
             } else {
                 onFrequencyChanged(freqMhz);
             }
