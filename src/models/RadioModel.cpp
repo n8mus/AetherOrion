@@ -1392,6 +1392,28 @@ void RadioModel::onStatusReceived(const QString& object,
         return;
     }
 
+    // Spot status: "spot 42 callsign=W1AW rx_freq=14.074000 ..."
+    //              "spot 42 removed"
+    //              "spot 42 triggered pan=0x40000000"
+    if (object.startsWith("spot ")) {
+        static const QRegularExpression spotRe(R"(^spot\s+(\d+))");
+        const auto sm = spotRe.match(object);
+        if (sm.hasMatch()) {
+            int idx = sm.captured(1).toInt();
+            if (kvs.isEmpty() && object.contains("removed")) {
+                m_spotModel.removeSpot(idx);
+            } else if (kvs.isEmpty() && object.contains("triggered")) {
+                // Parse pan= from the object string if present
+                static const QRegularExpression panRe2(R"(pan=(0x[0-9A-Fa-f]+))");
+                const auto pm = panRe2.match(object);
+                emit m_spotModel.spotTriggered(idx, pm.hasMatch() ? pm.captured(1) : QString());
+            } else {
+                m_spotModel.applySpotStatus(idx, kvs);
+            }
+        }
+        return;
+    }
+
     // Interlock status: "interlock tx_client_handle=0x... state=TRANSMITTING ..."
     if (object == "interlock") {
         // Track TX ownership — only show TX state if we own the transmitter

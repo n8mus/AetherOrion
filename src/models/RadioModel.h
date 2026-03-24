@@ -10,6 +10,7 @@
 #include "TransmitModel.h"
 #include "EqualizerModel.h"
 #include "TnfModel.h"
+#include "SpotModel.h"
 
 #include <QObject>
 #include <QString>
@@ -71,6 +72,7 @@ public:
     TransmitModel*    transmitModel() { return &m_transmitModel; }
     EqualizerModel*   equalizerModel() { return &m_equalizerModel; }
     TnfModel*         tnfModel()       { return &m_tnfModel; }
+    SpotModel*        spotModel()      { return &m_spotModel; }
     bool              hasAmplifier() const { return m_hasAmplifier; }
 
     // Getters
@@ -304,6 +306,7 @@ private:
     TransmitModel    m_transmitModel;
     EqualizerModel   m_equalizerModel;
     TnfModel         m_tnfModel;
+    SpotModel        m_spotModel;
 
     QString     m_name;
     QString     m_model;

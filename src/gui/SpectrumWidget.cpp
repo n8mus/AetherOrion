@@ -1207,6 +1207,7 @@ void SpectrumWidget::paintEvent(QPaintEvent*)
     drawWaterfall(p, wfRect);
     drawTimeScale(p, wfRect);
     drawTnfMarkers(p, specRect, wfRect);
+    if (m_showSpots) drawSpotMarkers(p, specRect);
     drawSliceMarkers(p, specRect, wfRect);
     drawOffScreenSlices(p, specRect);
 
@@ -1507,6 +1508,12 @@ void SpectrumWidget::setTnfMarkers(const QVector<TnfMarker>& markers)
     update();
 }
 
+void SpectrumWidget::setSpotMarkers(const QVector<SpotMarker>& markers)
+{
+    m_spotMarkers = markers;
+    update();
+}
+
 void SpectrumWidget::setTnfGlobalEnabled(bool on)
 {
     m_tnfGlobalEnabled = on;
@@ -1568,6 +1575,65 @@ int SpectrumWidget::tnfAtPixel(int x) const
 }
 
 // ─── VFO marker (filter passband + tuned frequency line) ──────────────────────
+
+void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
+{
+    if (m_spotMarkers.isEmpty()) return;
+
+    QFont spotFont = p.font();
+    spotFont.setPixelSize(9);
+    spotFont.setBold(true);
+    p.setFont(spotFont);
+    const QFontMetrics fm(spotFont);
+
+    // Track label positions to avoid overlap
+    QVector<QRect> placed;
+
+    for (const auto& spot : m_spotMarkers) {
+        const int x = mhzToX(spot.freqMhz);
+        if (x < 0 || x > width()) continue;
+
+        // Parse color or use default cyan
+        QColor col(0x00, 0xb4, 0xd8);
+        if (!spot.color.isEmpty() && spot.color.startsWith('#')) {
+            QColor parsed(spot.color);
+            if (parsed.isValid()) col = parsed;
+        }
+
+        // Draw vertical tick line
+        p.setPen(QPen(QColor(col.red(), col.green(), col.blue(), 120), 1, Qt::DotLine));
+        p.drawLine(x, specRect.top(), x, specRect.bottom());
+
+        // Draw callsign label
+        const QString label = spot.callsign;
+        const int tw = fm.horizontalAdvance(label) + 6;
+        const int th = fm.height() + 2;
+        int ly = specRect.top() + 2;
+
+        // Nudge down to avoid overlap
+        QRect labelRect(x - tw / 2, ly, tw, th);
+        for (const auto& r : placed) {
+            if (labelRect.intersects(r))
+                labelRect.moveTop(r.bottom() + 1);
+        }
+        // Don't draw if pushed below spectrum area
+        if (labelRect.bottom() > specRect.top() + specRect.height() / 3)
+            continue;
+
+        placed.append(labelRect);
+
+        // Background pill
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(col.red(), col.green(), col.blue(), 180));
+        p.drawRoundedRect(labelRect, 3, 3);
+
+        // Text
+        p.setPen(QColor(0, 0, 0));
+        p.drawText(labelRect, Qt::AlignCenter, label);
+    }
+
+    p.setFont(QFont());  // restore default
+}
 
 void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const QRect& wfRect)
 {

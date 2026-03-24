@@ -145,6 +145,7 @@ set(MODEL_SOURCES
     src/models/TransmitModel.cpp
     src/models/EqualizerModel.cpp
     src/models/TnfModel.cpp
+    src/models/SpotModel.cpp
     src/models/BandSettings.cpp
     src/models/AntennaGeniusModel.cpp
 )

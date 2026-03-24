@@ -170,6 +170,17 @@ public:
     };
     void setTnfMarkers(const QVector<TnfMarker>& markers);
     void setTnfGlobalEnabled(bool on);
+
+    struct SpotMarker {
+        int    index;
+        QString callsign;
+        double freqMhz;
+        QString color;       // #AARRGGBB or empty for default
+        QString mode;
+    };
+    void setSpotMarkers(const QVector<SpotMarker>& markers);
+    void setShowSpots(bool on) { m_showSpots = on; update(); }
+    bool showSpots() const { return m_showSpots; }
     void setTransmitting(bool tx) {
         if (tx && !m_transmitting)
             m_preTxAutoBlack = m_autoBlackThresh;  // save before TX
@@ -220,6 +231,7 @@ private:
     void drawOffScreenSlices(QPainter& p, const QRect& specRect);
     void drawBandPlan(QPainter& p, const QRect& specRect);
     void drawTnfMarkers(QPainter& p, const QRect& specRect, const QRect& wfRect);
+    void drawSpotMarkers(QPainter& p, const QRect& specRect);
     int  tnfAtPixel(int x) const;
     void drawWaterfall(QPainter& p, const QRect& r);
     void drawFreqScale(QPainter& p, const QRect& r);
@@ -352,6 +364,8 @@ private:
     // ── TNF markers ────────────────────────────────────────────────────
     QVector<TnfMarker> m_tnfMarkers;
     bool m_tnfGlobalEnabled{true};
+    QVector<SpotMarker> m_spotMarkers;
+    bool m_showSpots{true};
     int  m_draggingTnfId{-1};
     double m_dragTnfOrigFreq{0.0};
 

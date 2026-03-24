@@ -2285,6 +2285,20 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(sw, &SpectrumWidget::tnfDepthRequested,    tnf, &TnfModel::setTnfDepth);
     connect(sw, &SpectrumWidget::tnfPermanentRequested,tnf, &TnfModel::setTnfPermanent);
 
+    // ── Spot markers ─────────────────────────────────────────────────────
+    auto* spots = m_radioModel.spotModel();
+    auto rebuildSpots = [this, sw]() {
+        auto* s = m_radioModel.spotModel();
+        QVector<SpectrumWidget::SpotMarker> markers;
+        for (const auto& spot : s->spots())
+            markers.append({spot.index, spot.callsign, spot.rxFreqMhz, spot.color, spot.mode});
+        sw->setSpotMarkers(markers);
+    };
+    connect(spots, &SpotModel::spotAdded,   this, rebuildSpots);
+    connect(spots, &SpotModel::spotUpdated, this, rebuildSpots);
+    connect(spots, &SpotModel::spotRemoved, this, rebuildSpots);
+    connect(spots, &SpotModel::spotsCleared,this, rebuildSpots);
+
     // ── Per-pan display controls (client-side) ───────────────────────────
     connect(menu, &SpectrumOverlayMenu::fftFillAlphaChanged,
             sw, &SpectrumWidget::setFftFillAlpha);
