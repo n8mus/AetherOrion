@@ -2603,7 +2603,12 @@ void MainWindow::createPansSequentially(const QString& layoutId, int total,
             }
 
             m_panApplet = m_panStack->activeApplet();
-            m_applyingLayout = false;  // re-enable panadapterAdded handler
+            m_applyingLayout = false;  // re-enable handlers
+
+            // Re-process all existing slices that were missed during transition
+            for (auto* s : m_radioModel.slices())
+                onSliceAdded(s);
+
             qDebug() << "applyPanLayout: layout" << layoutId
                      << "applied with" << panIds->size() << "pans";
         });
