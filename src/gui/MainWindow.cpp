@@ -2493,6 +2493,21 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 // Client-side DSP
                 settings.setValue(pfx + "NR2",  m_audio.nr2Enabled() ? "True" : "False");
                 settings.setValue(pfx + "RN2",  m_audio.rn2Enabled() ? "True" : "False");
+                // AGC
+                settings.setValue(pfx + "AgcMode",      s->agcMode());
+                settings.setValue(pfx + "AgcThreshold",  QString::number(s->agcThreshold()));
+                // Antennas
+                settings.setValue(pfx + "RxAnt", s->rxAntenna());
+                settings.setValue(pfx + "TxAnt", s->txAntenna());
+                // Squelch
+                settings.setValue(pfx + "SqlOn",    s->squelchOn() ? "True" : "False");
+                settings.setValue(pfx + "SqlLevel", QString::number(s->squelchLevel()));
+                // Pan display: bandwidth and dBm scale
+                if (auto* pan = m_radioModel.activePanadapter()) {
+                    settings.setValue(pfx + "Bandwidth", QString::number(pan->bandwidthMhz(), 'f', 6));
+                    settings.setValue(pfx + "MinDbm",    QString::number(pan->minDbm(), 'f', 1));
+                    settings.setValue(pfx + "MaxDbm",    QString::number(pan->maxDbm(), 'f', 1));
+                }
                 settings.save();
                 qDebug() << "BandStack: saved" << curBand << s->frequency() << s->mode();
             }
@@ -2514,9 +2529,18 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             int step     = settings.value(pfx + "Step", "100").toInt();
 
             s->setMode(recallMode);
-            if (filterLo != 0 || filterHi != 0)
-                s->setFilterWidth(filterLo, filterHi);
             onFrequencyChanged(recallFreq);
+
+            // Defer filter recall until mode change is echoed by the radio,
+            // since filter offsets are mode-dependent (LSB/USB flip sign)
+            if (filterLo != 0 || filterHi != 0) {
+                auto conn = std::make_shared<QMetaObject::Connection>();
+                *conn = connect(s, &SliceModel::modeChanged, this,
+                    [this, s, conn, filterLo, filterHi]() {
+                        disconnect(*conn);
+                        s->setFilterWidth(filterLo, filterHi);
+                    });
+            }
             if (spectrum()) spectrum()->setStepSize(step);
 
             // Radio-side DSP flags
@@ -2542,6 +2566,53 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             bool rn2Saved = settings.value(pfx + "RN2", "False").toString() == "True";
             if (nr2Saved != m_audio.nr2Enabled()) m_audio.setNr2Enabled(nr2Saved);
             if (rn2Saved != m_audio.rn2Enabled()) m_audio.setRn2Enabled(rn2Saved);
+
+            // AGC
+            QString agcMode = settings.value(pfx + "AgcMode", "").toString();
+            int agcThresh   = settings.value(pfx + "AgcThreshold", "-999").toInt();
+            if (!agcMode.isEmpty() && agcMode != s->agcMode())
+                m_radioModel.sendCommand(
+                    QString("slice set %1 agc_mode=%2").arg(s->sliceId()).arg(agcMode));
+            if (agcThresh != -999 && agcThresh != s->agcThreshold())
+                m_radioModel.sendCommand(
+                    QString("slice set %1 agc_threshold=%2").arg(s->sliceId()).arg(agcThresh));
+
+            // Antennas
+            QString rxAnt = settings.value(pfx + "RxAnt", "").toString();
+            QString txAnt = settings.value(pfx + "TxAnt", "").toString();
+            if (!rxAnt.isEmpty() && rxAnt != s->rxAntenna())
+                m_radioModel.sendCommand(
+                    QString("slice set %1 rxant=%2").arg(s->sliceId()).arg(rxAnt));
+            if (!txAnt.isEmpty() && txAnt != s->txAntenna())
+                m_radioModel.sendCommand(
+                    QString("slice set %1 txant=%2").arg(s->sliceId()).arg(txAnt));
+
+            // Squelch
+            bool sqlOn  = settings.value(pfx + "SqlOn", "False").toString() == "True";
+            int sqlLvl  = settings.value(pfx + "SqlLevel", "20").toInt();
+            if (sqlOn != s->squelchOn())
+                m_radioModel.sendCommand(
+                    QString("slice set %1 squelch=%2").arg(s->sliceId()).arg(sqlOn ? 1 : 0));
+            if (sqlLvl != s->squelchLevel())
+                m_radioModel.sendCommand(
+                    QString("slice set %1 squelch_level=%2").arg(s->sliceId()).arg(sqlLvl));
+
+            // Pan display: bandwidth and dBm scale
+            double bw = settings.value(pfx + "Bandwidth", "0").toDouble();
+            float minDbm = settings.value(pfx + "MinDbm", "0").toFloat();
+            float maxDbm = settings.value(pfx + "MaxDbm", "0").toFloat();
+            if (auto* pan = m_radioModel.activePanadapter()) {
+                if (bw > 0.0)
+                    m_radioModel.sendCommand(
+                        QString("display pan set %1 bandwidth=%2")
+                            .arg(pan->panId()).arg(bw, 0, 'f', 6));
+                if (minDbm != 0.0f && maxDbm != 0.0f)
+                    m_radioModel.sendCommand(
+                        QString("display pan set %1 min_dbm=%2 max_dbm=%3")
+                            .arg(pan->panId())
+                            .arg(minDbm, 0, 'f', 1)
+                            .arg(maxDbm, 0, 'f', 1));
+            }
 
             qDebug() << "BandStack: recalled" << bandName << recallFreq << recallMode;
         } else {
