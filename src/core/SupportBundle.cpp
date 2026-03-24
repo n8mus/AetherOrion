@@ -56,8 +56,12 @@ QString SupportBundle::createBundle(const RadioInfo& radio)
     tmpDir.setAutoRemove(false);
     const QString tmp = tmpDir.path();
 
-    // 1. Copy log file
-    QFile::copy(logMgr.logFilePath(), tmp + "/aethersdr.log");
+    // 1. Copy log file (resolve symlink on Windows where .log is a .lnk shortcut)
+    QString logPath = logMgr.logFilePath();
+    QFileInfo logInfo(logPath);
+    if (logInfo.isSymLink())
+        logPath = logInfo.symLinkTarget();
+    QFile::copy(logPath, tmp + "/aethersdr.log");
 
     // 2. System info JSON
     {
