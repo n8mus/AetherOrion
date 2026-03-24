@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QStackedWidget>
 #include <QScrollArea>
+#include <QDateTime>
 #include <QKeyEvent>
 #include <QScrollBar>
 #include <QSignalBlocker>
@@ -284,16 +285,26 @@ void CwxPanel::sendBuffer()
     QString text = m_textEdit->toPlainText().trimmed();
     if (text.isEmpty()) return;
 
-    // Move text to history display — scroll from bottom up
+    // Move text to history display — scroll from bottom up, chat bubble style
     if (m_historyEdit) {
-        // On first message, pad with newlines to push text to bottom
+        // On first message, pad to push text to bottom
         if (m_historyEdit->toPlainText().isEmpty()) {
             int visibleLines = m_historyEdit->height() / m_historyEdit->fontMetrics().lineSpacing();
             QString pad;
-            for (int i = 0; i < visibleLines - 1; ++i) pad += '\n';
-            m_historyEdit->setPlainText(pad);
+            for (int i = 0; i < visibleLines - 1; ++i) pad += "<br>";
+            m_historyEdit->setHtml(pad);
         }
-        m_historyEdit->append(text);
+        // Chat bubble: rounded background, timestamp
+        QString ts = QDateTime::currentDateTime().toString("HH:mm:ss");
+        QString bubble = QString(
+            "<div style='background-color: #00b4d8; color: #000; "
+            "border-radius: 8px; padding: 6px 10px; margin: 2px 20px 2px 4px; "
+            "font-family: monospace; font-size: 13px;'>"
+            "%1"
+            "<div style='font-size: 9px; color: #003040; text-align: right; "
+            "margin-top: 2px;'>%2</div>"
+            "</div>").arg(text.toHtmlEscaped(), ts);
+        m_historyEdit->append(bubble);
         // Keep scrolled to bottom
         auto* sb = m_historyEdit->verticalScrollBar();
         sb->setValue(sb->maximum());
