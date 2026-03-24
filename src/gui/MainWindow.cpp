@@ -2568,7 +2568,14 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             int step     = settings.value(pfx + "Step", "100").toInt();
 
             s->setMode(recallMode);
-            onFrequencyChanged(recallFreq);
+            // Tune this pan's slice specifically (not activeSlice)
+            if (m_panStack && m_panStack->count() > 1 && !applet->panId().isEmpty()
+                && applet->panId() != "default") {
+                m_radioModel.sendCommand(
+                    QString("slice m %1 pan=%2").arg(recallFreq, 0, 'f', 6).arg(applet->panId()));
+            } else {
+                onFrequencyChanged(recallFreq);
+            }
             // Filter offsets: let the radio apply the correct default for
             // the recalled mode. Recalling saved filter widths across mode
             // changes produces wrong results (e.g. 3kHz USB filter on CW).
@@ -2658,7 +2665,13 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         } else {
             // First time on this band — use static defaults
             if (s) s->setMode(mode);
-            onFrequencyChanged(freqMhz);
+            if (m_panStack && m_panStack->count() > 1 && !applet->panId().isEmpty()
+                && applet->panId() != "default") {
+                m_radioModel.sendCommand(
+                    QString("slice m %1 pan=%2").arg(freqMhz, 0, 'f', 6).arg(applet->panId()));
+            } else {
+                onFrequencyChanged(freqMhz);
+            }
             qDebug() << "BandStack: first visit to" << bandName << "using defaults";
         }
     });
