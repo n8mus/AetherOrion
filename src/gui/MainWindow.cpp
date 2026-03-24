@@ -1015,6 +1015,9 @@ void MainWindow::buildMenuBar()
     connect(spotsAction, &QAction::triggered, this, [this] {
         SpotSettingsDialog dlg(&m_radioModel, this);
         dlg.exec();
+        // Refresh spots visibility after dialog closes
+        bool on = AppSettings::instance().value("IsSpotsEnabled", "True").toString() == "True";
+        for (auto* a : m_panStack->allApplets()) a->spectrumWidget()->setShowSpots(on);
     });
     settingsMenu->addAction("multiFLEX...");
     auto* txBandAct = settingsMenu->addAction("TX Band Settings...");
@@ -2298,6 +2301,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(spots, &SpotModel::spotUpdated, this, rebuildSpots);
     connect(spots, &SpotModel::spotRemoved, this, rebuildSpots);
     connect(spots, &SpotModel::spotsCleared,this, rebuildSpots);
+    sw->setShowSpots(AppSettings::instance().value("IsSpotsEnabled", "True").toString() == "True");
 
     // ── Per-pan display controls (client-side) ───────────────────────────
     connect(menu, &SpectrumOverlayMenu::fftFillAlphaChanged,
