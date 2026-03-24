@@ -165,6 +165,7 @@ public:
     double panCenterMhz() const;
     double panBandwidthMhz() const;
     QString panId() const { return m_activePanId; }
+    void setActivePanId(const QString& id) { m_activePanId = id; }
     PanadapterModel* activePanadapter() const;
     PanadapterModel* panadapter(const QString& panId) const;
     QList<PanadapterModel*> panadapters() const { return m_panadapters.values(); }

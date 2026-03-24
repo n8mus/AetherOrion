@@ -1353,6 +1353,18 @@ void MainWindow::buildUI()
     m_panStack = new PanadapterStack(splitter);
     m_panApplet = m_panStack->addPanadapter("default");
     splitter->addWidget(m_panStack);
+
+    // Sync RadioModel's active pan/wf IDs when PanadapterStack focus changes.
+    // This ensures display setting commands (fps, average, black_level, etc.)
+    // target the correct pan.
+    // Sync RadioModel's active pan ID when PanadapterStack focus changes.
+    // This ensures display setting commands (fps, average, black_level, etc.)
+    // target the correct pan — activeWfId() derives from activePanadapter()
+    // which uses m_activePanId.
+    connect(m_panStack, &PanadapterStack::activePanChanged,
+            this, [this](const QString& panId) {
+        m_radioModel.setActivePanId(panId);
+    });
     splitter->setStretchFactor(0, 1);
 
     // Right — applet panel (includes S-Meter)
