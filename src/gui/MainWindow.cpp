@@ -2528,74 +2528,47 @@ void MainWindow::applyPanLayout(const QString& layoutId)
 {
     if (!m_radioModel.isConnected()) return;
 
-    m_applyingLayout = true;  // suppress panadapterAdded handler
-
     static const QMap<QString, int> kPanCounts = {
         {"1", 1}, {"2v", 2}, {"2h", 2}, {"2h1", 3}, {"12h", 3}, {"2x2", 4}
     };
     const int needed = kPanCounts.value(layoutId, 1);
+    const int existing = m_panStack->count();
 
-    // Step 1: Close all existing pans sequentially, then create new ones.
-    // Chain close commands so each waits for the previous to complete.
-    const auto existingPans = m_radioModel.panadapters();
-    QStringList closeIds;
-    for (auto* pan : existingPans)
-        closeIds.append(pan->panId());
+    if (needed <= existing) {
+        qDebug() << "applyPanLayout: already have" << existing << "pans, need" << needed;
+        // TODO: handle reducing pans (close extras)
+        return;
+    }
 
-    // Clear the UI immediately
-    m_panStack->removeAll();
-
-    // Shared state for the async chain
-    auto state = std::make_shared<QStringList>(closeIds);
+    // Create additional pans to reach the needed count.
+    // Keep existing pan(s) alive — no tear-down, no dangling signals.
+    const int toCreate = needed - existing;
     auto panIds = std::make_shared<QStringList>();
 
-    // Recursive lambda via shared_ptr to avoid capturing an uninitialized std::function
-    auto closeNext = std::make_shared<std::function<void()>>();
-    *closeNext = [this, state, panIds, needed, layoutId, closeNext]() {
-        if (!state->isEmpty()) {
-            QString id = state->takeFirst();
-            qDebug() << "applyPanLayout: closing pan" << id;
-            m_radioModel.sendCmdPublic(
-                QString("display pan close %1").arg(id),
-                [this, closeNext](int, const QString&) {
-                    QTimer::singleShot(100, this, [closeNext]() { (*closeNext)(); });
-                });
-        } else {
-            qDebug() << "applyPanLayout: all pans closed, creating" << needed << "new pans";
-            createPansSequentially(layoutId, needed, panIds, 0);
-        }
-    };
+    // Collect existing pan IDs first (they'll be part of the layout)
+    for (auto* applet : m_panStack->allApplets())
+        panIds->append(applet->panId());
 
-    if (closeIds.isEmpty()) {
-        createPansSequentially(layoutId, needed, panIds, 0);
-    } else {
-        (*closeNext)();
-    }
+    qDebug() << "applyPanLayout: have" << existing << "pans, creating"
+             << toCreate << "more for layout" << layoutId;
+
+    createPansSequentially(layoutId, toCreate, panIds, 0);
 }
 
 void MainWindow::createPansSequentially(const QString& layoutId, int total,
                                         std::shared_ptr<QStringList> panIds, int created)
 {
     if (created >= total) {
-        // All pans created — wait for radio status to establish PanadapterModels,
-        // then apply the layout
-        qDebug() << "applyPanLayout: all" << total << "pans created:" << *panIds;
+        // All new pans created — wait for radio status to establish PanadapterModels
+        qDebug() << "applyPanLayout: all" << total << "new pans created:" << *panIds;
         QTimer::singleShot(800, this, [this, panIds, layoutId]() {
-            m_panStack->applyLayout(layoutId, *panIds);
-
-            // Wire each new applet
+            // The new pans were added to the stack via panadapterAdded handler.
+            // Wire any that aren't already wired.
             for (auto* applet : m_panStack->allApplets()) {
-                wirePanadapter(applet);
                 const QString pid = applet->panId();
                 auto* pan = m_radioModel.panadapter(pid);
                 if (pan) {
-                    connect(pan, &PanadapterModel::infoChanged,
-                            applet->spectrumWidget(),
-                            &SpectrumWidget::setFrequencyRange);
-                    connect(pan, &PanadapterModel::levelChanged,
-                            applet->spectrumWidget(),
-                            &SpectrumWidget::setDbmRange);
-                    // Push current dBm range to the spectrum widget
+                    // Push current state to the spectrum widget
                     applet->spectrumWidget()->setDbmRange(pan->minDbm(), pan->maxDbm());
                     applet->spectrumWidget()->setFrequencyRange(
                         pan->centerMhz(), pan->bandwidthMhz());
@@ -2603,14 +2576,9 @@ void MainWindow::createPansSequentially(const QString& layoutId, int total,
             }
 
             m_panApplet = m_panStack->activeApplet();
-            m_applyingLayout = false;  // re-enable handlers
-
-            // Re-process all existing slices that were missed during transition
-            for (auto* s : m_radioModel.slices())
-                onSliceAdded(s);
 
             qDebug() << "applyPanLayout: layout" << layoutId
-                     << "applied with" << panIds->size() << "pans";
+                     << "complete, total pans:" << m_panStack->count();
         });
         return;
     }
