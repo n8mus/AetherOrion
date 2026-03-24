@@ -275,7 +275,7 @@ private:
     void handleRadioStatus(const QMap<QString, QString>& kvs);
     void handleSliceStatus(int id, const QMap<QString, QString>& kvs, bool removed);
     void handleMeterStatus(const QString& rawBody);
-    void handlePanadapterStatus(const QMap<QString, QString>& kvs);
+    void handlePanadapterStatus(const QString& panId, const QMap<QString, QString>& kvs);
     void handleProfileStatus(const QString& object, const QMap<QString, QString>& kvs);
     void handleProfileStatusRaw(const QString& profileType, const QString& rawBody);
 

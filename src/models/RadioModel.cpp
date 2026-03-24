@@ -1229,8 +1229,8 @@ void RadioModel::onStatusReceived(const QString& object,
                 qCDebug(lcProtocol) << "RadioModel: claimed panadapter" << panId;
                 emit panadapterAdded(pan);
             }
+            handlePanadapterStatus(panId, kvs);
         }
-        handlePanadapterStatus(kvs);
         return;
     }
 
@@ -1695,10 +1695,11 @@ void RadioModel::handleGpsStatus(const QString& rawBody)
                            m_gpsTime);
 }
 
-void RadioModel::handlePanadapterStatus(const QMap<QString, QString>& kvs)
+void RadioModel::handlePanadapterStatus(const QString& panId, const QMap<QString, QString>& kvs)
 {
-    // Delegate to active PanadapterModel
-    auto* pan = activePanadapter();
+    // Delegate to the specific PanadapterModel, not just the active one
+    auto* pan = m_panadapters.value(panId, nullptr);
+    if (!pan) pan = activePanadapter();  // fallback
     if (pan) {
         pan->applyPanStatus(kvs);
     }
