@@ -24,6 +24,7 @@
 #include "MemoryDialog.h"
 #include "SpotSettingsDialog.h"
 #include "CwxPanel.h"
+#include "AmpApplet.h"
 #include "ProfileManagerDialog.h"
 #include "SupportDialog.h"
 #include "models/SliceModel.h"
@@ -662,6 +663,12 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&m_radioModel, &RadioModel::amplifierChanged, this, [this](bool present) {
         m_pgxlIndicator->setVisible(present);
         m_appletPanel->setAmpVisible(present);
+    });
+    connect(m_radioModel.meterModel(), &MeterModel::ampMetersChanged,
+            this, [this](float fwdPwr, float swr, float temp) {
+        m_appletPanel->ampApplet()->setFwdPower(fwdPwr);
+        m_appletPanel->ampApplet()->setSwr(swr);
+        m_appletPanel->ampApplet()->setTemp(temp);
     });
     connect(m_radioModel.transmitModel(), &TransmitModel::maxPowerLevelChanged,
             this, updatePowerScale);

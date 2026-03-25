@@ -30,10 +30,17 @@ void MeterModel::defineMeter(const MeterDef& def)
         m_compLevelIdx = def.index;
     else if (def.name == "HWALC")
         m_alcIdx = def.index;
-    else if (def.name == "PATEMP")
+    else if (def.source != "AMP" && def.name == "PATEMP")
         m_paTempIdx = def.index;
     else if (def.name == "+13.8A")
         m_supplyIdx = def.index;
+    // Amplifier meters (source "AMP")
+    else if (def.source == "AMP" && def.name == "FWDPWR")
+        m_ampFwdPwrIdx = def.index;
+    else if (def.source == "AMP" && def.name == "SWR")
+        m_ampSwrIdx = def.index;
+    else if (def.source == "AMP" && (def.name == "TEMP" || def.name == "PATEMP"))
+        m_ampTempIdx = def.index;
 
     qCDebug(lcMeters) << "MeterModel: defined meter" << def.index
              << def.source << def.sourceIndex << def.name
@@ -59,6 +66,9 @@ void MeterModel::removeMeter(int index)
     if (index == m_alcIdx)       m_alcIdx = -1;
     if (index == m_paTempIdx)    m_paTempIdx = -1;
     if (index == m_supplyIdx)    m_supplyIdx = -1;
+    if (index == m_ampFwdPwrIdx) m_ampFwdPwrIdx = -1;
+    if (index == m_ampSwrIdx)    m_ampSwrIdx = -1;
+    if (index == m_ampTempIdx)   m_ampTempIdx = -1;
 }
 
 float MeterModel::convertRaw(const MeterDef& def, qint16 raw) const
@@ -83,6 +93,7 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
     bool micChanged = false;
     bool alcChanged = false;
     bool hwChanged = false;
+    bool ampChanged = false;
 
     for (int i = 0; i < n; ++i) {
         const int idx = static_cast<int>(ids[i]);
@@ -133,6 +144,15 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
         } else if (idx == m_supplyIdx) {
             m_supplyVolts = v;  // "+13.8A" = supply voltage at point A (before fuse)
             hwChanged = true;
+        } else if (idx == m_ampFwdPwrIdx) {
+            m_ampFwdPwr = std::pow(10.0f, v / 10.0f) / 1000.0f;  // dBm → watts
+            ampChanged = true;
+        } else if (idx == m_ampSwrIdx) {
+            m_ampSwr = v;
+            ampChanged = true;
+        } else if (idx == m_ampTempIdx) {
+            m_ampTemp = v;
+            ampChanged = true;
         }
 
         emit meterUpdated(idx, v);
@@ -147,6 +167,8 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
         emit this->alcChanged(m_alc);
     if (hwChanged)
         emit hwTelemetryChanged(m_paTemp, m_supplyVolts);
+    if (ampChanged)
+        emit ampMetersChanged(m_ampFwdPwr, m_ampSwr, m_ampTemp);
 }
 
 const MeterDef* MeterModel::meterDef(int index) const
