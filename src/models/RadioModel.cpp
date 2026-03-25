@@ -1430,10 +1430,9 @@ void RadioModel::onStatusReceived(const QString& object,
     }
 
     // DVK status: "dvk status=idle enabled=1" or "dvk added id=1 name="Recording 1" duration=0"
-    if (object == "dvk") {
-        // KV parsing mangles quoted name field — pass KV map directly,
-        // DvkModel handles the truncated name gracefully
-        m_dvkModel.applyStatus(kvs);
+    if (object.startsWith("dvk")) {
+        // Pass both the object string (may contain "added"/"deleted") and KVs
+        m_dvkModel.applyStatus(object, kvs);
         return;
     }
 

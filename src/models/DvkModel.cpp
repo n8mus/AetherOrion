@@ -30,7 +30,7 @@ DvkRecording* DvkModel::findRecording(int id)
     return nullptr;
 }
 
-void DvkModel::applyStatus(const QMap<QString, QString>& kvs)
+void DvkModel::applyStatus(const QString& object, const QMap<QString, QString>& kvs)
 {
     // Global status: status=idle enabled=1
     if (kvs.contains("status")) {
@@ -58,10 +58,8 @@ void DvkModel::applyStatus(const QMap<QString, QString>& kvs)
         return;
     }
 
-    // Deleted: "deleted" key present (object was "dvk id=N deleted")
-    // The parser may put "deleted" as a key with empty value, or as part of object
-    if (kvs.contains("deleted") || kvs.value("id", "").isEmpty()) {
-        // Try to find id
+    // Deleted: object contains "deleted" (e.g. "dvk deleted id=1" or "dvk id=1 deleted")
+    if (object.contains("deleted")) {
         if (kvs.contains("id")) {
             int id = kvs["id"].toInt();
             if (id > 0) {

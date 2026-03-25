@@ -37,7 +37,7 @@ public:
     void setName(int id, const QString& name);
 
     // Status parsing (called from RadioModel)
-    void applyStatus(const QMap<QString, QString>& kvs);
+    void applyStatus(const QString& object, const QMap<QString, QString>& kvs);
 
 signals:
     void commandReady(const QString& cmd);
