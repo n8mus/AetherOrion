@@ -12,6 +12,7 @@
 #include "TnfModel.h"
 #include "SpotModel.h"
 #include "CwxModel.h"
+#include "DvkModel.h"
 
 #include <QObject>
 #include <QString>
@@ -75,6 +76,7 @@ public:
     TnfModel*         tnfModel()       { return &m_tnfModel; }
     SpotModel*        spotModel()      { return &m_spotModel; }
     CwxModel*         cwxModel()       { return &m_cwxModel; }
+    DvkModel*         dvkModel()       { return &m_dvkModel; }
     bool              hasAmplifier() const { return m_hasAmplifier; }
 
     // Getters
@@ -311,6 +313,7 @@ private:
     TnfModel         m_tnfModel;
     SpotModel        m_spotModel;
     CwxModel         m_cwxModel;
+    DvkModel         m_dvkModel;
 
     QString     m_name;
     QString     m_model;

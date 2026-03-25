@@ -147,6 +147,7 @@ set(MODEL_SOURCES
     src/models/TnfModel.cpp
     src/models/SpotModel.cpp
     src/models/CwxModel.cpp
+    src/models/DvkModel.cpp
     src/models/BandSettings.cpp
     src/models/AntennaGeniusModel.cpp
 )
@@ -162,6 +163,7 @@ set(GUI_SOURCES
     src/gui/MemoryDialog.cpp
     src/gui/SpotSettingsDialog.cpp
     src/gui/CwxPanel.cpp
+    src/gui/DvkPanel.cpp
     src/gui/AmpApplet.cpp
     src/gui/ProfileManagerDialog.cpp
     src/gui/PanadapterApplet.cpp

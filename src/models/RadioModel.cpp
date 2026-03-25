@@ -70,6 +70,9 @@ RadioModel::RadioModel(QObject* parent)
     connect(&m_cwxModel, &CwxModel::commandReady, this, [this](const QString& cmd){
         sendCmd(cmd);
     });
+    connect(&m_dvkModel, &DvkModel::commandReady, this, [this](const QString& cmd){
+        sendCmd(cmd);
+    });
 
     // ── Tune PA inhibit: restore ACC TX when tune completes ──
     connect(&m_transmitModel, &TransmitModel::tuneChanged, this, [this](bool tuning) {
@@ -1423,6 +1426,14 @@ void RadioModel::onStatusReceived(const QString& object,
     // CWX status: "cwx sent=0", "cwx wpm=20", "cwx macro1=CQ\u007fCQ"
     if (object == "cwx") {
         m_cwxModel.applyStatus(kvs);
+        return;
+    }
+
+    // DVK status: "dvk status=idle enabled=1" or "dvk added id=1 name="Recording 1" duration=0"
+    if (object == "dvk") {
+        // KV parsing mangles quoted name field — pass KV map directly,
+        // DvkModel handles the truncated name gracefully
+        m_dvkModel.applyStatus(kvs);
         return;
     }
 

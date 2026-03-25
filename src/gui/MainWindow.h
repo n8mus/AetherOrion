@@ -29,6 +29,7 @@ class PanadapterApplet;
 class PanadapterStack;
 class AppletPanel;
 class CwxPanel;
+class DvkPanel;
 #ifdef HAVE_RADE
 class RADEEngine;
 #endif
@@ -129,6 +130,7 @@ private:
     QLabel* m_tnfIndicator{nullptr};
     QLabel* m_cwxIndicator{nullptr};
     CwxPanel* m_cwxPanel{nullptr};
+    DvkPanel* m_dvkPanel{nullptr};
     QLabel* m_dvkIndicator{nullptr};
     QLabel* m_fdxIndicator{nullptr};
     QLabel* m_radioInfoLabel{nullptr};

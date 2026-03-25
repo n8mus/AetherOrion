@@ -24,6 +24,7 @@
 #include "MemoryDialog.h"
 #include "SpotSettingsDialog.h"
 #include "CwxPanel.h"
+#include "DvkPanel.h"
 #include "AmpApplet.h"
 #include "ProfileManagerDialog.h"
 #include "SupportDialog.h"
@@ -991,6 +992,30 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         }
         return true;
     }
+    if (obj == m_dvkIndicator && event->type() == QEvent::MouseButtonPress) {
+        bool show = !m_dvkPanel->isVisible();
+        // Mutual exclusion: close CWX when opening DVK
+        if (show && m_cwxPanel->isVisible()) {
+            m_cwxPanel->hide();
+            m_cwxIndicator->setStyleSheet(
+                "QLabel { color: rgba(255,255,255,40); font-weight: bold; font-size: 24px; }");
+        }
+        m_dvkPanel->setVisible(show);
+        m_dvkIndicator->setStyleSheet(show
+            ? "QLabel { color: #00b4d8; font-weight: bold; font-size: 24px; }"
+            : "QLabel { color: rgba(255,255,255,40); font-weight: bold; font-size: 24px; }");
+        if (show) {
+            auto sizes = m_splitter->sizes();
+            if (sizes.size() >= 4) {
+                int dvkW = 250;
+                int total = sizes[1] + sizes[2];
+                sizes[1] = dvkW;
+                sizes[2] = total - dvkW;
+                m_splitter->setSizes(sizes);
+            }
+        }
+        return true;
+    }
     if (obj == m_tnfIndicator && event->type() == QEvent::MouseButtonPress) {
         m_radioModel.tnfModel()->setGlobalEnabled(!m_radioModel.tnfModel()->globalEnabled());
         return true;
@@ -1468,6 +1493,11 @@ void MainWindow::buildUI()
     splitter->addWidget(m_cwxPanel);
     m_cwxPanel->hide();
 
+    // DVK panel — left of spectrum, hidden by default (mutually exclusive with CWX)
+    m_dvkPanel = new DvkPanel(m_radioModel.dvkModel(), splitter);
+    splitter->addWidget(m_dvkPanel);
+    m_dvkPanel->hide();
+
     // Centre — panadapter stack (one or more FFT + waterfall panes)
     m_panStack = new PanadapterStack(splitter);
     m_panApplet = m_panStack->addPanadapter("default");
@@ -1555,6 +1585,9 @@ void MainWindow::buildUI()
 
     m_dvkIndicator = new QLabel("DVK");
     m_dvkIndicator->setStyleSheet(greyIndLg);
+    m_dvkIndicator->setCursor(Qt::PointingHandCursor);
+    m_dvkIndicator->setToolTip("Digital Voice Keyer — click to toggle");
+    m_dvkIndicator->installEventFilter(this);
     hbox->addWidget(m_dvkIndicator);
 
     m_fdxIndicator = new QLabel("FDX");
