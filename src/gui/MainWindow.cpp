@@ -661,6 +661,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&m_radioModel, &RadioModel::amplifierChanged, this, updatePowerScale);
     connect(&m_radioModel, &RadioModel::amplifierChanged, this, [this](bool present) {
         m_pgxlIndicator->setVisible(present);
+        m_appletPanel->setAmpVisible(present);
     });
     connect(m_radioModel.transmitModel(), &TransmitModel::maxPowerLevelChanged,
             this, updatePowerScale);

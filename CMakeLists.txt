@@ -162,6 +162,7 @@ set(GUI_SOURCES
     src/gui/MemoryDialog.cpp
     src/gui/SpotSettingsDialog.cpp
     src/gui/CwxPanel.cpp
+    src/gui/AmpApplet.cpp
     src/gui/ProfileManagerDialog.cpp
     src/gui/PanadapterApplet.cpp
     src/gui/PanadapterStack.cpp

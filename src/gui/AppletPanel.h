@@ -14,6 +14,7 @@ class SliceModel;
 class RxApplet;
 class SMeterWidget;
 class TunerApplet;
+class AmpApplet;
 class TxApplet;
 class PhoneCwApplet;
 class PhoneApplet;
@@ -36,6 +37,7 @@ public:
     RxApplet*     rxApplet()      { return m_rxApplet; }
     SMeterWidget* sMeterWidget()  { return m_sMeter; }
     TunerApplet*  tunerApplet()   { return m_tunerApplet; }
+    AmpApplet*    ampApplet()     { return m_ampApplet; }
     TxApplet*       txApplet()       { return m_txApplet; }
     PhoneCwApplet*  phoneCwApplet()  { return m_phoneCwApplet; }
     PhoneApplet*    phoneApplet()    { return m_phoneApplet; }
@@ -45,6 +47,9 @@ public:
 
     // Show/hide the TUNE button and applet based on tuner presence.
     void setTunerVisible(bool visible);
+
+    // Show/hide the AMP button and applet based on amplifier presence.
+    void setAmpVisible(bool visible);
 
     // Show/hide the AG button and applet based on Antenna Genius presence.
     void setAgVisible(bool visible);
@@ -56,6 +61,8 @@ private:
     QComboBox*    m_rxSelect{nullptr};
     RxApplet*    m_rxApplet{nullptr};
     TunerApplet* m_tunerApplet{nullptr};
+    AmpApplet*   m_ampApplet{nullptr};
+    QPushButton* m_ampBtn{nullptr};
     TxApplet*      m_txApplet{nullptr};
     PhoneCwApplet* m_phoneCwApplet{nullptr};
     PhoneApplet*   m_phoneApplet{nullptr};

@@ -3,6 +3,7 @@
 #include "RxApplet.h"
 #include "SMeterWidget.h"
 #include "TunerApplet.h"
+#include "AmpApplet.h"
 #include "TxApplet.h"
 #include "PhoneCwApplet.h"
 #include "PhoneApplet.h"
@@ -185,6 +186,17 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
         connect(m_tuneBtn, &QPushButton::toggled, m_tunerApplet, &QWidget::setVisible);
     }
 
+    m_ampApplet = new AmpApplet;
+    {
+        m_ampBtn = new QPushButton("AMP", btnRow);
+        m_ampBtn->setCheckable(true);
+        m_ampBtn->hide();  // hidden until setAmpVisible(true)
+        btnLayout->addWidget(m_ampBtn);
+        m_stack->insertWidget(m_stack->count() - 1, m_ampApplet);
+        m_ampApplet->hide();
+        connect(m_ampBtn, &QPushButton::toggled, m_ampApplet, &QWidget::setVisible);
+    }
+
     m_txApplet = new TxApplet;
     addApplet("TX", m_txApplet, true);
 
@@ -224,6 +236,18 @@ void AppletPanel::setTunerVisible(bool visible)
     } else {
         m_tuneBtn->setChecked(false);  // hide the applet
         m_tuneBtn->hide();
+    }
+}
+
+void AppletPanel::setAmpVisible(bool visible)
+{
+    if (visible) {
+        m_ampBtn->show();
+        if (!m_ampBtn->isChecked())
+            m_ampBtn->setChecked(true);
+    } else {
+        m_ampBtn->setChecked(false);
+        m_ampBtn->hide();
     }
 }
 
