@@ -3,8 +3,24 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QShortcut>
+#include <QScrollArea>
 
 namespace AetherSDR {
+
+static const char* kSlotStyle =
+    "QWidget { background: #0f1520; border: 1px solid #203040; border-radius: 3px; }";
+
+static const char* kFKeyStyle =
+    "QPushButton { background: #1a2a3a; color: #00b4d8; border: 1px solid #203040; "
+    "border-radius: 3px; font-size: 10px; font-weight: bold; min-width: 28px; max-width: 28px; }"
+    "QPushButton:hover { background: #253545; }"
+    "QPushButton:pressed { background: #00b4d8; color: #000; }";
+
+static const char* kNameStyle =
+    "QLabel { color: #c8d8e8; font-size: 10px; background: transparent; border: none; }";
+
+static const char* kDurStyle =
+    "QLabel { color: #6a8090; font-size: 9px; background: transparent; border: none; }";
 
 static const char* kBtnStyle =
     "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #203040; "
@@ -12,100 +28,139 @@ static const char* kBtnStyle =
     "QPushButton:hover { background: #253545; }"
     "QPushButton:checked { background: #00b4d8; color: #000; }";
 
-static const char* kRecActive =
-    "QPushButton:checked { background: #cc3333; color: #fff; }";
-
-static const char* kPlayActive =
-    "QPushButton:checked { background: #33aa33; color: #fff; }";
-
-static const char* kPrevActive =
-    "QPushButton:checked { background: #3388cc; color: #fff; }";
+struct SlotRow {
+    QWidget* container;
+    QPushButton* fkeyBtn;
+    QLabel* nameLabel;
+    QLabel* durLabel;
+    int id;
+};
 
 DvkPanel::DvkPanel(DvkModel* model, QWidget* parent)
     : QWidget(parent), m_model(model)
 {
-    auto* vbox = new QVBoxLayout(this);
-    vbox->setContentsMargins(4, 4, 4, 4);
-    vbox->setSpacing(4);
+    auto* outerVbox = new QVBoxLayout(this);
+    outerVbox->setContentsMargins(4, 4, 4, 4);
+    outerVbox->setSpacing(4);
 
     // Title
     auto* title = new QLabel("DVK");
     title->setStyleSheet("QLabel { color: #00b4d8; font-weight: bold; font-size: 14px; }");
-    vbox->addWidget(title);
+    outerVbox->addWidget(title);
 
-    // Slot list
-    m_slotList = new QListWidget;
-    m_slotList->setStyleSheet(
-        "QListWidget { background: #0a0a14; color: #c8d8e8; border: 1px solid #203040; "
-        "font-size: 11px; }"
-        "QListWidget::item { padding: 3px 4px; }"
-        "QListWidget::item:selected { background: #1a3a5a; }");
-    m_slotList->setFixedHeight(300);
-    vbox->addWidget(m_slotList);
+    // Scrollable slot area
+    auto* scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setStyleSheet("QScrollArea { background: transparent; border: none; }");
 
-    // Stretch pushes controls to bottom
-    vbox->addStretch();
+    auto* slotContainer = new QWidget;
+    m_slotLayout = new QVBoxLayout(slotContainer);
+    m_slotLayout->setContentsMargins(0, 0, 0, 0);
+    m_slotLayout->setSpacing(2);
+
+    // Create 12 slot rows
+    for (int i = 0; i < 12; ++i) {
+        int id = i + 1;
+        auto* row = new QWidget;
+        row->setStyleSheet(kSlotStyle);
+        row->setFixedHeight(32);
+        auto* hbox = new QHBoxLayout(row);
+        hbox->setContentsMargins(3, 2, 3, 2);
+        hbox->setSpacing(4);
+
+        auto* fkeyBtn = new QPushButton(QString("F%1").arg(id));
+        fkeyBtn->setStyleSheet(kFKeyStyle);
+        fkeyBtn->setFixedSize(28, 24);
+        fkeyBtn->setToolTip(QString("Play recording %1 on-air (F%1)").arg(id));
+        hbox->addWidget(fkeyBtn);
+
+        auto* nameLabel = new QLabel(QString("Recording %1").arg(id));
+        nameLabel->setStyleSheet(kNameStyle);
+        hbox->addWidget(nameLabel, 1);
+
+        auto* durLabel = new QLabel("Empty");
+        durLabel->setStyleSheet(kDurStyle);
+        durLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        durLabel->setFixedWidth(40);
+        hbox->addWidget(durLabel);
+
+        m_slotLayout->addWidget(row);
+
+        // Store references
+        m_fkeyBtns.append(fkeyBtn);
+        m_nameLabels.append(nameLabel);
+        m_durLabels.append(durLabel);
+
+        // F-key button click → playback
+        connect(fkeyBtn, &QPushButton::clicked, this, [this, id]() {
+            if (m_model->status() == DvkModel::Playback && m_model->activeId() == id)
+                m_model->playbackStop(id);
+            else
+                m_model->playbackStart(id);
+        });
+
+        // Click row to select
+        row->installEventFilter(this);
+    }
+
+    m_slotLayout->addStretch();
+    scrollArea->setWidget(slotContainer);
+    outerVbox->addWidget(scrollArea, 1);
 
     // Control buttons
     auto* btnRow = new QHBoxLayout;
     btnRow->setSpacing(3);
 
-    m_recBtn = new QPushButton("● REC");
+    m_recBtn = new QPushButton(QString::fromUtf8("● REC"));
     m_recBtn->setCheckable(true);
-    m_recBtn->setStyleSheet(QString(kBtnStyle) + kRecActive);
+    m_recBtn->setStyleSheet(QString(kBtnStyle) +
+        "QPushButton:checked { background: #cc3333; color: #fff; }");
     btnRow->addWidget(m_recBtn);
 
-    m_playBtn = new QPushButton("► PLAY");
+    m_playBtn = new QPushButton(QString::fromUtf8("► PLAY"));
     m_playBtn->setCheckable(true);
-    m_playBtn->setStyleSheet(QString(kBtnStyle) + kPlayActive);
+    m_playBtn->setStyleSheet(QString(kBtnStyle) +
+        "QPushButton:checked { background: #33aa33; color: #fff; }");
     btnRow->addWidget(m_playBtn);
 
-    m_prevBtn = new QPushButton("🔊 PREV");
+    m_prevBtn = new QPushButton(QString::fromUtf8("◄ PREV"));
     m_prevBtn->setCheckable(true);
-    m_prevBtn->setStyleSheet(QString(kBtnStyle) + kPrevActive);
+    m_prevBtn->setStyleSheet(QString(kBtnStyle) +
+        "QPushButton:checked { background: #3388cc; color: #fff; }");
     btnRow->addWidget(m_prevBtn);
 
-    vbox->addLayout(btnRow);
+    outerVbox->addLayout(btnRow);
 
     // Status label
     m_statusLabel = new QLabel("Status: Idle");
     m_statusLabel->setStyleSheet("QLabel { color: #6a8090; font-size: 10px; }");
-    vbox->addWidget(m_statusLabel);
+    outerVbox->addWidget(m_statusLabel);
 
     // Wire buttons
     connect(m_recBtn, &QPushButton::clicked, this, [this](bool checked) {
-        int slot = selectedSlot();
-        if (slot < 0) return;
-        if (checked)
-            m_model->recStart(slot);
-        else
-            m_model->recStop(slot);
+        if (m_selectedSlot < 1) return;
+        if (checked) m_model->recStart(m_selectedSlot);
+        else         m_model->recStop(m_selectedSlot);
     });
 
     connect(m_playBtn, &QPushButton::clicked, this, [this](bool checked) {
-        int slot = selectedSlot();
-        if (slot < 0) return;
-        if (checked)
-            m_model->playbackStart(slot);
-        else
-            m_model->playbackStop(slot);
+        if (m_selectedSlot < 1) return;
+        if (checked) m_model->playbackStart(m_selectedSlot);
+        else         m_model->playbackStop(m_selectedSlot);
     });
 
     connect(m_prevBtn, &QPushButton::clicked, this, [this](bool checked) {
-        int slot = selectedSlot();
-        if (slot < 0) return;
-        if (checked)
-            m_model->previewStart(slot);
-        else
-            m_model->previewStop(slot);
+        if (m_selectedSlot < 1) return;
+        if (checked) m_model->previewStart(m_selectedSlot);
+        else         m_model->previewStop(m_selectedSlot);
     });
 
     // Wire model signals
     connect(m_model, &DvkModel::statusChanged, this, &DvkPanel::onStatusChanged);
     connect(m_model, &DvkModel::recordingChanged, this, &DvkPanel::onRecordingChanged);
-    connect(m_model, &DvkModel::recordingsLoaded, this, &DvkPanel::rebuildList);
 
-    // F1-F12 hotkeys for playback
+    // F1-F12 hotkeys
     for (int i = 0; i < 12; ++i) {
         auto* sc = new QShortcut(QKeySequence(Qt::Key_F1 + i), this);
         connect(sc, &QShortcut::activated, this, [this, i]() {
@@ -129,21 +184,46 @@ DvkPanel::DvkPanel(DvkModel* model, QWidget* parent)
         default: break;
         }
     });
+
+    // Select first slot by default
+    m_selectedSlot = 1;
+}
+
+bool DvkPanel::eventFilter(QObject* obj, QEvent* event)
+{
+    if (event->type() == QEvent::MouseButtonPress) {
+        // Find which slot row was clicked
+        for (int i = 0; i < 12; ++i) {
+            if (obj == m_fkeyBtns[i]->parentWidget()) {
+                selectSlot(i + 1);
+                return true;
+            }
+        }
+    }
+    return QWidget::eventFilter(obj, event);
+}
+
+void DvkPanel::selectSlot(int id)
+{
+    m_selectedSlot = id;
+    for (int i = 0; i < 12; ++i) {
+        auto* container = m_fkeyBtns[i]->parentWidget();
+        bool selected = (i + 1 == id);
+        container->setStyleSheet(selected
+            ? "QWidget { background: #1a2a4a; border: 1px solid #00b4d8; border-radius: 3px; }"
+            : kSlotStyle);
+    }
 }
 
 int DvkPanel::selectedSlot() const
 {
-    auto* item = m_slotList->currentItem();
-    if (!item) return -1;
-    return item->data(Qt::UserRole).toInt();
+    return m_selectedSlot;
 }
 
 void DvkPanel::onStatusChanged(int status, int id)
 {
-    Q_UNUSED(id);
     auto s = static_cast<DvkModel::Status>(status);
 
-    // Update button checked states without triggering clicks
     m_recBtn->blockSignals(true);
     m_playBtn->blockSignals(true);
     m_prevBtn->blockSignals(true);
@@ -156,7 +236,15 @@ void DvkPanel::onStatusChanged(int status, int id)
     m_playBtn->blockSignals(false);
     m_prevBtn->blockSignals(false);
 
-    // Status label
+    // Highlight active slot's F-key button during playback/recording
+    for (int i = 0; i < m_fkeyBtns.size(); ++i) {
+        bool active = (i + 1 == id) && (s == DvkModel::Playback || s == DvkModel::Recording || s == DvkModel::Preview);
+        m_fkeyBtns[i]->setStyleSheet(active
+            ? "QPushButton { background: #00b4d8; color: #000; border: 1px solid #00b4d8; "
+              "border-radius: 3px; font-size: 10px; font-weight: bold; min-width: 28px; max-width: 28px; }"
+            : kFKeyStyle);
+    }
+
     switch (s) {
     case DvkModel::Idle:      m_statusLabel->setText("Status: Idle"); break;
     case DvkModel::Recording: m_statusLabel->setText(QString("Status: Recording %1").arg(id)); break;
@@ -165,53 +253,24 @@ void DvkPanel::onStatusChanged(int status, int id)
     case DvkModel::Disabled:  m_statusLabel->setText("Status: Disabled (SmartSDR+ required)"); break;
     default:                  m_statusLabel->setText("Status: Unknown"); break;
     }
-
-    updateButtons();
 }
 
 void DvkPanel::onRecordingChanged(int id)
 {
-    // Update the specific item in the list
-    for (int i = 0; i < m_slotList->count(); ++i) {
-        auto* item = m_slotList->item(i);
-        if (item->data(Qt::UserRole).toInt() == id) {
-            const auto& recs = m_model->recordings();
-            for (const auto& r : recs) {
-                if (r.id == id) {
-                    QString dur = r.durationMs > 0 ? formatDuration(r.durationMs) : "Empty";
-                    item->setText(QString("F%1  %2  [%3]").arg(id).arg(r.name, -20).arg(dur));
-                    break;
-                }
-            }
+    if (id < 1 || id > 12) return;
+    int idx = id - 1;
+    const auto& recs = m_model->recordings();
+    for (const auto& r : recs) {
+        if (r.id == id) {
+            m_nameLabels[idx]->setText(r.name);
+            m_durLabels[idx]->setText(r.durationMs > 0 ? formatDuration(r.durationMs) : "Empty");
+            // Dim empty slots
+            m_nameLabels[idx]->setStyleSheet(r.durationMs > 0
+                ? kNameStyle
+                : "QLabel { color: #505060; font-size: 10px; background: transparent; border: none; }");
             break;
         }
     }
-}
-
-void DvkPanel::rebuildList()
-{
-    m_slotList->clear();
-    const auto& recs = m_model->recordings();
-    for (const auto& r : recs) {
-        QString dur = r.durationMs > 0 ? formatDuration(r.durationMs) : "Empty";
-        auto* item = new QListWidgetItem(
-            QString("F%1  %2  [%3]").arg(r.id).arg(r.name, -20).arg(dur));
-        item->setData(Qt::UserRole, r.id);
-        if (r.durationMs == 0)
-            item->setForeground(QColor("#505060"));
-        m_slotList->addItem(item);
-    }
-    if (m_slotList->count() > 0)
-        m_slotList->setCurrentRow(0);
-}
-
-void DvkPanel::updateButtons()
-{
-    bool idle = (m_model->status() == DvkModel::Idle);
-    bool hasSlot = selectedSlot() > 0;
-    m_recBtn->setEnabled(idle && hasSlot);
-    m_playBtn->setEnabled(idle && hasSlot);
-    m_prevBtn->setEnabled(idle && hasSlot);
 }
 
 QString DvkPanel::formatDuration(int ms)

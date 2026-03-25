@@ -3,7 +3,8 @@
 #include <QWidget>
 #include <QPushButton>
 #include <QLabel>
-#include <QListWidget>
+#include <QVBoxLayout>
+#include <QVector>
 
 namespace AetherSDR {
 class DvkModel;
@@ -15,20 +16,26 @@ public:
 
     int selectedSlot() const;
 
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override;
+
 private slots:
     void onStatusChanged(int status, int id);
     void onRecordingChanged(int id);
-    void rebuildList();
 
 private:
     DvkModel* m_model;
-    QListWidget* m_slotList;
+    QVBoxLayout* m_slotLayout;
+    QVector<QPushButton*> m_fkeyBtns;
+    QVector<QLabel*> m_nameLabels;
+    QVector<QLabel*> m_durLabels;
     QPushButton* m_recBtn;
     QPushButton* m_playBtn;
     QPushButton* m_prevBtn;
     QLabel* m_statusLabel;
+    int m_selectedSlot{1};
 
-    void updateButtons();
+    void selectSlot(int id);
     QString formatDuration(int ms);
 };
 
