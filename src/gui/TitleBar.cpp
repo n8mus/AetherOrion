@@ -116,10 +116,19 @@ TitleBar::TitleBar(QWidget* parent)
 
     m_hbox->addSpacing(8);
 
-    // Master volume
-    auto* volIcon = new QLabel("\xF0\x9F\x94\x8A");  // 🔊
-    volIcon->setStyleSheet("QLabel { font-size: 14px; }");
-    m_hbox->addWidget(volIcon);
+    // Master volume (click icon to mute/unmute)
+    m_speakerBtn = new QPushButton("\xF0\x9F\x94\x8A");  // 🔊
+    m_speakerBtn->setFixedSize(20, 20);
+    m_speakerBtn->setCheckable(true);
+    m_speakerBtn->setStyleSheet(
+        "QPushButton { background: transparent; border: none; font-size: 14px; padding: 0; }"
+        "QPushButton:checked { opacity: 0.4; }");
+    m_speakerBtn->setToolTip("Click to mute/unmute line out");
+    connect(m_speakerBtn, &QPushButton::toggled, this, [this](bool muted) {
+        m_speakerBtn->setText(muted ? "\xF0\x9F\x94\x87" : "\xF0\x9F\x94\x8A");  // 🔇 / 🔊
+        emit lineoutMuteChanged(muted);
+    });
+    m_hbox->addWidget(m_speakerBtn);
 
     m_masterSlider = new QSlider(Qt::Horizontal);
     m_masterSlider->setRange(0, 100);
@@ -146,10 +155,19 @@ TitleBar::TitleBar(QWidget* parent)
 
     m_hbox->addSpacing(8);
 
-    // Headphone volume
-    auto* hpIcon = new QLabel("\xF0\x9F\x8E\xA7");  // 🎧
-    hpIcon->setStyleSheet("QLabel { font-size: 14px; }");
-    m_hbox->addWidget(hpIcon);
+    // Headphone volume (click icon to mute/unmute)
+    m_headphoneBtn = new QPushButton("\xF0\x9F\x8E\xA7");  // 🎧
+    m_headphoneBtn->setFixedSize(20, 20);
+    m_headphoneBtn->setCheckable(true);
+    m_headphoneBtn->setStyleSheet(
+        "QPushButton { background: transparent; border: none; font-size: 14px; padding: 0; }"
+        "QPushButton:checked { opacity: 0.4; }");
+    m_headphoneBtn->setToolTip("Click to mute/unmute headphones");
+    connect(m_headphoneBtn, &QPushButton::toggled, this, [this](bool muted) {
+        m_headphoneBtn->setText(muted ? "\xF0\x9F\x94\x87" : "\xF0\x9F\x8E\xA7");  // 🔇 / 🎧
+        emit headphoneMuteChanged(muted);
+    });
+    m_hbox->addWidget(m_headphoneBtn);
 
     m_hpSlider = new QSlider(Qt::Horizontal);
     m_hpSlider->setRange(0, 100);

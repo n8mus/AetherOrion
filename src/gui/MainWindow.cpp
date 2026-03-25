@@ -652,6 +652,12 @@ MainWindow::MainWindow(QWidget* parent)
     });
     connect(m_titleBar, &TitleBar::headphoneVolumeChanged,
             &m_radioModel, &RadioModel::setHeadphoneGain);
+    connect(m_titleBar, &TitleBar::lineoutMuteChanged, this, [this](bool muted) {
+        m_radioModel.sendCommand(QString("mixer lineout mute %1").arg(muted ? 1 : 0));
+    });
+    connect(m_titleBar, &TitleBar::headphoneMuteChanged, this, [this](bool muted) {
+        m_radioModel.sendCommand(QString("mixer headphone mute %1").arg(muted ? 1 : 0));
+    });
     connect(&m_radioModel, &RadioModel::audioOutputChanged, this, [this]() {
         m_titleBar->setHeadphoneVolume(m_radioModel.headphoneGain());
     });

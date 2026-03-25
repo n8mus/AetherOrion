@@ -32,6 +32,8 @@ signals:
     void pcAudioToggled(bool on);
     void masterVolumeChanged(int pct);
     void headphoneVolumeChanged(int pct);
+    void lineoutMuteChanged(bool muted);
+    void headphoneMuteChanged(bool muted);
 
 private:
     void showFeatureRequestDialog();
@@ -39,6 +41,8 @@ private:
     QLabel*      m_otherTxLabel{nullptr};
     QLabel*      m_mfLabel{nullptr};
     QPushButton* m_pcBtn{nullptr};
+    QPushButton* m_speakerBtn{nullptr};
+    QPushButton* m_headphoneBtn{nullptr};
     QSlider*     m_masterSlider{nullptr};
     QSlider*     m_hpSlider{nullptr};
     QLabel*      m_masterLabel{nullptr};
