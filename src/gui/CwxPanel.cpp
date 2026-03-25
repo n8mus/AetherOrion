@@ -25,7 +25,7 @@ public:
     CwxBubble(const QString& text, const QString& time, QWidget* parent = nullptr)
         : QWidget(parent), m_text(text), m_time(time)
     {
-        QFont textFont("monospace", 10);
+        QFont textFont("monospace", 12);
         QFont timeFont("monospace", 8);
         QFontMetrics tfm(textFont);
         QFontMetrics sfm(timeFont);
@@ -46,7 +46,7 @@ public:
         p.drawRoundedRect(r, 10, 10);
 
         // CW text — 10pt, left aligned, top
-        QFont textFont("monospace", 10);
+        QFont textFont("monospace", 12);
         p.setFont(textFont);
         p.setPen(QColor(0, 0, 0));
         QFontMetrics tfm(textFont);
