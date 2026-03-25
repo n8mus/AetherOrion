@@ -342,6 +342,38 @@ bool on = s.value("MyFeatureEnabled", "False").toString() == "True";
 The only place `QSettings` appears is in `AppSettings.cpp` for one-time
 migration from the old INI format.
 
+### Radio-Authoritative Settings Policy
+
+**The radio is always authoritative for any setting it stores.** AetherSDR
+must never save, recall, or override radio-side settings from client-side
+persistence. Only save client-side settings for things the radio does NOT
+save.
+
+**Radio-authoritative (do NOT persist client-side):**
+- Frequency, mode, filter width (restored via GUIClientID session)
+- Step size and step list (per-slice, per-mode — sent via `step=` / `step_list=` in slice status)
+- AGC mode/threshold, squelch, DSP flags (NR, NB, ANF, etc.)
+- Antenna assignments (RX/TX antenna per slice)
+- TX power, tune power, mic settings
+- Panadapter count and slice assignments (radio restores from GUIClientID)
+- Any setting that appears in a `slice`, `transmit`, or `display pan` status message
+
+**Client-authoritative (persist in AppSettings):**
+- Panadapter layout arrangement (how pans are arranged on screen — 2v, 2h, etc.)
+- Client-side DSP (NR2, RN2 — not known to radio)
+- UI preferences (window geometry, applet visibility, UI scale)
+- Display preferences (FFT fill color/alpha, waterfall color scheme)
+- CWX panel visibility, keyboard shortcuts enabled
+- Band stack display settings (bandwidth zoom, dBm scale — these are per-pan
+  display preferences, not radio state)
+- DX spot settings (colors, font size, opacity)
+
+**Why:** When both the radio and client persist the same setting, they fight
+on reconnect. The radio restores its value via GUIClientID, then the client
+overwrites it with a stale saved value. This caused bugs with step size (#274),
+filter offsets, and panadapter layout (#269). The radio's session restore is
+always more current than our saved state.
+
 ### GUI↔Radio Sync (No Feedback Loops)
 
 - `SliceModel` setters emit `commandReady(cmd)` → `RadioModel` sends to radio
