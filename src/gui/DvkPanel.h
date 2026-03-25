@@ -3,7 +3,6 @@
 #include <QWidget>
 #include <QPushButton>
 #include <QLabel>
-#include <QVBoxLayout>
 #include <QVector>
 
 namespace AetherSDR {
@@ -13,11 +12,7 @@ class DvkPanel : public QWidget {
     Q_OBJECT
 public:
     explicit DvkPanel(DvkModel* model, QWidget* parent = nullptr);
-
     int selectedSlot() const;
-
-protected:
-    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private slots:
     void onStatusChanged(int status, int id);
@@ -25,7 +20,6 @@ private slots:
 
 private:
     DvkModel* m_model;
-    QVBoxLayout* m_slotLayout;
     QVector<QPushButton*> m_fkeyBtns;
     QVector<QLabel*> m_nameLabels;
     QVector<QLabel*> m_durLabels;
