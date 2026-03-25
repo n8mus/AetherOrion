@@ -282,6 +282,7 @@ private:
 
     // Tuning step size for click-snap and wheel scroll (Hz)
     int m_stepHz{100};
+    int m_scrollAccum{0};   // trackpad pixel scroll accumulator (macOS)
 
     // ── FFT display controls (radio-side via "display pan set") ──────────
     int   m_panIndex{0};             // per-pan settings index (0, 1, 2, 3)

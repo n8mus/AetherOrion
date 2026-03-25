@@ -1055,12 +1055,27 @@ void SpectrumWidget::wheelEvent(QWheelEvent* ev)
         return;
     }
 
-    const int ticks = ev->angleDelta().y() / 120;   // +1 per notch up, -1 per notch down
-    if (ticks == 0) { ev->ignore(); return; }
+    // Handle both trackpad (pixelDelta) and mouse wheel (angleDelta)
+    int steps = 0;
+    if (!ev->pixelDelta().isNull()) {
+        // Trackpad: accumulate pixel delta; 1 step per ~15px
+        // Ignore momentum (inertial) scrolling
+        if (ev->phase() == Qt::ScrollMomentum) { ev->accept(); return; }
+        // Ignore horizontal-dominant swipes
+        if (qAbs(ev->pixelDelta().x()) > qAbs(ev->pixelDelta().y())) {
+            ev->ignore(); return;
+        }
+        m_scrollAccum += ev->pixelDelta().y();
+        steps = m_scrollAccum / 15;
+        m_scrollAccum -= steps * 15;
+    } else {
+        steps = ev->angleDelta().y() / 120;
+    }
+    if (steps == 0) { ev->ignore(); return; }
 
     const auto* ao = activeOverlay();
     const double vfoMhz = ao ? ao->freqMhz : m_centerMhz;
-    const double newMhz = snapToStep(vfoMhz + ticks * m_stepHz / 1e6, m_stepHz);
+    const double newMhz = snapToStep(vfoMhz + steps * m_stepHz / 1e6, m_stepHz);
     emit frequencyClicked(newMhz);
     ev->accept();
 }
