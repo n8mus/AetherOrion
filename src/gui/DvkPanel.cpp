@@ -48,14 +48,8 @@ DvkPanel::DvkPanel(DvkModel* model, QWidget* parent)
     title->setStyleSheet("QLabel { color: #00b4d8; font-weight: bold; font-size: 14px; }");
     outerVbox->addWidget(title);
 
-    // Scrollable slot area
-    auto* scrollArea = new QScrollArea;
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setStyleSheet("QScrollArea { background: transparent; border: none; }");
-
-    auto* slotContainer = new QWidget;
-    m_slotLayout = new QVBoxLayout(slotContainer);
+    // Slot rows — stretch to fill panel
+    m_slotLayout = new QVBoxLayout;
     m_slotLayout->setContentsMargins(0, 0, 0, 0);
     m_slotLayout->setSpacing(2);
 
@@ -64,7 +58,7 @@ DvkPanel::DvkPanel(DvkModel* model, QWidget* parent)
         int id = i + 1;
         auto* row = new QWidget;
         row->setStyleSheet(kSlotStyle);
-        row->setFixedHeight(32);
+        row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         auto* hbox = new QHBoxLayout(row);
         hbox->setContentsMargins(3, 2, 3, 2);
         hbox->setSpacing(4);
@@ -104,9 +98,7 @@ DvkPanel::DvkPanel(DvkModel* model, QWidget* parent)
         row->installEventFilter(this);
     }
 
-    m_slotLayout->addStretch();
-    scrollArea->setWidget(slotContainer);
-    outerVbox->addWidget(scrollArea, 1);
+    outerVbox->addLayout(m_slotLayout, 1);
 
     // Control buttons
     auto* btnRow = new QHBoxLayout;
