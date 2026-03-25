@@ -500,6 +500,15 @@ MainWindow::MainWindow(QWidget* parent)
         }
         m_panStack->removePanadapter(panId);
         qDebug() << "MainWindow: removed panadapter applet for" << panId;
+
+        // Rearrange remaining pans to a sensible layout
+        int remaining = m_panStack->count();
+        if (remaining == 1)
+            AppSettings::instance().setValue("PanadapterLayout", "1");
+        else if (remaining == 2)
+            m_panStack->rearrangeLayout("2v");
+        else if (remaining == 3)
+            m_panStack->rearrangeLayout("2h1");
     });
 
     // ── Per-panadapter signal wiring (extracted for multi-pan support) ──────
@@ -2332,6 +2341,14 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     // ── Pan activation: clicking on this pan makes it active ─────────────
     connect(applet, &PanadapterApplet::activated,
             m_panStack, &PanadapterStack::setActivePan);
+
+    // ── Close pan: X button on title bar closes this pan ────────────────
+    connect(applet, &PanadapterApplet::closeRequested,
+            this, [this](const QString& panId) {
+        // Don't close the last pan
+        if (m_panStack->count() <= 1) return;
+        m_radioModel.sendCommand(QString("display pan remove %1").arg(panId));
+    });
 
     // ── User drag actions from spectrum → radio (per-pan) ──────────────────
     connect(sw, &SpectrumWidget::bandwidthChangeRequested,

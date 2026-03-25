@@ -39,6 +39,7 @@ public:
 
 signals:
     void activated(const QString& panId);
+    void closeRequested(const QString& panId);
 
 protected:
     bool eventFilter(QObject* obj, QEvent* ev) override;

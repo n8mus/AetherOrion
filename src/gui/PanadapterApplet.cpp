@@ -36,18 +36,18 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     barLayout->addWidget(m_titleLabel);
     barLayout->addStretch();
 
-    // Placeholder window control buttons (non-functional for now)
     const QString btnStyle = QStringLiteral(
         "QPushButton { background: transparent; color: #6a8090; "
         "border: none; font-size: 9px; padding: 0; }"
         "QPushButton:hover { color: #c8d8e8; }");
 
-    for (const char* icon : {"_", "\u25A1", "\u00D7"}) {
-        auto* btn = new QPushButton(icon);
-        btn->setFixedSize(14, 14);
-        btn->setStyleSheet(btnStyle);
-        barLayout->addWidget(btn);
-    }
+    auto* closeBtn = new QPushButton("\u00D7");
+    closeBtn->setFixedSize(14, 14);
+    closeBtn->setStyleSheet(btnStyle + "QPushButton:hover { color: #ff4040; }");
+    connect(closeBtn, &QPushButton::clicked, this, [this]() {
+        emit closeRequested(m_panId);
+    });
+    barLayout->addWidget(closeBtn);
 
     layout->addWidget(titleBar);
 
