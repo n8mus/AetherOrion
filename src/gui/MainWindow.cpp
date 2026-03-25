@@ -926,6 +926,10 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
                 sizes[1] = total - cwxW;
                 m_splitter->setSizes(sizes);
             }
+            // Enable CWX sidetone sync so radio plays sidetone for CWX keying
+            m_radioModel.sendCommand("cw synccwx 1");
+        } else {
+            m_radioModel.sendCommand("cw synccwx 0");
         }
         return true;
     }
