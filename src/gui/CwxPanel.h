@@ -51,7 +51,7 @@ private:
 
     // Setup view
     QWidget*        m_setupPage{nullptr};
-    QLineEdit*      m_macroEdits[12]{};
+    QTextEdit*      m_macroEdits[12]{};
     QSpinBox*       m_delaySpin{nullptr};
     QPushButton*    m_qskBtn{nullptr};
 

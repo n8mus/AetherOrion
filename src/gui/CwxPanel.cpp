@@ -198,7 +198,7 @@ void CwxPanel::setModel(CwxModel* model)
     connect(m_model, &CwxModel::macroChanged, this, [this](int idx, const QString& text) {
         if (idx >= 0 && idx < 12 && m_macroEdits[idx]) {
             QSignalBlocker b(m_macroEdits[idx]);
-            m_macroEdits[idx]->setText(text);
+            m_macroEdits[idx]->setPlainText(text);
         }
     });
     connect(m_model, &CwxModel::delayChanged, this, [this](int ms) {
@@ -299,10 +299,14 @@ void CwxPanel::buildSetupView()
             "QPushButton:hover { background: #203040; }");
         macroGrid->addWidget(label, i, 0);
 
-        m_macroEdits[i] = new QLineEdit;
-        m_macroEdits[i]->setStyleSheet(kEditStyle);
+        m_macroEdits[i] = new QTextEdit;
+        m_macroEdits[i]->setStyleSheet(
+            "QTextEdit { background: #ffffff; color: #000000; border: 1px solid #304050; "
+            "border-radius: 2px; padding: 2px; font-size: 11px; }");
         m_macroEdits[i]->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         m_macroEdits[i]->setPlaceholderText(QString("F%1 macro...").arg(i + 1));
+        m_macroEdits[i]->setAcceptRichText(false);
+        m_macroEdits[i]->setLineWrapMode(QTextEdit::WidgetWidth);
         macroGrid->addWidget(m_macroEdits[i], i, 1);
 
         macroGrid->setRowStretch(i, 1);
@@ -312,10 +316,10 @@ void CwxPanel::buildSetupView()
             if (m_model) m_model->sendMacro(i + 1);
         });
 
-        // Edit → save macro
-        connect(m_macroEdits[i], &QLineEdit::editingFinished, this, [this, i]() {
+        // Edit → save macro (debounced — save when focus leaves)
+        connect(m_macroEdits[i], &QTextEdit::textChanged, this, [this, i]() {
             if (m_model && m_macroEdits[i])
-                m_model->saveMacro(i, m_macroEdits[i]->text());
+                m_model->saveMacro(i, m_macroEdits[i]->toPlainText().trimmed());
         });
     }
 
