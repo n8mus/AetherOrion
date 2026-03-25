@@ -468,6 +468,21 @@ MainWindow::MainWindow(QWidget* parent)
                     m_panStack->rearrangeLayout("2h1"); // default 3-pan
                 else if (panCount >= 4)
                     m_panStack->rearrangeLayout("2x2"); // default 4-pan
+
+                // Defensive re-push xpixels for all pans after layout settles.
+                // Covers race where radio hadn't finished pan init when first push arrived.
+                QTimer::singleShot(3000, this, [this]() {
+                    for (auto* applet : m_panStack->allApplets()) {
+                        auto* sw = applet->spectrumWidget();
+                        auto* pan = m_radioModel.panadapter(applet->panId());
+                        if (!sw || !pan) continue;
+                        int xpix = qMax(sw->width(), 1024);
+                        int ypix = qMax(sw->height(), 200);
+                        m_radioModel.sendCommand(
+                            QString("display pan set %1 xpixels=%2 ypixels=%3")
+                                .arg(pan->panId()).arg(xpix).arg(ypix));
+                    }
+                });
             });
         }
         m_layoutRestoreTimer->start();  // restart on each new pan
