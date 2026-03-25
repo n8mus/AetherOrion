@@ -35,11 +35,15 @@ void MeterModel::defineMeter(const MeterDef& def)
     else if (def.name == "+13.8A")
         m_supplyIdx = def.index;
     // Amplifier meters (source "AMP")
-    else if (def.source == "AMP" && def.name == "FWDPWR")
+    // PGXL uses: FWD (dBm), RL (return loss dB), DRV (drive dBm),
+    //            ID (drain amps), TEMP (degC)
+    // Multiple FWD/RL meters exist (one per amp handle) — we take the last
+    // registered PGXL one (not TGXL). Caller can filter by handle if needed.
+    else if (def.source == "AMP" && def.name == "FWD" && def.unit == "dBm")
         m_ampFwdPwrIdx = def.index;
-    else if (def.source == "AMP" && def.name == "SWR")
-        m_ampSwrIdx = def.index;
-    else if (def.source == "AMP" && (def.name == "TEMP" || def.name == "PATEMP"))
+    else if (def.source == "AMP" && def.name == "RL")
+        m_ampSwrIdx = def.index;   // Return Loss → convert to SWR in updateValues
+    else if (def.source == "AMP" && def.name == "TEMP")
         m_ampTempIdx = def.index;
 
     qCDebug(lcMeters) << "MeterModel: defined meter" << def.index
@@ -148,7 +152,10 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
             m_ampFwdPwr = std::pow(10.0f, v / 10.0f) / 1000.0f;  // dBm → watts
             ampChanged = true;
         } else if (idx == m_ampSwrIdx) {
-            m_ampSwr = v;
+            // Return Loss (dB) → SWR conversion
+            // SWR = (1 + 10^(-RL/20)) / (1 - 10^(-RL/20))
+            float rho = std::pow(10.0f, -v / 20.0f);
+            m_ampSwr = (rho < 0.999f) ? (1.0f + rho) / (1.0f - rho) : 99.9f;
             ampChanged = true;
         } else if (idx == m_ampTempIdx) {
             m_ampTemp = v;
