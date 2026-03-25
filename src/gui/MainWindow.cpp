@@ -718,6 +718,9 @@ MainWindow::MainWindow(QWidget* parent)
         m_appletPanel->ampApplet()->setFwdPower(fwdPwr);
         m_appletPanel->ampApplet()->setSwr(swr);
         m_appletPanel->ampApplet()->setTemp(temp);
+        // When PGXL is present, S-Meter TX power shows amplifier output, not exciter
+        if (m_radioModel.hasAmplifier())
+            m_appletPanel->sMeterWidget()->setTxMeters(fwdPwr, swr);
     });
     connect(m_radioModel.transmitModel(), &TransmitModel::maxPowerLevelChanged,
             this, updatePowerScale);
