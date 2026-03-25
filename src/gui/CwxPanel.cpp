@@ -14,6 +14,7 @@
 #include <QKeyEvent>
 #include <QPainter>
 #include <QScrollBar>
+#include <QShortcut>
 #include <QSignalBlocker>
 #include <QTimer>
 
@@ -185,6 +186,17 @@ CwxPanel::CwxPanel(CwxModel* model, QWidget* parent)
             this, [this](int v) { if (m_model) m_model->setSpeed(v); });
 
     // Wire model signals
+    // ── F1-F12 hotkeys — always active when CWX panel is visible ──
+    // Scoped to the main window so they work even when focus is elsewhere
+    for (int i = 0; i < 12; ++i) {
+        auto* sc = new QShortcut(Qt::Key_F1 + i, window());
+        sc->setContext(Qt::ApplicationShortcut);
+        connect(sc, &QShortcut::activated, this, [this, i]() {
+            if (isVisible() && m_model)
+                m_model->sendMacro(i + 1);
+        });
+    }
+
     if (m_model) setModel(m_model);
 }
 
