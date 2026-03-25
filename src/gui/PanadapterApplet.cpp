@@ -95,6 +95,26 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     });
     cwBar->addWidget(m_cwSensSlider);
 
+    // Lock Pitch button
+    m_lockPitchBtn = new QPushButton("\xF0\x9F\x94\x92P");  // 🔒P
+    m_lockPitchBtn->setCheckable(true);
+    m_lockPitchBtn->setFixedSize(28, 16);
+    m_lockPitchBtn->setToolTip("Lock decoder pitch to current frequency");
+    m_lockPitchBtn->setStyleSheet(
+        "QPushButton { background: #1a2a3a; color: #6a8090; border: 1px solid #203040;"
+        " border-radius: 2px; font-size: 8px; padding: 0; }"
+        "QPushButton:checked { color: #00b4d8; border-color: #00b4d8; }"
+        "QPushButton:hover { color: #c8d8e8; }");
+    cwBar->addWidget(m_lockPitchBtn);
+
+    // Lock Speed button
+    m_lockSpeedBtn = new QPushButton("\xF0\x9F\x94\x92S");  // 🔒S
+    m_lockSpeedBtn->setCheckable(true);
+    m_lockSpeedBtn->setFixedSize(28, 16);
+    m_lockSpeedBtn->setToolTip("Lock decoder speed to current WPM");
+    m_lockSpeedBtn->setStyleSheet(m_lockPitchBtn->styleSheet());
+    cwBar->addWidget(m_lockSpeedBtn);
+
     cwBar->addStretch();
 
     auto* clearBtn = new QPushButton("CLR");

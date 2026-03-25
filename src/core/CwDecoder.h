@@ -35,6 +35,12 @@ public:
     float estimatedPitch() const { return m_pitch; }
     float estimatedSpeed() const { return m_speed; }
 
+    // Lock pitch/speed to current detected values (prevents wandering)
+    void lockPitch(bool lock);
+    void lockSpeed(bool lock);
+    bool isPitchLocked() const { return m_pitchLocked; }
+    bool isSpeedLocked() const { return m_speedLocked; }
+
 public slots:
     // Feed 24kHz stereo int16 PCM (same format as AudioEngine receives).
     void feedAudio(const QByteArray& pcm24kStereo);
@@ -57,6 +63,8 @@ private:
     std::atomic<bool> m_running{false};
     std::atomic<float> m_pitch{0};
     std::atomic<float> m_speed{0};
+    std::atomic<bool> m_pitchLocked{false};
+    std::atomic<bool> m_speedLocked{false};
 };
 
 } // namespace AetherSDR
