@@ -449,16 +449,25 @@ MainWindow::MainWindow(QWidget* parent)
             m_layoutRestoreTimer->setSingleShot(true);
             m_layoutRestoreTimer->setInterval(1000);
             connect(m_layoutRestoreTimer, &QTimer::timeout, this, [this]() {
-                // Always launch to single-pan mode while multi-pan is experimental.
-                // Close extra pans so only one remains.
-                auto pans = m_radioModel.panadapters();
-                if (pans.size() > 1) {
-                    bool first = true;
-                    for (auto* pan : pans) {
-                        if (first) { first = false; continue; }
-                        m_radioModel.sendCommand(QString("display pan remove %1").arg(pan->panId()));
-                    }
-                }
+                // The radio restores pans from the GUIClientID session.
+                // Accept whatever the radio gives and arrange based on count.
+                int panCount = m_panStack->count();
+                if (panCount <= 1) return;  // single pan, nothing to arrange
+                // Pick a layout based on the number of pans the radio restored
+                const QString saved = AppSettings::instance()
+                    .value("PanadapterLayout", "1").toString();
+                // Only rearrange if the saved layout matches the pan count
+                static const QMap<QString, int> layoutPanCount = {
+                    {"2v", 2}, {"2h", 2}, {"2h1", 3}, {"12h", 3}, {"2x2", 4}, {"1", 1}
+                };
+                if (layoutPanCount.value(saved, 1) == panCount)
+                    m_panStack->rearrangeLayout(saved);
+                else if (panCount == 2)
+                    m_panStack->rearrangeLayout("2v");  // default 2-pan to vertical
+                else if (panCount == 3)
+                    m_panStack->rearrangeLayout("2h1"); // default 3-pan
+                else if (panCount >= 4)
+                    m_panStack->rearrangeLayout("2x2"); // default 4-pan
             });
         }
         m_layoutRestoreTimer->start();  // restart on each new pan
