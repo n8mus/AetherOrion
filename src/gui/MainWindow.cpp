@@ -674,6 +674,10 @@ MainWindow::MainWindow(QWidget* parent)
             m_appletPanel->sMeterWidget(), &SMeterWidget::setTransmitting);
 
     // ── Tuner: MeterModel TX meters → TunerApplet gauges ────────────────
+    // Use TGXL-specific meters when available (disambiguated from PGXL by handle)
+    connect(m_radioModel.meterModel(), &MeterModel::tgxlMetersChanged,
+            m_appletPanel->tunerApplet(), &TunerApplet::updateMeters);
+    // Fallback: TX meters for radios without TGXL AMP meters
     connect(m_radioModel.meterModel(), &MeterModel::txMetersChanged,
             m_appletPanel->tunerApplet(), &TunerApplet::updateMeters);
     m_appletPanel->tunerApplet()->setTunerModel(m_radioModel.tunerModel());

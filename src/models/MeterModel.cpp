@@ -35,14 +35,22 @@ void MeterModel::defineMeter(const MeterDef& def)
     else if (def.name == "+13.8A")
         m_supplyIdx = def.index;
     // Amplifier meters (source "AMP")
-    // PGXL uses: FWD (dBm), RL (return loss dB), DRV (drive dBm),
-    //            ID (drain amps), TEMP (degC)
-    // Multiple FWD/RL meters exist (one per amp handle) — we take the last
-    // registered PGXL one (not TGXL). Caller can filter by handle if needed.
-    else if (def.source == "AMP" && def.name == "FWD" && def.unit == "dBm")
-        m_ampFwdPwrIdx = def.index;
-    else if (def.source == "AMP" && def.name == "RL")
-        m_ampSwrIdx = def.index;   // Return Loss → convert to SWR in updateValues
+    // Multiple FWD/RL meters exist — one per amplifier handle.
+    // TGXL meters go to TunerApplet (m_tgxlFwd/SwrIdx).
+    // PGXL meters go to AmpApplet (m_ampFwdPwrIdx/SwrIdx/TempIdx).
+    // Distinguish by matching def.sourceIndex against the known TGXL handle.
+    else if (def.source == "AMP" && def.name == "FWD" && def.unit == "dBm") {
+        if (m_tgxlHandle != 0 && def.sourceIndex == m_tgxlHandle)
+            m_tgxlFwdIdx = def.index;
+        else
+            m_ampFwdPwrIdx = def.index;
+    }
+    else if (def.source == "AMP" && def.name == "RL") {
+        if (m_tgxlHandle != 0 && def.sourceIndex == m_tgxlHandle)
+            m_tgxlSwrIdx = def.index;
+        else
+            m_ampSwrIdx = def.index;
+    }
     else if (def.source == "AMP" && def.name == "TEMP")
         m_ampTempIdx = def.index;
 
@@ -98,6 +106,7 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
     bool alcChanged = false;
     bool hwChanged = false;
     bool ampChanged = false;
+    bool tgxlChanged = false;
 
     for (int i = 0; i < n; ++i) {
         const int idx = static_cast<int>(ids[i]);
@@ -148,12 +157,17 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
         } else if (idx == m_supplyIdx) {
             m_supplyVolts = v;  // "+13.8A" = supply voltage at point A (before fuse)
             hwChanged = true;
+        } else if (idx == m_tgxlFwdIdx) {
+            m_tgxlFwdPwr = std::pow(10.0f, v / 10.0f) / 1000.0f;
+            tgxlChanged = true;
+        } else if (idx == m_tgxlSwrIdx) {
+            float rho = std::pow(10.0f, -v / 20.0f);
+            m_tgxlSwr = (rho < 0.999f) ? (1.0f + rho) / (1.0f - rho) : 99.9f;
+            tgxlChanged = true;
         } else if (idx == m_ampFwdPwrIdx) {
             m_ampFwdPwr = std::pow(10.0f, v / 10.0f) / 1000.0f;  // dBm → watts
             ampChanged = true;
         } else if (idx == m_ampSwrIdx) {
-            // Return Loss (dB) → SWR conversion
-            // SWR = (1 + 10^(-RL/20)) / (1 - 10^(-RL/20))
             float rho = std::pow(10.0f, -v / 20.0f);
             m_ampSwr = (rho < 0.999f) ? (1.0f + rho) / (1.0f - rho) : 99.9f;
             ampChanged = true;
@@ -176,6 +190,8 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
         emit hwTelemetryChanged(m_paTemp, m_supplyVolts);
     if (ampChanged)
         emit ampMetersChanged(m_ampFwdPwr, m_ampSwr, m_ampTemp);
+    if (tgxlChanged)
+        emit tgxlMetersChanged(m_tgxlFwdPwr, m_tgxlSwr);
 }
 
 const MeterDef* MeterModel::meterDef(int index) const

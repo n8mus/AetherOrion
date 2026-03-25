@@ -1330,10 +1330,13 @@ void RadioModel::onStatusReceived(const QString& object,
             if (model == "TunerGeniusXL" || handle == m_tunerModel.handle()) {
                 // Always update handle — first status may arrive with 0x00000000
                 // before the real handle is assigned
-                if (handle != "0x00000000" && handle != m_tunerModel.handle())
+                if (handle != "0x00000000" && handle != m_tunerModel.handle()) {
                     m_tunerModel.setHandle(handle);
-                else if (m_tunerModel.handle().isEmpty())
+                    m_meterModel.setTgxlHandle(handle.toUInt(nullptr, 0));
+                } else if (m_tunerModel.handle().isEmpty()) {
                     m_tunerModel.setHandle(handle);
+                    m_meterModel.setTgxlHandle(handle.toUInt(nullptr, 0));
+                }
                 m_tunerModel.applyStatus(kvs);
             }
 

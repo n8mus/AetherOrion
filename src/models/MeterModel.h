@@ -36,6 +36,10 @@ class MeterModel : public QObject {
 public:
     explicit MeterModel(QObject* parent = nullptr);
 
+    // Set the TGXL amplifier handle so AMP meters can be routed correctly
+    // (TGXL FWD/RL → TunerApplet, PGXL FWD/RL → AmpApplet)
+    void setTgxlHandle(quint32 handle) { m_tgxlHandle = handle; }
+
     // Register or update a meter definition from a TCP status message.
     void defineMeter(const MeterDef& def);
 
@@ -102,6 +106,7 @@ signals:
 
     // Emitted when amplifier meters change (PGXL fwd power, SWR, temp).
     void ampMetersChanged(float fwdPower, float swr, float temp);
+    void tgxlMetersChanged(float fwdPower, float swr);
 
     // Emitted when any meter value changes (for debug/generic display).
     void meterUpdated(int index, float value);
@@ -123,9 +128,14 @@ private:
     int m_alcIdx{-1};        // "TX" / "HWALC"
     int m_paTempIdx{-1};     // "RAD" / "PATEMP"
     int m_supplyIdx{-1};     // "RAD" / "+13.8A" (supply voltage, point A = before fuse)
-    int m_ampFwdPwrIdx{-1};  // "AMP" / "FWDPWR"
-    int m_ampSwrIdx{-1};     // "AMP" / "SWR"
-    int m_ampTempIdx{-1};    // "AMP" / "TEMP" or "PATEMP"
+    int m_ampFwdPwrIdx{-1};  // "AMP" / "FWD" (PGXL)
+    int m_ampSwrIdx{-1};     // "AMP" / "RL" (PGXL)
+    int m_ampTempIdx{-1};    // "AMP" / "TEMP"
+    int m_tgxlFwdIdx{-1};   // "AMP" / "FWD" (TGXL — matched by handle)
+    int m_tgxlSwrIdx{-1};   // "AMP" / "RL" (TGXL — matched by handle)
+    quint32 m_tgxlHandle{0}; // TGXL amplifier handle for meter disambiguation
+    float m_tgxlFwdPwr{0.0f};
+    float m_tgxlSwr{1.0f};
 
     // Cached values
     float m_sLevel{-130.0f};
