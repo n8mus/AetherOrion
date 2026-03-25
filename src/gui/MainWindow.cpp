@@ -449,12 +449,9 @@ MainWindow::MainWindow(QWidget* parent)
             m_layoutRestoreTimer->setSingleShot(true);
             m_layoutRestoreTimer->setInterval(1000);
             connect(m_layoutRestoreTimer, &QTimer::timeout, this, [this]() {
-                const QString saved = AppSettings::instance()
-                    .value("PanadapterLayout", "1").toString();
-                if (saved == "1") return;
-                // applyPanLayout handles both adding and removing pans
-                // to match the saved layout's expected count
-                applyPanLayout(saved);
+                // Always launch to single-pan mode while multi-pan is experimental.
+                // User can select a layout via +PAN after connect.
+                return;
             });
         }
         m_layoutRestoreTimer->start();  // restart on each new pan
