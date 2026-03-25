@@ -144,12 +144,22 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     m_pitchMaxSlider->setToolTip("Decoder pitch search maximum (Hz)");
     cwBar->addWidget(m_pitchMaxSlider);
 
-    // Update tooltips and emit range change
+    // Update tooltips and emit range change — clamp so min ≤ max
     connect(m_pitchMinSlider, &QSlider::valueChanged, this, [this](int v) {
+        if (v > m_pitchMaxSlider->value()) {
+            QSignalBlocker b(m_pitchMinSlider);
+            m_pitchMinSlider->setValue(m_pitchMaxSlider->value());
+            v = m_pitchMaxSlider->value();
+        }
         m_pitchMinSlider->setToolTip(QString("%1 Hz").arg(v));
         emit pitchRangeChanged(v, m_pitchMaxSlider->value());
     });
     connect(m_pitchMaxSlider, &QSlider::valueChanged, this, [this](int v) {
+        if (v < m_pitchMinSlider->value()) {
+            QSignalBlocker b(m_pitchMaxSlider);
+            m_pitchMaxSlider->setValue(m_pitchMinSlider->value());
+            v = m_pitchMinSlider->value();
+        }
         m_pitchMaxSlider->setToolTip(QString("%1 Hz").arg(v));
         emit pitchRangeChanged(m_pitchMinSlider->value(), v);
     });
