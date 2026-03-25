@@ -450,8 +450,15 @@ MainWindow::MainWindow(QWidget* parent)
             m_layoutRestoreTimer->setInterval(1000);
             connect(m_layoutRestoreTimer, &QTimer::timeout, this, [this]() {
                 // Always launch to single-pan mode while multi-pan is experimental.
-                // User can select a layout via +PAN after connect.
-                return;
+                // Close extra pans so only one remains.
+                auto pans = m_radioModel.panadapters();
+                if (pans.size() > 1) {
+                    bool first = true;
+                    for (auto* pan : pans) {
+                        if (first) { first = false; continue; }
+                        m_radioModel.sendCommand(QString("display pan remove %1").arg(pan->panId()));
+                    }
+                }
             });
         }
         m_layoutRestoreTimer->start();  // restart on each new pan
