@@ -471,7 +471,7 @@ MainWindow::MainWindow(QWidget* parent)
 
                 // Defensive re-push xpixels for all pans after layout settles.
                 // Covers race where radio hadn't finished pan init when first push arrived.
-                QTimer::singleShot(3000, this, [this]() {
+                QTimer::singleShot(500, this, [this]() {
                     for (auto* applet : m_panStack->allApplets()) {
                         auto* sw = applet->spectrumWidget();
                         auto* pan = m_radioModel.panadapter(applet->panId());
