@@ -3,6 +3,7 @@
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QSlider>
 #include <QEvent>
 #include <QLabel>
 #include <QPushButton>
@@ -77,6 +78,24 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     cwBar->addWidget(m_cwStatsLabel);
     cwBar->addStretch();
 
+    // Sensitivity slider — filters low-confidence decodes
+    auto* sensLabel = new QLabel("Sens:");
+    sensLabel->setStyleSheet("QLabel { color: #6a8090; font-size: 9px; background: transparent; }");
+    cwBar->addWidget(sensLabel);
+    m_cwSensSlider = new QSlider(Qt::Horizontal);
+    m_cwSensSlider->setRange(0, 100);  // 0=show everything, 100=only high confidence
+    m_cwSensSlider->setValue(30);      // default: moderate filtering
+    m_cwSensSlider->setFixedWidth(60);
+    m_cwSensSlider->setStyleSheet(
+        "QSlider::groove:horizontal { background: #1a2a3a; height: 4px; border-radius: 2px; }"
+        "QSlider::handle:horizontal { background: #00b4d8; width: 10px; margin: -3px 0; border-radius: 5px; }");
+    m_cwCostThreshold = 0.70f;  // default threshold
+    connect(m_cwSensSlider, &QSlider::valueChanged, this, [this](int v) {
+        // Map 0-100 slider to 1.0-0.1 cost threshold (inverted: higher sens = lower threshold)
+        m_cwCostThreshold = 1.0f - (v / 100.0f) * 0.9f;
+    });
+    cwBar->addWidget(m_cwSensSlider);
+
     auto* clearBtn = new QPushButton("CLR");
     clearBtn->setStyleSheet(
         "QPushButton { background: #1a2a3a; color: #8090a0; border: 1px solid #203040;"
@@ -121,6 +140,9 @@ void PanadapterApplet::setCwPanelVisible(bool visible)
 
 void PanadapterApplet::appendCwText(const QString& text, float cost)
 {
+    // Filter by sensitivity threshold — drop low-confidence decodes
+    if (cost >= m_cwCostThreshold) return;
+
     // Strip newlines — ggmorse inserts them on pitch changes, but we want
     // continuous flowing text. Replace with space to preserve word boundaries.
     QString clean = text;

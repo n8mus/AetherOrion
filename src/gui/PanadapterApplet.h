@@ -3,6 +3,7 @@
 #include <QWidget>
 
 class QLabel;
+class QSlider;
 class QTextEdit;
 
 namespace AetherSDR {
@@ -51,6 +52,8 @@ private:
     QWidget*   m_cwPanel{nullptr};
     QTextEdit* m_cwText{nullptr};
     QLabel*    m_cwStatsLabel{nullptr};
+    QSlider*   m_cwSensSlider{nullptr};
+    float      m_cwCostThreshold{0.70f};
 };
 
 } // namespace AetherSDR
