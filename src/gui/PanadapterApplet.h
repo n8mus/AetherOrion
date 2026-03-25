@@ -62,6 +62,8 @@ private:
     QPushButton*  m_lockSpeedBtn{nullptr};
     QSlider*      m_pitchMinSlider{nullptr};
     QSlider*      m_pitchMaxSlider{nullptr};
+    QLabel*       m_pitchMinValLabel{nullptr};
+    QLabel*       m_pitchMaxValLabel{nullptr};
     float         m_cwCostThreshold{0.70f};
 };
 

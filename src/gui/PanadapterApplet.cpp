@@ -131,6 +131,10 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     m_pitchMinSlider->setStyleSheet(rangeSliderStyle);
     m_pitchMinSlider->setToolTip("Decoder pitch search minimum (Hz)");
     cwBar->addWidget(m_pitchMinSlider);
+    m_pitchMinValLabel = new QLabel(QString::number(m_pitchMinSlider->value()));
+    m_pitchMinValLabel->setStyleSheet("QLabel { color: #6a8090; font-size: 8px; background: transparent; }");
+    m_pitchMinValLabel->setFixedWidth(24);
+    cwBar->addWidget(m_pitchMinValLabel);
 
     auto* maxLabel = new QLabel("Hi:");
     maxLabel->setStyleSheet("QLabel { color: #6a8090; font-size: 8px; background: transparent; }");
@@ -143,6 +147,10 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     m_pitchMaxSlider->setStyleSheet(rangeSliderStyle);
     m_pitchMaxSlider->setToolTip("Decoder pitch search maximum (Hz)");
     cwBar->addWidget(m_pitchMaxSlider);
+    m_pitchMaxValLabel = new QLabel(QString::number(m_pitchMaxSlider->value()));
+    m_pitchMaxValLabel->setStyleSheet("QLabel { color: #6a8090; font-size: 8px; background: transparent; }");
+    m_pitchMaxValLabel->setFixedWidth(24);
+    cwBar->addWidget(m_pitchMaxValLabel);
 
     // Update tooltips and emit range change — clamp so min ≤ max
     connect(m_pitchMinSlider, &QSlider::valueChanged, this, [this](int v) {
@@ -152,6 +160,7 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
             v = m_pitchMaxSlider->value();
         }
         m_pitchMinSlider->setToolTip(QString("%1 Hz").arg(v));
+        m_pitchMinValLabel->setText(QString::number(v));
         emit pitchRangeChanged(v, m_pitchMaxSlider->value());
     });
     connect(m_pitchMaxSlider, &QSlider::valueChanged, this, [this](int v) {
@@ -161,6 +170,7 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
             v = m_pitchMinSlider->value();
         }
         m_pitchMaxSlider->setToolTip(QString("%1 Hz").arg(v));
+        m_pitchMaxValLabel->setText(QString::number(v));
         emit pitchRangeChanged(m_pitchMinSlider->value(), v);
     });
     m_pitchMinSlider->setToolTip(QString("%1 Hz").arg(m_pitchMinSlider->value()));
