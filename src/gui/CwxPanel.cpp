@@ -282,32 +282,30 @@ void CwxPanel::buildSetupView()
     for (auto* lbl : m_setupPage->findChildren<QLabel*>())
         lbl->setStyleSheet("QLabel { color: #c8d8e8; font-size: 11px; }");
 
-    // F1-F12 macro slots
-    auto* scroll = new QScrollArea;
-    scroll->setWidgetResizable(true);
-    scroll->setStyleSheet("QScrollArea { border: none; background: transparent; }");
+    // F1-F12 macro slots — each stretches to fill available height
     auto* macroWidget = new QWidget;
-    auto* macroLayout = new QVBoxLayout(macroWidget);
-    macroLayout->setContentsMargins(0, 0, 0, 0);
-    macroLayout->setSpacing(2);
+    auto* macroGrid = new QGridLayout(macroWidget);
+    macroGrid->setContentsMargins(0, 0, 0, 0);
+    macroGrid->setSpacing(2);
 
     for (int i = 0; i < 12; ++i) {
-        auto* row = new QHBoxLayout;
         auto* label = new QPushButton(QString("F%1").arg(i + 1));
-        label->setFixedWidth(30);
+        label->setFixedWidth(28);
+        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         label->setStyleSheet(
             "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
             "border-radius: 2px; color: #c8d8e8; font-size: 10px; font-weight: bold; "
             "padding: 2px; }"
             "QPushButton:hover { background: #203040; }");
-        row->addWidget(label);
+        macroGrid->addWidget(label, i, 0);
 
         m_macroEdits[i] = new QLineEdit;
         m_macroEdits[i]->setStyleSheet(kEditStyle);
+        m_macroEdits[i]->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         m_macroEdits[i]->setPlaceholderText(QString("F%1 macro...").arg(i + 1));
-        row->addWidget(m_macroEdits[i]);
+        macroGrid->addWidget(m_macroEdits[i], i, 1);
 
-        macroLayout->addLayout(row);
+        macroGrid->setRowStretch(i, 1);
 
         // Click F-key label → send macro
         connect(label, &QPushButton::clicked, this, [this, i]() {
@@ -321,9 +319,7 @@ void CwxPanel::buildSetupView()
         });
     }
 
-    macroLayout->addStretch(1);
-    scroll->setWidget(macroWidget);
-    vbox->addWidget(scroll, 1);
+    vbox->addWidget(macroWidget, 1);
 
     // Prosign legend
     auto* legend = new QLabel("Prosigns: = (BT)  + (AR)  ( (KN)  & (BK)  $ (SK)");
