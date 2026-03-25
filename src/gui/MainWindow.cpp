@@ -1100,25 +1100,34 @@ void MainWindow::buildMenuBar()
     settingsMenu->addAction("USB Cables...");
     auto* spotsAction = settingsMenu->addAction("Spots...");
     connect(spotsAction, &QAction::triggered, this, [this] {
-        // Update total spots count in dialog
         SpotSettingsDialog dlg(&m_radioModel, this);
         dlg.setTotalSpots(m_radioModel.spotModel()->spots().size());
+        // Live preview: refresh spots on every settings change
+        auto refreshSpots = [this]() {
+            auto& s = AppSettings::instance();
+            bool on       = s.value("IsSpotsEnabled", "True").toString() == "True";
+            int fontSize  = s.value("SpotFontSize", "16").toInt();
+            int levels    = s.value("SpotsMaxLevel", "3").toInt();
+            int position  = s.value("SpotsStartingHeightPercentage", "50").toInt();
+            bool override = s.value("IsSpotsOverrideColorsEnabled", "False").toString() == "True";
+            QColor spotColor(s.value("SpotsOverrideColor", "#FFFF00").toString());
+            QColor bgColor(s.value("SpotsOverrideBgColor", "#000000").toString());
+            int bgOpacity = s.value("SpotsBackgroundOpacity", 48).toInt();
+            for (auto* a : m_panStack->allApplets()) {
+                auto* sw = a->spectrumWidget();
+                sw->setShowSpots(on);
+                sw->setSpotFontSize(fontSize);
+                sw->setSpotMaxLevels(levels);
+                sw->setSpotStartPct(position);
+                sw->setSpotOverrideColors(override);
+                sw->setSpotColor(spotColor);
+                sw->setSpotBgColor(bgColor);
+                sw->setSpotBgOpacity(bgOpacity);
+            }
+        };
+        connect(&dlg, &SpotSettingsDialog::settingsChanged, this, refreshSpots);
         dlg.exec();
-        // Refresh all spot settings after dialog closes
-        auto& s = AppSettings::instance();
-        bool on       = s.value("IsSpotsEnabled", "True").toString() == "True";
-        int fontSize  = s.value("SpotFontSize", "16").toInt();
-        int levels    = s.value("SpotsMaxLevel", "3").toInt();
-        int position  = s.value("SpotsStartingHeightPercentage", "50").toInt();
-        bool override = s.value("IsSpotsOverrideColorsEnabled", "False").toString() == "True";
-        for (auto* a : m_panStack->allApplets()) {
-            auto* sw = a->spectrumWidget();
-            sw->setShowSpots(on);
-            sw->setSpotFontSize(fontSize);
-            sw->setSpotMaxLevels(levels);
-            sw->setSpotStartPct(position);
-            sw->setSpotOverrideColors(override);
-        }
+        refreshSpots();  // final refresh on close
     });
     settingsMenu->addAction("multiFLEX...");
     auto* txBandAct = settingsMenu->addAction("TX Band Settings...");

@@ -1639,9 +1639,11 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
         const int x = mhzToX(spot.freqMhz);
         if (x < 0 || x > width()) continue;
 
-        // Color: use spot-provided color unless override is on
+        // Color: override uses m_spotColor, otherwise use spot-provided or default cyan
         QColor col(0x00, 0xb4, 0xd8);  // default cyan
-        if (!m_spotOverrideColors && !spot.color.isEmpty() && spot.color.startsWith('#')) {
+        if (m_spotOverrideColors) {
+            col = m_spotColor;
+        } else if (!spot.color.isEmpty() && spot.color.startsWith('#')) {
             QColor parsed(spot.color);
             if (parsed.isValid()) col = parsed;
         }
@@ -1668,12 +1670,15 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
         m_spotClickRects.append({labelRect, spot.freqMhz});
 
         // Background pill
+        int bgAlpha = m_spotBgOpacity * 255 / 100;
+        QColor bgCol = m_spotBgColor;
+        bgCol.setAlpha(bgAlpha);
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(col.red(), col.green(), col.blue(), 180));
+        p.setBrush(bgCol);
         p.drawRoundedRect(labelRect, 3, 3);
 
         // Text
-        p.setPen(QColor(0, 0, 0));
+        p.setPen(col);
         p.drawText(labelRect, Qt::AlignCenter, label);
     }
 

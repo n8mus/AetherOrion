@@ -187,6 +187,9 @@ public:
     void setSpotMaxLevels(int n) { m_spotMaxLevels = n; update(); }
     void setSpotStartPct(int pct) { m_spotStartPct = pct; update(); }
     void setSpotOverrideColors(bool on) { m_spotOverrideColors = on; update(); }
+    void setSpotColor(const QColor& c) { m_spotColor = c; update(); }
+    void setSpotBgColor(const QColor& c) { m_spotBgColor = c; update(); }
+    void setSpotBgOpacity(int pct) { m_spotBgOpacity = pct; update(); }
     void setTransmitting(bool tx) {
         if (tx && !m_transmitting)
             m_preTxAutoBlack = m_autoBlackThresh;  // save before TX
@@ -377,7 +380,10 @@ private:
     int  m_spotFontSize{16};
     int  m_spotMaxLevels{3};
     int  m_spotStartPct{50};      // % down from top of spectrum
-    bool m_spotOverrideColors{false};
+    bool   m_spotOverrideColors{false};
+    QColor m_spotColor{Qt::yellow};
+    QColor m_spotBgColor{Qt::black};
+    int    m_spotBgOpacity{48};
     int  m_draggingTnfId{-1};
     double m_dragTnfOrigFreq{0.0};
 

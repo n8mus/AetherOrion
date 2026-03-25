@@ -5,7 +5,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
-#include <QGroupBox>
+#include <QColorDialog>
 
 namespace AetherSDR {
 
@@ -13,39 +13,41 @@ SpotSettingsDialog::SpotSettingsDialog(RadioModel* model, QWidget* parent)
     : QDialog(parent), m_model(model)
 {
     setWindowTitle("Spot Settings");
-    setFixedSize(340, 360);
+    setFixedSize(380, 440);
 
     // Load persisted settings
     auto& s = AppSettings::instance();
-    m_spotsEnabled    = s.value("IsSpotsEnabled", "True").toString() == "True";
-    m_overrideColors  = s.value("IsSpotsOverrideColorsEnabled", "False").toString() == "True";
-    m_overrideBg      = s.value("IsSpotsOverrideBackgroundColorsEnabled", "True").toString() == "True";
+    m_spotsEnabled       = s.value("IsSpotsEnabled", "True").toString() == "True";
+    m_overrideColors     = s.value("IsSpotsOverrideColorsEnabled", "False").toString() == "True";
+    m_overrideBg         = s.value("IsSpotsOverrideBackgroundColorsEnabled", "True").toString() == "True";
     m_overrideBgAutoMode = s.value("IsSpotsOverrideToAutoBackgroundColorEnabled", "True").toString() == "True";
     int levels   = s.value("SpotsMaxLevel", 3).toInt();
     int position = s.value("SpotsStartingHeightPercentage", 50).toInt();
     int fontSize = s.value("SpotFontSize", 16).toInt();
+    m_spotColor  = QColor(s.value("SpotsOverrideColor", "#FFFF00").toString());
+    m_bgColor    = QColor(s.value("SpotsOverrideBgColor", "#000000").toString());
+    m_bgOpacity  = s.value("SpotsBackgroundOpacity", 48).toInt();
 
     auto* root = new QVBoxLayout(this);
 
-    // ── Title ─────────────────────────────────────────────────────────────
     auto* title = new QLabel("Spot Settings");
     title->setAlignment(Qt::AlignCenter);
     title->setStyleSheet("QLabel { font-size: 16px; font-weight: bold; color: #c8d8e8; }");
     root->addWidget(title);
     root->addSpacing(8);
 
-    // ── Grid layout ───────────────────────────────────────────────────────
     auto* grid = new QGridLayout;
     grid->setColumnStretch(1, 1);
     int row = 0;
 
-    auto saveSetting = [](const QString& key, const QVariant& val) {
+    auto save = [this](const QString& key, const QVariant& val) {
         auto& s = AppSettings::instance();
         s.setValue(key, val);
         s.save();
+        emit settingsChanged();
     };
 
-    // Spots: Enabled/Disabled
+    // ── Spots: Enabled/Disabled ─────────────────────────────────────────
     grid->addWidget(new QLabel("Spots:"), row, 0);
     m_spotsToggle = new QPushButton(m_spotsEnabled ? "Enabled" : "Disabled");
     m_spotsToggle->setCheckable(true);
@@ -54,14 +56,14 @@ SpotSettingsDialog::SpotSettingsDialog(RadioModel* model, QWidget* parent)
     m_spotsToggle->setStyleSheet(
         "QPushButton { background: #206030; color: white; border: 1px solid #305040; padding: 3px; }"
         "QPushButton:!checked { background: #603020; }");
-    connect(m_spotsToggle, &QPushButton::toggled, this, [this, saveSetting](bool on) {
+    connect(m_spotsToggle, &QPushButton::toggled, this, [this, save](bool on) {
         m_spotsEnabled = on;
         m_spotsToggle->setText(on ? "Enabled" : "Disabled");
-        saveSetting("IsSpotsEnabled", on ? "True" : "False");
+        save("IsSpotsEnabled", on ? "True" : "False");
     });
     grid->addWidget(m_spotsToggle, row++, 1, Qt::AlignLeft);
 
-    // Levels slider
+    // ── Levels slider ───────────────────────────────────────────────────
     grid->addWidget(new QLabel("Levels:"), row, 0);
     auto* levelsRow = new QHBoxLayout;
     m_levelsSlider = new QSlider(Qt::Horizontal);
@@ -72,13 +74,13 @@ SpotSettingsDialog::SpotSettingsDialog(RadioModel* model, QWidget* parent)
     m_levelsValue->setAlignment(Qt::AlignRight);
     levelsRow->addWidget(m_levelsSlider);
     levelsRow->addWidget(m_levelsValue);
-    connect(m_levelsSlider, &QSlider::valueChanged, this, [this, saveSetting](int v) {
+    connect(m_levelsSlider, &QSlider::valueChanged, this, [this, save](int v) {
         m_levelsValue->setText(QString::number(v));
-        saveSetting("SpotsMaxLevel", QString::number(v));
+        save("SpotsMaxLevel", QString::number(v));
     });
     grid->addLayout(levelsRow, row++, 1);
 
-    // Position slider
+    // ── Position slider ─────────────────────────────────────────────────
     grid->addWidget(new QLabel("Position:"), row, 0);
     auto* posRow = new QHBoxLayout;
     m_positionSlider = new QSlider(Qt::Horizontal);
@@ -89,13 +91,13 @@ SpotSettingsDialog::SpotSettingsDialog(RadioModel* model, QWidget* parent)
     m_positionValue->setAlignment(Qt::AlignRight);
     posRow->addWidget(m_positionSlider);
     posRow->addWidget(m_positionValue);
-    connect(m_positionSlider, &QSlider::valueChanged, this, [this, saveSetting](int v) {
+    connect(m_positionSlider, &QSlider::valueChanged, this, [this, save](int v) {
         m_positionValue->setText(QString::number(v));
-        saveSetting("SpotsStartingHeightPercentage", QString::number(v));
+        save("SpotsStartingHeightPercentage", QString::number(v));
     });
     grid->addLayout(posRow, row++, 1);
 
-    // Font Size slider
+    // ── Font Size slider ────────────────────────────────────────────────
     grid->addWidget(new QLabel("Font Size:"), row, 0);
     auto* fontRow = new QHBoxLayout;
     m_fontSizeSlider = new QSlider(Qt::Horizontal);
@@ -106,14 +108,15 @@ SpotSettingsDialog::SpotSettingsDialog(RadioModel* model, QWidget* parent)
     m_fontSizeValue->setAlignment(Qt::AlignRight);
     fontRow->addWidget(m_fontSizeSlider);
     fontRow->addWidget(m_fontSizeValue);
-    connect(m_fontSizeSlider, &QSlider::valueChanged, this, [this, saveSetting](int v) {
+    connect(m_fontSizeSlider, &QSlider::valueChanged, this, [this, save](int v) {
         m_fontSizeValue->setText(QString::number(v));
-        saveSetting("SpotFontSize", QString::number(v));
+        save("SpotFontSize", QString::number(v));
     });
     grid->addLayout(fontRow, row++, 1);
 
-    // Override Colors
+    // ── Override Colors + color picker ──────────────────────────────────
     grid->addWidget(new QLabel("Override Colors:"), row, 0);
+    auto* colorRow = new QHBoxLayout;
     m_overrideColorsToggle = new QPushButton(m_overrideColors ? "Enabled" : "Disabled");
     m_overrideColorsToggle->setCheckable(true);
     m_overrideColorsToggle->setChecked(m_overrideColors);
@@ -121,14 +124,29 @@ SpotSettingsDialog::SpotSettingsDialog(RadioModel* model, QWidget* parent)
     m_overrideColorsToggle->setStyleSheet(
         "QPushButton { background: #206030; color: white; border: 1px solid #305040; padding: 3px; }"
         "QPushButton:!checked { background: #603020; }");
-    connect(m_overrideColorsToggle, &QPushButton::toggled, this, [this, saveSetting](bool on) {
+    connect(m_overrideColorsToggle, &QPushButton::toggled, this, [this, save](bool on) {
         m_overrideColors = on;
         m_overrideColorsToggle->setText(on ? "Enabled" : "Disabled");
-        saveSetting("IsSpotsOverrideColorsEnabled", on ? "True" : "False");
+        save("IsSpotsOverrideColorsEnabled", on ? "True" : "False");
     });
-    grid->addWidget(m_overrideColorsToggle, row++, 1, Qt::AlignLeft);
+    colorRow->addWidget(m_overrideColorsToggle);
 
-    // Override Background: Enabled / Auto
+    m_colorPickerBtn = new QPushButton;
+    m_colorPickerBtn->setFixedSize(24, 24);
+    updateColorSwatch(m_colorPickerBtn, m_spotColor);
+    connect(m_colorPickerBtn, &QPushButton::clicked, this, [this, save]() {
+        QColor c = QColorDialog::getColor(m_spotColor, this, "Spot Text Color");
+        if (c.isValid()) {
+            m_spotColor = c;
+            updateColorSwatch(m_colorPickerBtn, c);
+            save("SpotsOverrideColor", c.name());
+        }
+    });
+    colorRow->addWidget(m_colorPickerBtn);
+    colorRow->addStretch();
+    grid->addLayout(colorRow, row++, 1);
+
+    // ── Override Background + Auto + color picker ───────────────────────
     grid->addWidget(new QLabel("Override Background:"), row, 0);
     auto* bgRow = new QHBoxLayout;
     m_overrideBgEnabled = new QPushButton("Enabled");
@@ -144,20 +162,51 @@ SpotSettingsDialog::SpotSettingsDialog(RadioModel* model, QWidget* parent)
         "QPushButton:!checked { background: #603020; }";
     m_overrideBgEnabled->setStyleSheet(bgStyle);
     m_overrideBgAuto->setStyleSheet(bgStyle);
-    connect(m_overrideBgEnabled, &QPushButton::toggled, this, [this, saveSetting](bool on) {
+    connect(m_overrideBgEnabled, &QPushButton::toggled, this, [this, save](bool on) {
         m_overrideBg = on;
-        saveSetting("IsSpotsOverrideBackgroundColorsEnabled", on ? "True" : "False");
+        save("IsSpotsOverrideBackgroundColorsEnabled", on ? "True" : "False");
     });
-    connect(m_overrideBgAuto, &QPushButton::toggled, this, [this, saveSetting](bool on) {
+    connect(m_overrideBgAuto, &QPushButton::toggled, this, [this, save](bool on) {
         m_overrideBgAutoMode = on;
-        saveSetting("IsSpotsOverrideToAutoBackgroundColorEnabled", on ? "True" : "False");
+        save("IsSpotsOverrideToAutoBackgroundColorEnabled", on ? "True" : "False");
     });
     bgRow->addWidget(m_overrideBgEnabled);
     bgRow->addWidget(m_overrideBgAuto);
+
+    m_bgColorPickerBtn = new QPushButton;
+    m_bgColorPickerBtn->setFixedSize(24, 24);
+    updateColorSwatch(m_bgColorPickerBtn, m_bgColor);
+    connect(m_bgColorPickerBtn, &QPushButton::clicked, this, [this, save]() {
+        QColor c = QColorDialog::getColor(m_bgColor, this, "Spot Background Color");
+        if (c.isValid()) {
+            m_bgColor = c;
+            updateColorSwatch(m_bgColorPickerBtn, c);
+            save("SpotsOverrideBgColor", c.name());
+        }
+    });
+    bgRow->addWidget(m_bgColorPickerBtn);
     bgRow->addStretch();
     grid->addLayout(bgRow, row++, 1);
 
-    // Total Spots
+    // ── Background Opacity slider ───────────────────────────────────────
+    grid->addWidget(new QLabel("Background Opacity:"), row, 0);
+    auto* opacRow = new QHBoxLayout;
+    m_bgOpacitySlider = new QSlider(Qt::Horizontal);
+    m_bgOpacitySlider->setRange(0, 100);
+    m_bgOpacitySlider->setValue(m_bgOpacity);
+    m_bgOpacityValue = new QLabel(QString::number(m_bgOpacity));
+    m_bgOpacityValue->setFixedWidth(24);
+    m_bgOpacityValue->setAlignment(Qt::AlignRight);
+    opacRow->addWidget(m_bgOpacitySlider);
+    opacRow->addWidget(m_bgOpacityValue);
+    connect(m_bgOpacitySlider, &QSlider::valueChanged, this, [this, save](int v) {
+        m_bgOpacity = v;
+        m_bgOpacityValue->setText(QString::number(v));
+        save("SpotsBackgroundOpacity", QString::number(v));
+    });
+    grid->addLayout(opacRow, row++, 1);
+
+    // ── Total Spots ─────────────────────────────────────────────────────
     grid->addWidget(new QLabel("Total Spots:"), row, 0);
     m_totalSpotsLabel = new QLabel("0");
     m_totalSpotsLabel->setStyleSheet("QLabel { color: #c8d8e8; font-weight: bold; }");
@@ -166,17 +215,25 @@ SpotSettingsDialog::SpotSettingsDialog(RadioModel* model, QWidget* parent)
     root->addLayout(grid);
     root->addStretch();
 
-    // ── Clear All Spots button ────────────────────────────────────────────
+    // ── Clear All Spots button ──────────────────────────────────────────
     auto* btnRow = new QHBoxLayout;
     auto* clearBtn = new QPushButton("Clear All Spots");
     clearBtn->setFixedWidth(120);
     connect(clearBtn, &QPushButton::clicked, this, [this] {
         m_model->sendCommand("spot clear");
         m_totalSpotsLabel->setText("0");
+        emit settingsChanged();
     });
     btnRow->addWidget(clearBtn);
     btnRow->addStretch();
     root->addLayout(btnRow);
+}
+
+void SpotSettingsDialog::updateColorSwatch(QPushButton* btn, const QColor& color)
+{
+    btn->setStyleSheet(QString(
+        "QPushButton { background: %1; border: 2px solid #405060; border-radius: 3px; }"
+        "QPushButton:hover { border-color: #c8d8e8; }").arg(color.name()));
 }
 
 } // namespace AetherSDR
