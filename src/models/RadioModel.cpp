@@ -1789,10 +1789,19 @@ void RadioModel::handlePanadapterStatus(const QString& panId, const QMap<QString
     }
     // Track ypixels from radio status — the radio encodes FFT bins as pixel
     // Y positions (0..ypixels-1), so PanadapterStream needs this for dBm conversion.
+    // Also detect when the radio resets to default dimensions (e.g. after profile
+    // load) and re-request correct dimensions from MainWindow.
     if (kvs.contains("y_pixels") && pan) {
         int yPix = kvs["y_pixels"].toInt();
         if (yPix > 0)
             m_panStream.setYPixels(pan->panStreamId(), yPix);
+    }
+    if ((kvs.contains("x_pixels") || kvs.contains("y_pixels")) && pan) {
+        int xPix = kvs.value("x_pixels", "0").toInt();
+        int yPix = kvs.value("y_pixels", "0").toInt();
+        // Radio reset to defaults (profile load, reconnect) — re-push real dimensions
+        if ((xPix > 0 && xPix <= 100) || (yPix > 0 && yPix <= 100))
+            emit panDimensionsNeeded(pan->panId());
     }
     if (kvs.contains("ant_list")) {
         const QStringList ants = kvs["ant_list"].split(',', Qt::SkipEmptyParts);
@@ -1824,9 +1833,9 @@ void RadioModel::configurePan()
 {
     if (m_activePanId.isEmpty()) return;
 
-    // xpixels/ypixels are pushed by MainWindow::panadapterAdded() with actual
-    // widget dimensions. Do NOT hardcode 1024x700 here — it overwrites the
-    // correct dimensions and causes FFT/waterfall horizontal misalignment.
+    // Request MainWindow to push actual widget dimensions for this pan.
+    // Do NOT hardcode xpixels/ypixels here — MainWindow knows the real sizes.
+    emit panDimensionsNeeded(m_activePanId);
 
     sendCmd(
         QString("display pan set %1 fps=25 min_dbm=-130 max_dbm=-40").arg(m_activePanId),

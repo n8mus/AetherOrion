@@ -495,6 +495,25 @@ MainWindow::MainWindow(QWidget* parent)
         }
         m_layoutRestoreTimer->start();  // restart on each new pan
     });
+    // Re-push xpixels/ypixels when the radio requests it (profile change, reconnect, etc.)
+    connect(&m_radioModel, &RadioModel::panDimensionsNeeded,
+            this, [this](const QString& panId) {
+        auto* applet = m_panStack->panadapter(panId);
+        if (!applet) return;
+        auto* sw = applet->spectrumWidget();
+        auto* pan = m_radioModel.panadapter(panId);
+        if (!sw || !pan) return;
+        int xpix = sw->width();
+        int ypix = sw->height();
+        if (xpix < 100) xpix = 1024;
+        if (ypix < 100) ypix = 700;
+        m_radioModel.sendCommand(
+            QString("display pan set %1 xpixels=%2 ypixels=%3")
+                .arg(panId).arg(xpix).arg(ypix));
+        if (pan->panStreamId())
+            m_radioModel.panStream()->setYPixels(pan->panStreamId(), ypix);
+    });
+
     connect(&m_radioModel, &RadioModel::panadapterRemoved,
             this, [this](const QString& panId) {
         // Disconnect all signals from the dying applet's widgets to prevent
@@ -2728,12 +2747,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                     settings.setValue(pfx + "MinDbm",    QString::number(bot, 'f', 1));
                     settings.setValue(pfx + "MaxDbm",    QString::number(top, 'f', 1));
                 }
-                if (auto* pan = m_radioModel.activePanadapter()) {
-                    settings.setValue(pfx + "Bandwidth", QString::number(pan->bandwidthMhz(), 'f', 6));
-                }
+                // Bandwidth is radio-authoritative — don't save/restore it.
+                // The radio determines pan bandwidth via slice tune / band_zoom.
                 settings.save();
                 qDebug() << "BandStack: saved" << curBand << s->frequency() << s->mode()
-                         << "bw:" << settings.value(pfx + "Bandwidth", "?").toString()
                          << "dBm:" << settings.value(pfx + "MinDbm", "?").toString()
                          << settings.value(pfx + "MaxDbm", "?").toString();
                 } // end if (freqMatchesBand)
@@ -2824,15 +2841,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 m_radioModel.sendCommand(
                     QString("slice set %1 squelch_level=%2").arg(s->sliceId()).arg(sqlLvl));
 
-            // Pan display: bandwidth and dBm scale
-            double bw = settings.value(pfx + "Bandwidth", "0").toDouble();
+            // Bandwidth is radio-authoritative — only restore dBm scale.
             float minDbm = settings.value(pfx + "MinDbm", "0").toFloat();
             float maxDbm = settings.value(pfx + "MaxDbm", "0").toFloat();
             if (auto* pan = m_radioModel.activePanadapter()) {
-                if (bw > 0.0)
-                    m_radioModel.sendCommand(
-                        QString("display pan set %1 bandwidth=%2")
-                            .arg(pan->panId()).arg(bw, 0, 'f', 6));
                 if (minDbm != 0.0f && maxDbm != 0.0f)
                     m_radioModel.sendCommand(
                         QString("display pan set %1 min_dbm=%2 max_dbm=%3")
@@ -3350,8 +3362,7 @@ BandSnapshot MainWindow::captureCurrentBandState() const
         snap.agcMode       = s->agcMode();
         snap.agcThreshold  = s->agcThreshold();
     }
-    snap.panCenterMhz    = m_radioModel.panCenterMhz();
-    snap.panBandwidthMhz = m_radioModel.panBandwidthMhz();
+    // Center and bandwidth are radio-authoritative — don't capture.
     snap.minDbm          = spectrum()->refLevel() - spectrum()->dynamicRange();
     snap.maxDbm          = spectrum()->refLevel();
     snap.spectrumFrac    = spectrum()->spectrumFrac();
@@ -3374,10 +3385,10 @@ void MainWindow::restoreBandState(const BandSnapshot& snap)
         s->setAgcThreshold(snap.agcThreshold);
     }
     if (auto* pan = m_radioModel.activePanadapter()) {
-        m_radioModel.sendCommand(
-            QString("display pan set %1 center=%2").arg(pan->panId()).arg(snap.panCenterMhz, 0, 'f', 6));
-        m_radioModel.sendCommand(
-            QString("display pan set %1 bandwidth=%2").arg(pan->panId()).arg(snap.panBandwidthMhz, 0, 'f', 6));
+        // Don't push center or bandwidth — slice tune recenters the pan and
+        // the radio determines bandwidth. Pushing stale saved values causes
+        // FFT/waterfall misalignment during the transition (#279, #291).
+        // Only restore dBm scale (client-side display preference).
         m_radioModel.sendCommand(
             QString("display pan set %1 min_dbm=%2 max_dbm=%3").arg(pan->panId())
                 .arg(static_cast<double>(snap.minDbm), 0, 'f', 2)

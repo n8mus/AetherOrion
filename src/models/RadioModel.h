@@ -229,6 +229,8 @@ signals:
     void panadapterLevelChanged(float minDbm, float maxDbm);
     void panadapterAdded(PanadapterModel* pan);
     void panadapterRemoved(const QString& panId);
+    // Emitted when a pan needs xpixels/ypixels pushed (after profile change, reconnect, etc.)
+    void panDimensionsNeeded(const QString& panId);
     // Emitted when the radio reports its antenna list (e.g. "ANT1,ANT2,RX_A,RX_B").
     void antListChanged(QStringList ants);
     // Emitted when a power amplifier (e.g. PGXL) is detected or lost.

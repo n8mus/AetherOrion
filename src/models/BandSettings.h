@@ -19,12 +19,11 @@ struct BandSnapshot {
     QString agcMode;
     int     agcThreshold{0};
 
-    // Panadapter/display settings
+    // Panadapter/display settings (client-side only — bandwidth and center
+    // are radio-authoritative and must NOT be saved/restored here)
     int    rfGain{0};
     bool   wnbOn{false};
     int    wnbLevel{50};
-    double panCenterMhz{0.0};
-    double panBandwidthMhz{0.200};
     float  minDbm{-130.0f};
     float  maxDbm{-40.0f};
     float  spectrumFrac{0.40f};

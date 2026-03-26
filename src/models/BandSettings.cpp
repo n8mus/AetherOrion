@@ -44,8 +44,6 @@ BandSnapshot BandSettings::loadBandState(const QString& bandName) const
     BandSnapshot snap;
     snap.frequencyMhz    = def.defaultFreqMhz;
     snap.mode            = QString::fromLatin1(def.defaultMode);
-    snap.panCenterMhz    = def.defaultFreqMhz;
-    snap.panBandwidthMhz = 0.200;
     snap.minDbm          = -130.0f;
     snap.maxDbm          = -40.0f;
     snap.spectrumFrac    = 0.40f;
