@@ -33,7 +33,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf autoconf automake libtool`
 
-Current version: **0.7.3** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.7.4** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -835,6 +835,14 @@ and panadapter. The radio assigns these to our `client_handle`.
   reflect mute state. Right-click speaker tab to toggle mute directly (#283)
 - **4-pane splitter fix**: CWX+DVK+PanStack+AppletPanel layout corrected —
   applet panel was invisible due to wrong stretch/size indices (#281)
+- **VOX support**: creates `remote_audio_tx` stream on connect, streams mic
+  audio to radio during RX for VOX detection (`met_in_rx=1`). Separate
+  accumulator keeps VOX path independent from DAX TX (#253)
+- **Profile load xpixels fix**: detect when radio resets x/y_pixels to
+  defaults during profile load and auto re-push correct widget dimensions (#289)
+- **Band stack radio-authoritative fix**: removed bandwidth and center from
+  band stack save/restore — both are radio-authoritative per FlexLib API.
+  Fixes FFT/waterfall misalignment on band change (#291)
 
 ## What's NOT Yet Implemented
 
