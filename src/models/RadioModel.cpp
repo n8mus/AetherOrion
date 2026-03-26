@@ -1783,12 +1783,16 @@ void RadioModel::handlePanadapterStatus(const QString& panId, const QMap<QString
         const float minDbm = kvs.value("min_dbm", "-130").toFloat();
         const float maxDbm = kvs.value("max_dbm", "-20").toFloat();
         if (pan) {
-            qDebug() << "setDbmRange: pan" << pan->panId()
-                     << "streamId=0x" + QString::number(pan->panStreamId(), 16)
-                     << minDbm << maxDbm;
             m_panStream.setDbmRange(pan->panStreamId(), minDbm, maxDbm);
         }
         emit panadapterLevelChanged(minDbm, maxDbm);
+    }
+    // Track ypixels from radio status — the radio encodes FFT bins as pixel
+    // Y positions (0..ypixels-1), so PanadapterStream needs this for dBm conversion.
+    if (kvs.contains("y_pixels") && pan) {
+        int yPix = kvs["y_pixels"].toInt();
+        if (yPix > 0)
+            m_panStream.setYPixels(pan->panStreamId(), yPix);
     }
     if (kvs.contains("ant_list")) {
         const QStringList ants = kvs["ant_list"].split(',', Qt::SkipEmptyParts);
@@ -1820,18 +1824,9 @@ void RadioModel::configurePan()
 {
     if (m_activePanId.isEmpty()) return;
 
-    // Set xpixels and ypixels — the radio requires explicit dimensions before
-    // it will produce valid FFT data.  Note: the command uses "xpixels" (no
-    // underscore) but status messages report "x_pixels" (with underscore).
-    sendCmd(
-        QString("display pan set %1 xpixels=1024 ypixels=700").arg(m_activePanId),
-        [this](int code, const QString&) {
-            if (code != 0)
-                qCWarning(lcProtocol) << "RadioModel: display pan set xpixels/ypixels failed, code"
-                           << Qt::hex << code;
-            else
-                qCDebug(lcProtocol) << "RadioModel: panadapter xpixels=1024 ypixels=700 set OK";
-        });
+    // xpixels/ypixels are pushed by MainWindow::panadapterAdded() with actual
+    // widget dimensions. Do NOT hardcode 1024x700 here — it overwrites the
+    // correct dimensions and causes FFT/waterfall horizontal misalignment.
 
     sendCmd(
         QString("display pan set %1 fps=25 min_dbm=-130 max_dbm=-40").arg(m_activePanId),

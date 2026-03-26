@@ -518,6 +518,8 @@ void VfoWidget::buildTabContent()
             if (!m_updatingFromModel && m_slice) m_slice->setAudioMute(on);
             m_muteBtn->setText(on ? QString::fromUtf8("AF  \xF0\x9F\x94\x87")    // 🔇 AF
                                   : QString::fromUtf8("AF  \xF0\x9F\x94\x8A"));  // 🔊 AF
+            m_tabBtns[0]->setText(on ? QString::fromUtf8("\xF0\x9F\x94\x87")
+                                     : QString::fromUtf8("\xF0\x9F\x94\x8A"));
         });
         // SQL row
         auto* sqlRow = new QHBoxLayout;
@@ -1554,6 +1556,8 @@ void VfoWidget::setSlice(SliceModel* slice)
         m_muteBtn->setChecked(mute);
         m_muteBtn->setText(mute ? QString::fromUtf8("AF  \xF0\x9F\x94\x87")
                                 : QString::fromUtf8("AF  \xF0\x9F\x94\x8A"));
+        m_tabBtns[0]->setText(mute ? QString::fromUtf8("\xF0\x9F\x94\x87")
+                                   : QString::fromUtf8("\xF0\x9F\x94\x8A"));
         m_updatingFromModel = false;
     });
     connect(m_slice, &SliceModel::audioPanChanged, this, [this](int pan) {
@@ -1778,6 +1782,8 @@ void VfoWidget::syncFromSlice()
         m_muteBtn->setChecked(muted);
         m_muteBtn->setText(muted ? QString::fromUtf8("AF  \xF0\x9F\x94\x87")
                                  : QString::fromUtf8("AF  \xF0\x9F\x94\x8A"));
+        m_tabBtns[0]->setText(muted ? QString::fromUtf8("\xF0\x9F\x94\x87")
+                                    : QString::fromUtf8("\xF0\x9F\x94\x8A"));
     }
     {
         QSignalBlocker b1(m_sqlBtn), b2(m_sqlSlider);
@@ -2131,8 +2137,16 @@ bool VfoWidget::eventFilter(QObject* obj, QEvent* event)
         if (lbl) {
             int idx = m_tabBtns.indexOf(lbl);
             if (idx >= 0) {
-                showTab(idx);
-                return true;
+                auto* me = static_cast<QMouseEvent*>(event);
+                // Right-click on speaker tab (idx 0) toggles mute directly
+                if (idx == 0 && me->button() == Qt::RightButton && m_slice) {
+                    m_slice->setAudioMute(!m_slice->audioMute());
+                    return true;
+                }
+                if (me->button() == Qt::LeftButton) {
+                    showTab(idx);
+                    return true;
+                }
             }
         }
     }

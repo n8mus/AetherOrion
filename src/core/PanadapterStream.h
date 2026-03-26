@@ -56,6 +56,10 @@ public:
 
     // Update the dBm range used to scale incoming FFT bins for a specific stream.
     void setDbmRange(quint32 streamId, float minDbm, float maxDbm);
+    // Update the ypixels used to scale FFT bin values for a specific stream.
+    // The radio encodes FFT bins as pixel Y positions (0 = top/max_dbm,
+    // ypixels-1 = bottom/min_dbm), NOT as 0-65535 uint16 range.
+    void setYPixels(quint32 streamId, int yPixels);
 
     // Register/unregister pan and waterfall stream IDs we own.
     // Only registered streams are processed; others are dropped.
@@ -162,6 +166,7 @@ private:
     QUdpSocket      m_socket;
     quint16         m_localPort{0};
     QMap<quint32, QPair<float,float>> m_dbmRanges;  // streamId → (min, max)
+    QMap<quint32, int> m_yPixels;  // streamId → ypixels for FFT bin scaling
     RadioConnection* m_conn{nullptr};
     QMap<quint32, FrameAssembler> m_frames;  // per-stream FFT frame assembly
     QMap<quint32, StreamStats> m_streamStats;  // keyed by stream ID

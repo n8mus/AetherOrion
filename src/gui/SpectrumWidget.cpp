@@ -1096,6 +1096,7 @@ void SpectrumWidget::resizeEvent(QResizeEvent* ev)
             newWf = m_waterfall.scaled(width(), wfHeight, Qt::IgnoreAspectRatio, Qt::FastTransformation);
         m_waterfall = newWf;
     }
+
 }
 
 // ─── Colour map ───────────────────────────────────────────────────────────────

@@ -206,6 +206,12 @@ void PanadapterStream::setDbmRange(quint32 streamId, float minDbm, float maxDbm)
              << minDbm << "->" << maxDbm;
 }
 
+void PanadapterStream::setYPixels(quint32 streamId, int yPixels)
+{
+    m_yPixels[streamId] = yPixels;
+}
+
+
 void PanadapterStream::onDatagramReady()
 {
     while (m_socket.hasPendingDatagrams()) {
@@ -379,9 +385,9 @@ void PanadapterStream::decodeFFT(const uchar* raw, int totalBytes, bool hasTrail
     const int   count = frame.buf.size();
     QVector<float> bins(count);
 
-    constexpr float kYPixels = 700.0f;
+    const float yPix = static_cast<float>(m_yPixels.value(streamId, 700));
     for (int i = 0; i < count; ++i)
-        bins[i] = maxDbm - (static_cast<float>(frame.buf[i]) / (kYPixels - 1.0f)) * range;
+        bins[i] = maxDbm - (static_cast<float>(frame.buf[i]) / (yPix - 1.0f)) * range;
 
     emit spectrumReady(streamId, bins);
 }

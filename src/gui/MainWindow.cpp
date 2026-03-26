@@ -442,6 +442,10 @@ MainWindow::MainWindow(QWidget* parent)
             QString("display pan set %1 xpixels=%2 ypixels=%3")
                 .arg(pan->panId()).arg(xpix).arg(ypix));
 
+        // Tell PanadapterStream the ypixels for FFT bin→dBm conversion
+        if (pan->panStreamId())
+            m_radioModel.panStream()->setYPixels(pan->panStreamId(), ypix);
+
         qDebug() << "MainWindow: added panadapter applet for" << pan->panId();
 
         // Debounced layout restore: after all pans are added on connect,
@@ -483,6 +487,8 @@ MainWindow::MainWindow(QWidget* parent)
                         m_radioModel.sendCommand(
                             QString("display pan set %1 xpixels=%2 ypixels=%3")
                                 .arg(pan->panId()).arg(xpix).arg(ypix));
+                        if (pan->panStreamId())
+                            m_radioModel.panStream()->setYPixels(pan->panStreamId(), ypix);
                     }
                 });
             });
