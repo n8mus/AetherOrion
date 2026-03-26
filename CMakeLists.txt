@@ -117,6 +117,7 @@ set(CORE_SOURCES
     src/core/WanConnection.cpp
     src/core/RigctlServer.cpp
     src/core/FirmwareUploader.cpp
+    src/core/DvkWavTransfer.cpp
     src/core/FirmwareStager.cpp
     src/core/RNNoiseFilter.cpp
     src/core/CwDecoder.cpp

@@ -79,6 +79,7 @@ private:
     void wireVfoWidget(VfoWidget* w, SliceModel* s);
     void enableNr2WithWisdom();  // Wisdom-gated NR2 enable (shared by VFO + overlay)
     void setupKeyboardShortcuts();
+    void updateKeyerAvailability(const QString& mode);
     void applyPanLayout(const QString& layoutId);
     void createPansSequentially(const QString& layoutId, int total,
                                 std::shared_ptr<QStringList> panIds, int created);

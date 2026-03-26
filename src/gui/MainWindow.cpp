@@ -25,6 +25,7 @@
 #include "SpotSettingsDialog.h"
 #include "CwxPanel.h"
 #include "DvkPanel.h"
+#include "core/DvkWavTransfer.h"
 #include "AmpApplet.h"
 #include "ProfileManagerDialog.h"
 #include "SupportDialog.h"
@@ -905,11 +906,11 @@ MainWindow::MainWindow(QWidget* parent)
     const QString stateB64 = s.value("MainWindowState").toString();
     if (!stateB64.isEmpty())
         restoreState(QByteArray::fromBase64(stateB64.toLatin1()));
-    // Clear stale 3-pane splitter state — now 2-pane layout.
+    // Clear stale splitter state — layout has changed across versions.
     s.remove("SplitterState");
-    // Force 2-pane sizing: spectrum gets all remaining width, applet panel fixed at 260px
+    // Force 4-pane sizing: CWX=0, DVK=0 (hidden), center=stretch, applet=260px
     QTimer::singleShot(0, this, [this]() {
-        m_splitter->setSizes({width() - 260, 260});
+        m_splitter->setSizes({0, 0, width() - 260, 260});
     });
 
     // Auto-popup connection dialog if no saved radio
@@ -974,31 +975,39 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         return true;
     }
     if (obj == m_cwxIndicator && event->type() == QEvent::MouseButtonPress) {
+        if (!m_cwxIndicator->isEnabled()) return true;
         bool show = !m_cwxPanel->isVisible();
+        // Close DVK (mutual exclusion)
+        if (show && m_dvkPanel->isVisible()) {
+            m_dvkPanel->hide();
+            auto* sl = activeSlice();
+            updateKeyerAvailability(sl ? sl->mode() : QString());
+        }
         m_cwxPanel->setVisible(show);
         m_cwxIndicator->setStyleSheet(show
             ? "QLabel { color: #00b4d8; font-weight: bold; font-size: 24px; }"
             : "QLabel { color: rgba(255,255,255,40); font-weight: bold; font-size: 24px; }");
-        // Resize splitter to give CWX its fixed width
         if (show) {
             auto sizes = m_splitter->sizes();
-            if (sizes.size() >= 3) {
+            if (sizes.size() >= 4) {
                 int cwxW = 250;
-                int total = sizes[0] + sizes[1];
+                int total = sizes[0] + sizes[1] + sizes[2];
                 sizes[0] = cwxW;
-                sizes[1] = total - cwxW;
+                sizes[1] = 0;
+                sizes[2] = total - cwxW;
                 m_splitter->setSizes(sizes);
             }
         }
         return true;
     }
     if (obj == m_dvkIndicator && event->type() == QEvent::MouseButtonPress) {
+        if (!m_dvkIndicator->isEnabled()) return true;
         bool show = !m_dvkPanel->isVisible();
-        // Mutual exclusion: close CWX when opening DVK
+        // Close CWX (mutual exclusion)
         if (show && m_cwxPanel->isVisible()) {
             m_cwxPanel->hide();
-            m_cwxIndicator->setStyleSheet(
-                "QLabel { color: rgba(255,255,255,40); font-weight: bold; font-size: 24px; }");
+            auto* sl = activeSlice();
+            updateKeyerAvailability(sl ? sl->mode() : QString());
         }
         m_dvkPanel->setVisible(show);
         m_dvkIndicator->setStyleSheet(show
@@ -1008,7 +1017,8 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
             auto sizes = m_splitter->sizes();
             if (sizes.size() >= 4) {
                 int dvkW = 250;
-                int total = sizes[1] + sizes[2];
+                int total = sizes[0] + sizes[1] + sizes[2];
+                sizes[0] = 0;
                 sizes[1] = dvkW;
                 sizes[2] = total - dvkW;
                 m_splitter->setSizes(sizes);
@@ -1495,6 +1505,8 @@ void MainWindow::buildUI()
 
     // DVK panel — left of spectrum, hidden by default (mutually exclusive with CWX)
     m_dvkPanel = new DvkPanel(m_radioModel.dvkModel(), splitter);
+    auto* dvkTransfer = new DvkWavTransfer(&m_radioModel, this);
+    m_dvkPanel->setWavTransfer(dvkTransfer);
     splitter->addWidget(m_dvkPanel);
     m_dvkPanel->hide();
 
@@ -1515,19 +1527,20 @@ void MainWindow::buildUI()
         m_radioModel.setActivePanId(panId);
     });
     splitter->setStretchFactor(0, 0);  // CWX panel: fixed width
-    splitter->setStretchFactor(1, 1);  // PanStack: stretch
+    splitter->setStretchFactor(1, 0);  // DVK panel: fixed width
+    splitter->setStretchFactor(2, 1);  // PanStack: stretch
     splitter->setCollapsible(0, false);
+    splitter->setCollapsible(1, false);
 
     // Right — applet panel (includes S-Meter)
     m_appletPanel = new AppletPanel(splitter);
     splitter->addWidget(m_appletPanel);
-    splitter->setStretchFactor(2, 0);
-    splitter->setCollapsible(2, false);
+    splitter->setStretchFactor(3, 0);
+    splitter->setCollapsible(3, false);
 
-    // Set initial splitter sizes: CWX=0 (hidden), center=stretch, right=310
-    // The center pane gets whatever is left after the fixed-width sidebars.
+    // Set initial splitter sizes: CWX=0, DVK=0 (both hidden), center=stretch, right=310
     const int centerWidth = qMax(400, width() - 310);
-    splitter->setSizes({0, centerWidth, 310});
+    splitter->setSizes({0, 0, centerWidth, 310});
 
     // ── Status bar (SmartSDR-style, double height) ─────────────────────
     statusBar()->setFixedHeight(40);
@@ -2098,6 +2111,9 @@ void MainWindow::onSliceAdded(SliceModel* s)
                 m_cwDecoder.start();
             else if (!isCw && m_cwDecoder.isRunning())
                 m_cwDecoder.stop();
+
+            // Update CWX/DVK indicator availability for new mode
+            updateKeyerAvailability(mode);
         }
     });
 
@@ -2314,6 +2330,9 @@ void MainWindow::setActiveSlice(int sliceId)
         m_cwDecoder.start();
     else if (!isCw && m_cwDecoder.isRunning())
         m_cwDecoder.stop();
+
+    // Update CWX/DVK indicator availability for this slice's mode
+    updateKeyerAvailability(s->mode());
 
     // Detect band from frequency
     if (m_bandSettings.currentBand().isEmpty())
@@ -3052,6 +3071,41 @@ static bool isTextInputFocused()
     return qobject_cast<QLineEdit*>(w) || qobject_cast<QTextEdit*>(w)
         || qobject_cast<QPlainTextEdit*>(w) || qobject_cast<QSpinBox*>(w)
         || qobject_cast<QComboBox*>(w);
+}
+
+void MainWindow::updateKeyerAvailability(const QString& mode)
+{
+    static const QString kActive   = "QLabel { color: #00b4d8; font-weight: bold; font-size: 24px; }";
+    static const QString kAvail    = "QLabel { color: rgba(255,255,255,40); font-weight: bold; font-size: 24px; }";
+    static const QString kDisabled = "QLabel { color: #252530; font-weight: bold; font-size: 24px; }";
+
+    bool isCw  = (mode == "CW" || mode == "CWL");
+    bool isSsb = (mode == "USB" || mode == "LSB" || mode == "AM" || mode == "SAM"
+                  || mode == "FM" || mode == "NFM" || mode == "DFM");
+
+    // CWX: available in CW modes only
+    m_cwxIndicator->setEnabled(isCw);
+    if (!isCw && m_cwxPanel->isVisible()) {
+        m_cwxPanel->hide();
+        m_cwxIndicator->setStyleSheet(kDisabled);
+    } else if (m_cwxPanel->isVisible()) {
+        m_cwxIndicator->setStyleSheet(kActive);
+    } else {
+        m_cwxIndicator->setStyleSheet(isCw ? kAvail : kDisabled);
+    }
+    m_cwxIndicator->setCursor(isCw ? Qt::PointingHandCursor : Qt::ArrowCursor);
+
+    // DVK: available in voice modes (SSB, AM, FM — not DIGU/DIGL)
+    m_dvkIndicator->setEnabled(isSsb);
+    if (!isSsb && m_dvkPanel->isVisible()) {
+        m_dvkPanel->hide();
+        m_dvkIndicator->setStyleSheet(kDisabled);
+    } else if (m_dvkPanel->isVisible()) {
+        m_dvkIndicator->setStyleSheet(kActive);
+    } else {
+        m_dvkIndicator->setStyleSheet(isSsb ? kAvail : kDisabled);
+    }
+    m_dvkIndicator->setCursor(isSsb ? Qt::PointingHandCursor : Qt::ArrowCursor);
 }
 
 void MainWindow::setupKeyboardShortcuts()
