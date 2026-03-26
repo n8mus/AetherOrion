@@ -432,10 +432,16 @@ void AudioEngine::onTxAudioReady()
     // DAX TX mode: VirtualAudioBridge is the TX audio source.
     if (m_daxTxMode) return;
 
-    // Don't send mic audio when not transmitting — it accumulates in
-    // the radio's DAX TX buffer and plays back when TX starts, causing
-    // mic bleed into digital modes.
-    if (!m_transmitting) return;
+    // When not transmitting, stream mic audio on the remote_audio_tx stream
+    // so the radio can monitor it for VOX detection (met_in_rx=1).
+    // Don't send on the DAX TX stream during RX — it accumulates and
+    // plays back when TX starts, causing mic bleed.
+    if (!m_transmitting) {
+        if (m_remoteTxStreamId == 0) return;
+        // Send uncompressed VITA-49 mic audio for VOX monitoring
+        sendVoiceTxPacket(data, m_remoteTxStreamId);
+        return;
+    }
 
     // ── Opus TX path: encode 20ms frames (480 stereo samples) ──────────
     if (m_opusTxEnabled) {
@@ -559,6 +565,29 @@ QByteArray AudioEngine::buildVitaTxPacket(const float* samples, int numStereoSam
     m_txPacketCount = (m_txPacketCount + 1) & 0xF;
 
     return packet;
+}
+
+void AudioEngine::sendVoiceTxPacket(const QByteArray& pcmData, quint32 streamId)
+{
+    // Accumulate into a separate buffer for VOX/met_in_rx audio
+    m_voxAccumulator.append(pcmData);
+
+    while (m_voxAccumulator.size() >= TX_PCM_BYTES_PER_PACKET) {
+        const int16_t* pcm = reinterpret_cast<const int16_t*>(m_voxAccumulator.constData());
+
+        float floatBuf[TX_SAMPLES_PER_PACKET * 2];
+        for (int i = 0; i < TX_SAMPLES_PER_PACKET * 2; ++i)
+            floatBuf[i] = pcm[i] / 32768.0f;
+
+        // Build packet using the remote_audio_tx stream ID
+        quint32 savedId = m_txStreamId;
+        m_txStreamId = streamId;
+        QByteArray packet = buildVitaTxPacket(floatBuf, TX_SAMPLES_PER_PACKET);
+        m_txStreamId = savedId;
+
+        emit txPacketReady(packet);
+        m_voxAccumulator.remove(0, TX_PCM_BYTES_PER_PACKET);
+    }
 }
 
 void AudioEngine::setOutputDevice(const QAudioDevice& dev)

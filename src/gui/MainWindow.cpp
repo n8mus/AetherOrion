@@ -249,6 +249,17 @@ MainWindow::MainWindow(QWidget* parent)
                 4991);
         }
     });
+    connect(&m_radioModel, &RadioModel::remoteTxStreamReady,
+            this, [this](quint32 streamId) {
+        m_audio.setRemoteTxStreamId(streamId);
+        qDebug() << "MainWindow: remote audio TX stream ID set to" << Qt::hex << streamId;
+        // Ensure mic TX stream is running for VOX monitoring
+        if (!m_audio.isTxStreaming()) {
+            m_audio.startTxStream(
+                m_radioModel.connection()->radioAddress(),
+                4991);
+        }
+    });
     // Start/stop PC audio TX when mic_selection changes
     connect(m_radioModel.transmitModel(), &TransmitModel::micStateChanged,
             this, [this]() {

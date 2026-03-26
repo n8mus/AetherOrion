@@ -54,9 +54,11 @@ public:
     bool startTxStream(const QHostAddress& radioAddress, quint16 radioPort);
     void stopTxStream();
 
-    // Set the TX stream ID (from radio's response to "stream create type=remote_audio_tx")
+    // Set the DAX TX stream ID (from radio's response to "stream create type=dax_tx")
     void setTxStreamId(quint32 id) { m_txStreamId = id; }
     quint32 txStreamId() const { return m_txStreamId; }
+    // Set the remote audio TX stream ID (for voice TX and VOX monitoring)
+    void setRemoteTxStreamId(quint32 id) { m_remoteTxStreamId = id; }
 
     float rxVolume() const  { return m_rxVolume; }
     void  setRxVolume(float v);
@@ -127,6 +129,7 @@ private:
     float computeRMS(const QByteArray& pcm) const;
     QByteArray applyBoost(const QByteArray& pcm, float gain) const;
     QByteArray buildVitaTxPacket(const float* samples, int numStereoSamples);
+    void sendVoiceTxPacket(const QByteArray& pcmData, quint32 streamId);
     QByteArray resampleStereo(const QByteArray& pcm);
     void processNr2(const QByteArray& stereoPcm);
 
@@ -144,9 +147,11 @@ private:
 #endif
     QHostAddress  m_txAddress;
     quint16       m_txPort{0};
-    quint32       m_txStreamId{0};
+    quint32       m_txStreamId{0};         // DAX TX stream
+    quint32       m_remoteTxStreamId{0};  // remote_audio_tx (voice/VOX)
     quint8        m_txPacketCount{0};    // 4-bit, mod 16
     QByteArray    m_txAccumulator;       // accumulate PCM until 128 stereo pairs
+    QByteArray    m_voxAccumulator;     // accumulate PCM for VOX/met_in_rx stream
     QByteArray    m_txFloatAccumulator;  // accumulate float32 PCM for RADE modem TX
     std::atomic<bool> m_radeMode{false}; // RADE digital voice mode active (atomic: cross-thread)
     bool          m_daxTxMode{false};    // DAX TX mode: VirtualAudioBridge handles TX

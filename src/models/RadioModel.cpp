@@ -635,7 +635,7 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                             qCDebug(lcProtocol) << "RadioModel: PC audio disabled, skipping remote_audio_rx (using radio line out)";
                         }
 
-                        // Request DAX TX audio stream (PC mic → radio)
+                        // Request DAX TX audio stream (PC mic → radio, DAX mode)
                         sendCmd(
                             "stream create type=dax_tx",
                             [this](int code, const QString& body) {
@@ -643,10 +643,27 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                                     quint32 id = body.trimmed().toUInt(nullptr, 16);
                                     qCDebug(lcProtocol) << "RadioModel: dax_tx stream created, id:"
                                              << Qt::hex << id;
-                                    sendCmd("transmit set met_in_rx=1");
                                     emit txAudioStreamReady(id);
                                 } else {
                                     qCWarning(lcProtocol) << "RadioModel: stream create dax_tx failed, code"
+                                               << Qt::hex << code << "body:" << body;
+                                }
+                            });
+
+                        // Request remote audio TX stream (voice mode, VOX monitoring)
+                        // This stream carries mic audio to the radio for voice TX and
+                        // VOX detection. met_in_rx=1 tells the radio to monitor it during RX.
+                        sendCmd(
+                            "stream create type=remote_audio_tx",
+                            [this](int code, const QString& body) {
+                                if (code == 0) {
+                                    quint32 id = body.trimmed().toUInt(nullptr, 16);
+                                    qCDebug(lcProtocol) << "RadioModel: remote_audio_tx stream created, id:"
+                                             << Qt::hex << id;
+                                    sendCmd("transmit set met_in_rx=1");
+                                    emit remoteTxStreamReady(id);
+                                } else {
+                                    qCWarning(lcProtocol) << "RadioModel: stream create remote_audio_tx failed, code"
                                                << Qt::hex << code << "body:" << body;
                                 }
                             });

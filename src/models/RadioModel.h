@@ -250,8 +250,10 @@ signals:
     // quality: "Excellent", "Very Good", "Good", "Fair", "Poor"
     // pingMs: round-trip time in milliseconds
     void networkQualityChanged(const QString& quality, int pingMs);
-    // Emitted when the radio assigns a TX audio stream ID.
+    // Emitted when the radio assigns a TX audio stream ID (DAX TX).
     void txAudioStreamReady(quint32 streamId);
+    // Emitted when the radio assigns a remote audio TX stream ID (voice/VOX).
+    void remoteTxStreamReady(quint32 streamId);
     // Emitted when global profile list or active profile changes.
     void globalProfilesChanged();
     // Emitted on each successful ping response from the radio.
