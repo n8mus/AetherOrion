@@ -33,7 +33,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf autoconf automake libtool`
 
-Current version: **0.7.4** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.7.5** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -879,6 +879,17 @@ and panadapter. The radio assigns these to our `client_handle`.
 - **Band stack radio-authoritative fix**: removed bandwidth and center from
   band stack save/restore — both are radio-authoritative per FlexLib API.
   Fixes FFT/waterfall misalignment on band change (#291)
+- **ESC (Enhanced Signal Clarity)**: diversity beamforming controls in VFO
+  audio tab. Polar display (phase=angle, gain=radius), horizontal phase
+  slider (0–360° in 5° steps, radians to radio), vertical gain slider
+  (0.0–2.0), ESC toggle button. Real-time ESC signal strength meter bar
+  from radio SLC/ESC meter. Protocol matches SmartSDR pcap: `esc=on/off`,
+  phase in radians, DiversityChild guard per FlexLib. ESC panel visible
+  only on diversity parent slice, hidden on child. Requires DIV_ESC
+  license (SmartSDR+). (#20, #38)
+- **Band change panadapter scroll fix**: band changes now use
+  `tuneAndRecenter()` instead of `onFrequencyChanged()` which sent
+  `autopan=0`, preventing the radio from scrolling to the new band
 
 ## What's NOT Yet Implemented
 

@@ -9,7 +9,7 @@
 
 AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
 
-**Current version: 0.7.4** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+**Current version: 0.7.5** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
 
 > **Cross-platform downloads available:** Linux AppImage, macOS universal DMG, Windows installer (.exe) and portable ZIP.
 > Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
@@ -38,6 +38,8 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - +RX button creates new slices on the current panadapter
 - Right-click context menu to close slices
 - Off-screen slice indicators with frequency display
+- **Diversity mode (DIV)** — dual-SCU diversity reception with ESC beamforming
+- **ESC controls** — polar display, phase/gain sliders, real-time ESC signal meter
 
 ### Panadapter & Waterfall
 - Real-time FFT spectrum and scrolling waterfall display
@@ -254,9 +256,9 @@ This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app laun
 - [x] 3-tier TX power meters (barefoot/Aurora/PGXL)
 - [x] Memory channel editor (all columns editable)
 - [x] SmartSDR-style status bar with clickable TNF toggle
+- [x] Diversity mode (DIV) with ESC beamforming — phase/gain sliders, polar display, ESC meter (#20, #38)
 
 ### In Progress
-- [ ] Diversity mode (DIV) — toggle implemented, ESC phase/gain controls planned (#20, #38)
 - [ ] DAX IQ streaming for SDR apps (#124)
 - [ ] SmartLink own Auth0 credentials (pending FlexRadio developer support)
 
