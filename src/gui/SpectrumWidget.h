@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QPushButton>
 #include <QVector>
 #include <QMap>
 #include <QImage>
@@ -207,6 +208,9 @@ signals:
     void frequencyClicked(double mhz);
     // Emitted when the user drags the frequency scale bar to change bandwidth.
     void bandwidthChangeRequested(double newBandwidthMhz);
+    // Band/segment zoom: radio handles center/bandwidth (SmartSDR pcap: "band_zoom=1" / "segment_zoom=1")
+    void bandZoomRequested();
+    void segmentZoomRequested();
     // Emitted when the user drags the waterfall to pan the center frequency.
     void centerChangeRequested(double newCenterMhz);
     // Emitted when the user drags a filter edge to resize the passband.
@@ -242,6 +246,7 @@ private:
     void drawSpotMarkers(QPainter& p, const QRect& specRect);
     int  tnfAtPixel(int x) const;
     void drawWaterfall(QPainter& p, const QRect& r);
+    void positionZoomButtons();
     void drawFreqScale(QPainter& p, const QRect& r);
     void drawDbmScale(QPainter& p, const QRect& specRect);
     void drawTimeScale(QPainter& p, const QRect& wfRect);
@@ -391,6 +396,10 @@ private:
     // VFO info widgets (one per slice, attached to VFO markers)
     QMap<int, VfoWidget*> m_vfoWidgets;
     VfoWidget* m_vfoWidget{nullptr};  // alias to active slice widget (compat)
+
+    // Bottom-left waterfall zoom buttons: S(egment), B(and)
+    QPushButton* m_zoomSegBtn{nullptr};
+    QPushButton* m_zoomBandBtn{nullptr};
 };
 
 } // namespace AetherSDR

@@ -26,6 +26,36 @@
 #include <QMouseEvent>
 #include <cmath>
 
+// Horizontal level meter bar: maps a dBm value to a filled bar.
+// Range: -130 (empty) to -20 dBm (full). Color: cyan with green tint above S9.
+class LevelBar : public QWidget {
+public:
+    explicit LevelBar(const float& valueRef, QWidget* parent = nullptr)
+        : QWidget(parent), m_value(valueRef) {}
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, false);
+        // Background
+        p.fillRect(rect(), QColor(0x10, 0x10, 0x1c));
+        // Border
+        p.setPen(QColor(0x30, 0x40, 0x50));
+        p.drawRect(rect().adjusted(0, 0, -1, -1));
+        // Fill: map -130...-20 dBm to 0...1
+        constexpr float lo = -130.0f, hi = -20.0f;
+        float frac = std::clamp((m_value - lo) / (hi - lo), 0.0f, 1.0f);
+        int fillW = static_cast<int>(frac * (width() - 2));
+        if (fillW > 0) {
+            // Cyan below S9 (-73 dBm), green above
+            QColor color = (m_value < -73.0f) ? QColor(0x00, 0xb4, 0xd8)
+                                               : QColor(0x00, 0xd8, 0x60);
+            p.fillRect(1, 1, fillW, height() - 2, color);
+        }
+    }
+private:
+    const float& m_value;
+};
+
 // Slider that resets to a default value on double-click.
 class ResetSlider : public QSlider {
 public:
@@ -607,6 +637,26 @@ void VfoWidget::buildTabContent()
         m_phaseKnob = new PhaseKnob;
         escBodyRow->addWidget(m_phaseKnob);
         escVbox->addLayout(escBodyRow);
+
+        // ESC meter row: stretch + "ESC:" + level bar + dBm (right-aligned)
+        auto* escMeterRow = new QHBoxLayout;
+        escMeterRow->setSpacing(4);
+        escMeterRow->setContentsMargins(0, 0, 10, 0);
+        escMeterRow->addStretch();
+        m_escMeterLbl = new QLabel("ESC:");
+        m_escMeterLbl->setStyleSheet(
+            "QLabel { color: #00b4d8; font-size: 11px; font-family: monospace; }");
+        escMeterRow->addWidget(m_escMeterLbl);
+        m_escMeterBar = new LevelBar(m_escLevelDbm);
+        m_escMeterBar->setFixedHeight(8);
+        m_escMeterBar->setFixedWidth(60);
+        escMeterRow->addWidget(m_escMeterBar);
+        m_escDbmLbl = new QLabel("--- dBm");
+        m_escDbmLbl->setStyleSheet(
+            "QLabel { color: #00b4d8; font-size: 11px; font-family: monospace; }");
+        m_escDbmLbl->setAlignment(Qt::AlignRight);
+        escMeterRow->addWidget(m_escDbmLbl);
+        escVbox->addLayout(escMeterRow);
 
         vb->addWidget(m_escPanel);
 
@@ -1325,6 +1375,15 @@ void VfoWidget::setDiversityAllowed(bool allowed)
         m_escPanel->setVisible(false);
         resize(sizeHint());
     }
+}
+
+void VfoWidget::setEscLevel(float dbm)
+{
+    m_escLevelDbm = dbm;
+    if (m_escDbmLbl)
+        m_escDbmLbl->setText(QString("%1 dBm").arg(dbm, 0, 'f', 0));
+    if (m_escMeterBar)
+        m_escMeterBar->update();
 }
 
 void VfoWidget::setAfGain(int pct)

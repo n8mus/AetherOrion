@@ -1139,7 +1139,7 @@ void MainWindow::buildMenuBar()
             auto* s = activeSlice();
             if (s) {
                 bool isCw = (s->mode() == "CW" || s->mode() == "CWL");
-                m_panApplet->setCwPanelVisible(isCw && decodeOn);
+                if (m_panApplet) m_panApplet->setCwPanelVisible(isCw && decodeOn);
             }
 
             // If audio compression changed, recreate the RX audio stream
@@ -1540,7 +1540,8 @@ void MainWindow::buildUI()
 
     // Centre — panadapter stack (one or more FFT + waterfall panes)
     m_panStack = new PanadapterStack(splitter);
-    m_panApplet = m_panStack->addPanadapter("default");
+    m_panApplet = nullptr;  // ensure setActivePanApplet sees a change
+    setActivePanApplet(m_panStack->addPanadapter("default"));
     splitter->addWidget(m_panStack);
 
     // Sync RadioModel's active pan/wf IDs when PanadapterStack focus changes.
@@ -2151,7 +2152,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
         if (s->sliceId() == m_activeSliceId) {
             bool isCw = (mode == "CW" || mode == "CWL");
             bool decodeOn = AppSettings::instance().value("CwDecodeOverlay", "True").toString() == "True";
-            m_panApplet->setCwPanelVisible(isCw && decodeOn);
+            if (m_panApplet) m_panApplet->setCwPanelVisible(isCw && decodeOn);
             if (isCw && !m_cwDecoder.isRunning())
                 m_cwDecoder.start();
             else if (!isCw && m_cwDecoder.isRunning())
@@ -2207,6 +2208,12 @@ void MainWindow::onSliceAdded(SliceModel* s)
             vfo, [vfo, sid](int sliceIndex, float dbm) {
         if (sliceIndex == sid)
             vfo->setSignalLevel(dbm);
+    });
+    // Feed ESC meter per-slice — signal strength after ESC processing
+    connect(m_radioModel.meterModel(), &MeterModel::escLevelChanged,
+            vfo, [vfo, sid](int sliceIndex, float dbm) {
+        if (sliceIndex == sid)
+            vfo->setEscLevel(dbm);
     });
     connect(&m_radioModel, &RadioModel::antListChanged,
             vfo, &VfoWidget::setAntennaList);
@@ -2387,7 +2394,7 @@ void MainWindow::setActiveSlice(int sliceId)
     // Show/hide CW decode panel for the active slice's current mode
     bool isCw = (s->mode() == "CW" || s->mode() == "CWL");
     bool decodeOn = AppSettings::instance().value("CwDecodeOverlay", "True").toString() == "True";
-    m_panApplet->setCwPanelVisible(isCw && decodeOn);
+    if (m_panApplet) m_panApplet->setCwPanelVisible(isCw && decodeOn);
     if (isCw && !m_cwDecoder.isRunning())
         m_cwDecoder.start();
     else if (!isCw && m_cwDecoder.isRunning())
@@ -2485,16 +2492,18 @@ void MainWindow::setActivePanApplet(PanadapterApplet* applet)
 {
     if (applet == m_panApplet) return;
 
-    // Disconnect CW decoder from old applet
+    // Disconnect CW decoder from old applet (QPointer guards against destroyed widget)
     if (m_panApplet) {
         disconnect(&m_cwDecoder, &CwDecoder::textDecoded,
                    m_panApplet, &PanadapterApplet::appendCwText);
         disconnect(&m_cwDecoder, &CwDecoder::statsUpdated,
                    m_panApplet, &PanadapterApplet::setCwStats);
-        disconnect(m_panApplet->lockPitchButton(), &QPushButton::toggled,
-                   &m_cwDecoder, &CwDecoder::lockPitch);
-        disconnect(m_panApplet->lockSpeedButton(), &QPushButton::toggled,
-                   &m_cwDecoder, &CwDecoder::lockSpeed);
+        if (auto* pb = m_panApplet->lockPitchButton())
+            disconnect(pb, &QPushButton::toggled,
+                       &m_cwDecoder, &CwDecoder::lockPitch);
+        if (auto* sb = m_panApplet->lockSpeedButton())
+            disconnect(sb, &QPushButton::toggled,
+                       &m_cwDecoder, &CwDecoder::lockSpeed);
         disconnect(m_panApplet, &PanadapterApplet::pitchRangeChanged,
                    &m_cwDecoder, &CwDecoder::setPitchRange);
     }
@@ -2546,6 +2555,16 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             this, [this, applet](double center) {
         m_radioModel.sendCommand(
             QString("display pan set %1 center=%2").arg(applet->panId()).arg(center, 0, 'f', 6));
+    });
+    connect(sw, &SpectrumWidget::bandZoomRequested,
+            this, [this, applet]() {
+        m_radioModel.sendCommand(
+            QString("display pan set %1 band_zoom=1").arg(applet->panId()));
+    });
+    connect(sw, &SpectrumWidget::segmentZoomRequested,
+            this, [this, applet]() {
+        m_radioModel.sendCommand(
+            QString("display pan set %1 segment_zoom=1").arg(applet->panId()));
     });
     connect(sw, &SpectrumWidget::filterChangeRequested,
             this, [this](int lo, int hi) {

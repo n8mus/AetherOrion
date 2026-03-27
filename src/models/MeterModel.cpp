@@ -16,6 +16,8 @@ void MeterModel::defineMeter(const MeterDef& def)
     // Cache indices for high-frequency lookups
     if (def.source == "SLC" && def.name == "LEVEL")
         m_sLevelIdxBySlice[def.sourceIndex] = def.index;
+    else if (def.source == "SLC" && def.name == "ESC")
+        m_escLevelIdxBySlice[def.sourceIndex] = def.index;
     else if (def.source.startsWith("TX") && def.name == "FWDPWR")
         m_fwdPwrIdx = def.index;
     else if (def.source.startsWith("TX") && def.name == "SWR")
@@ -67,6 +69,10 @@ void MeterModel::removeMeter(int index)
     // Remove from per-slice LEVEL map
     for (auto it = m_sLevelIdxBySlice.begin(); it != m_sLevelIdxBySlice.end(); ) {
         if (it.value() == index) it = m_sLevelIdxBySlice.erase(it);
+        else ++it;
+    }
+    for (auto it = m_escLevelIdxBySlice.begin(); it != m_escLevelIdxBySlice.end(); ) {
+        if (it.value() == index) it = m_escLevelIdxBySlice.erase(it);
         else ++it;
     }
     if (index == m_fwdPwrIdx)   m_fwdPwrIdx = -1;
@@ -123,6 +129,16 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
                 emit sLevelChanged(sit.key(), v);
                 isSliceLevel = true;
                 break;
+            }
+        }
+        // Check if this meter is a per-slice ESC meter
+        if (!isSliceLevel) {
+            for (auto sit = m_escLevelIdxBySlice.constBegin(); sit != m_escLevelIdxBySlice.constEnd(); ++sit) {
+                if (sit.value() == idx) {
+                    emit escLevelChanged(sit.key(), v);
+                    isSliceLevel = true;
+                    break;
+                }
             }
         }
         if (isSliceLevel) {

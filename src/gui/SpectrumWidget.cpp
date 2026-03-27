@@ -12,6 +12,7 @@
 #include <QToolTip>
 #include "core/AppSettings.h"
 #include "models/BandPlan.h"
+#include "models/BandDefs.h"
 #include <QDateTime>
 #include <cmath>
 #include <cstring>
@@ -38,6 +39,32 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
 
     // VFO widgets are created per-slice via addVfoWidget().
     // m_vfoWidget is set by setActiveVfoWidget() as an alias to the active one.
+
+    // Bottom-left waterfall zoom buttons
+    static const QString kZoomBtnStyle =
+        "QPushButton { background: rgba(15,15,26,180); border: 1px solid #304050;"
+        " border-radius: 2px; color: #90a0b0; font-size: 11px; font-weight: bold;"
+        " padding: 0; margin: 0; min-width: 0; }"
+        "QPushButton:hover { background: rgba(30,50,70,200); color: #c8d8e8; }"
+        "QPushButton:pressed { background: #00b4d8; color: #000; }";
+
+    auto makeBtn = [&](const QString& text) {
+        auto* btn = new QPushButton(text, this);
+        btn->setFixedSize(22, 22);
+        btn->setStyleSheet(kZoomBtnStyle);
+        btn->setCursor(Qt::PointingHandCursor);
+        return btn;
+    };
+    m_zoomSegBtn  = makeBtn("S");
+    m_zoomBandBtn = makeBtn("B");
+
+    // SmartSDR pcap: B sends "band_zoom=1", S sends "segment_zoom=1"
+    connect(m_zoomBandBtn, &QPushButton::clicked, this, [this]() {
+        emit bandZoomRequested();
+    });
+    connect(m_zoomSegBtn, &QPushButton::clicked, this, [this]() {
+        emit segmentZoomRequested();
+    });
 }
 
 // ── Multi-VfoWidget management ────────────────────────────────────────────────
@@ -1097,6 +1124,18 @@ void SpectrumWidget::resizeEvent(QResizeEvent* ev)
         m_waterfall = newWf;
     }
 
+    positionZoomButtons();
+}
+
+void SpectrumWidget::positionZoomButtons()
+{
+    constexpr int pad = 4;
+    constexpr int sz = 22;
+    const int botY = height() - pad;
+
+    // S | B at bottom-left
+    m_zoomSegBtn->move(pad, botY - sz);
+    m_zoomBandBtn->move(pad + sz + 2, botY - sz);
 }
 
 // ─── Colour map ───────────────────────────────────────────────────────────────

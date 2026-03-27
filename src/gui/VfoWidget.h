@@ -52,6 +52,7 @@ public:
     QPushButton* nr2Button() const { return m_nr2Btn; }
     QPushButton* rn2Button() const { return m_rn2Btn; }
     void setAfGain(int pct);
+    void setEscLevel(float dbm);
     void syncFromSlice();
     QLabel* freqLabel() const { return m_freqLabel; }
 
@@ -137,6 +138,10 @@ private:
     QSlider*     m_escGainSlider{nullptr};
     QLabel*      m_escPhaseLbl{nullptr};
     QLabel*      m_escGainLbl{nullptr};
+    QLabel*      m_escMeterLbl{nullptr};
+    QLabel*      m_escDbmLbl{nullptr};
+    QWidget*     m_escMeterBar{nullptr};
+    float        m_escLevelDbm{-130.0f};
     QPushButton* m_sqlBtn{nullptr};
     bool         m_savedSquelchOn{false};
 public:

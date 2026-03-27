@@ -16,6 +16,7 @@
 
 #include <QMainWindow>
 #include <QSplitter>
+#include <QPointer>
 #include <QLabel>
 #include <QMenu>
 #include <QStatusBar>
@@ -112,7 +113,7 @@ private:
     TitleBar*         m_titleBar{nullptr};
     QSplitter*        m_splitter{nullptr};
     PanadapterStack*  m_panStack{nullptr};
-    PanadapterApplet* m_panApplet{nullptr};  // backward compat alias to active applet
+    QPointer<PanadapterApplet> m_panApplet;  // backward compat alias to active applet
 
     // GUI — right applet panel
     AppletPanel*     m_appletPanel{nullptr};

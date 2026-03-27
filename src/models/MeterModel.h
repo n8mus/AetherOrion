@@ -90,6 +90,9 @@ signals:
     // sliceIndex identifies which slice's LEVEL meter this is.
     void sLevelChanged(int sliceIndex, float dbm);
 
+    // Emitted when the ESC meter value changes (signal strength after ESC, dBm).
+    void escLevelChanged(int sliceIndex, float dbm);
+
     // Emitted when TX meters change (power, SWR).
     void txMetersChanged(float fwdPower, float swr);
 
@@ -119,6 +122,7 @@ private:
 
     // Cached indices for fast lookup of important meters
     QMap<int, int> m_sLevelIdxBySlice;  // sliceIndex → meter index for "SLC"/"LEVEL"
+    QMap<int, int> m_escLevelIdxBySlice; // sliceIndex → meter index for "SLC"/"ESC"
     int m_fwdPwrIdx{-1};     // "FWDPWR"
     int m_swrIdx{-1};        // "SWR"
     int m_micPeakIdx{-1};    // "COD-" / "MICPEAK"
