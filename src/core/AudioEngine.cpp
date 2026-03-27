@@ -11,6 +11,7 @@
 #include <QAudioDevice>
 #include <QDir>
 #include <QtEndian>
+#include <QThread>
 #include <cmath>
 #include <cstring>
 
@@ -251,14 +252,35 @@ void AudioEngine::setBnrEnabled(bool on)
         m_bnrOutBuf.clear();
         m_bnrPrimed = false;
 
+        // Try connecting — if the container is still booting, retry with a timer.
         if (!m_bnr->connectToServer(m_bnrAddress)) {
-            qCWarning(lcAudio) << "AudioEngine: BNR connect failed — disabling";
-            m_bnr.reset();
-            m_bnrUp.reset();
-            m_bnrDown.reset();
-            m_bnrEnabled = false;
-            emit bnrEnabledChanged(false);
-            return;
+            // Retry up to 5 times, 2s apart
+            auto* retryTimer = new QTimer(this);
+            retryTimer->setInterval(2000);
+            auto retryCount = std::make_shared<int>(0);
+            connect(retryTimer, &QTimer::timeout, this,
+                    [this, retryTimer, retryCount]() {
+                if (!m_bnr || *retryCount >= 5) {
+                    retryTimer->stop();
+                    retryTimer->deleteLater();
+                    if (m_bnr && !m_bnr->isConnected()) {
+                        qCWarning(lcAudio) << "AudioEngine: BNR connect failed after retries";
+                        m_bnr.reset();
+                        m_bnrUp.reset();
+                        m_bnrDown.reset();
+                        m_bnrEnabled = false;
+                        emit bnrEnabledChanged(false);
+                    }
+                    return;
+                }
+                ++(*retryCount);
+                qDebug() << "AudioEngine: BNR connect retry" << *retryCount << "of 5";
+                if (m_bnr->connectToServer(m_bnrAddress)) {
+                    retryTimer->stop();
+                    retryTimer->deleteLater();
+                }
+            });
+            retryTimer->start();
         }
     } else {
         if (m_bnr) m_bnr->disconnect();

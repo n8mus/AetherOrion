@@ -38,6 +38,7 @@
 #include <memory>
 #include <functional>
 #include <QApplication>
+#include <QProcess>
 #include <QTimer>
 #include <QDateTime>
 #include <QPropertyAnimation>
@@ -560,6 +561,15 @@ MainWindow::MainWindow(QWidget* parent)
     // audioDataReady(); we feed that directly to the QAudioSink.
     connect(m_radioModel.panStream(), &PanadapterStream::audioDataReady,
             &m_audio, &AudioEngine::feedAudioData);
+
+    // ── BNR container autostart ─────────────────────────────────────────
+#ifdef HAVE_BNR
+    if (AppSettings::instance().value("BnrAutostart", "False").toString() == "True") {
+        QString container = AppSettings::instance().value("BnrContainerName", "maxine-bnr").toString();
+        qDebug() << "BNR: autostarting container" << container;
+        QProcess::startDetached("docker", {"start", container});
+    }
+#endif
 
     // ── CW decoder: feed audio ──────────────────────────────────────────
     // Audio feed is global (same audio for all pans).
