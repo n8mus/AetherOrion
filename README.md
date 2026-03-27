@@ -9,7 +9,7 @@
 
 AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
 
-**Current version: 0.7.5** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
+**Current version: 0.7.6** | [Download](https://github.com/ten9876/AetherSDR/releases/latest) | [Discussions](https://github.com/ten9876/AetherSDR/discussions)
 
 > **Cross-platform downloads available:** Linux AppImage, macOS universal DMG, Windows installer (.exe) and portable ZIP.
 > Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
@@ -55,12 +55,14 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - Native VITA-49 waterfall tiles with automatic FFT fallback during TX
 - FFT and waterfall rendering fully decoupled
 - All overlays consume mouse/wheel events (no accidental VFO tuning)
+- Band zoom buttons (S/B) — quick zoom to phone segment or full band
 
 ### Receiver Controls
 - Full RX controls: antenna, filter presets, AGC, AF gain, pan, squelch
 - All DSP modes: NB, NR, NR2 (spectral), ANF, NRL, NRS, RNN, RN2 (RNNoise), NRF, ANFL, ANFT, APF
 - **NR2 spectral noise reduction** — Ephraim-Malah MMSE-LSA with OSMS floor tracking (contributed by @EI6JGB)
 - **RN2 neural noise suppression** — Mozilla/Xiph RNNoise deep-learning denoiser, bundled (no external dependency)
+- **BNR GPU noise removal** — NVIDIA Maxine neural denoiser via self-hosted Docker container (RTX 4000+), real-time gRPC streaming with intensity control
 - FFTW3 optimized FFTs with automatic radix-2 fallback and background wisdom generation
 - DSP level sliders (0-100) for all supported features
 - **CW decoder** — real-time Morse decode using ggmorse, auto-detects pitch and speed, confidence-colored text (green/yellow/orange/red)
@@ -257,6 +259,7 @@ This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app laun
 - [x] Memory channel editor (all columns editable)
 - [x] SmartSDR-style status bar with clickable TNF toggle
 - [x] Diversity mode (DIV) with ESC beamforming — phase/gain sliders, polar display, ESC meter (#20, #38)
+- [x] NVIDIA NIM BNR GPU noise removal — world's first GPU-accelerated AI noise removal in an SDR client (#288)
 
 ### In Progress
 - [ ] DAX IQ streaming for SDR apps (#124)

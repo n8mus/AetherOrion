@@ -33,7 +33,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf autoconf automake libtool`
 
-Current version: **0.7.5** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.7.6** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -890,6 +890,20 @@ and panadapter. The radio assigns these to our `client_handle`.
 - **Band change panadapter scroll fix**: band changes now use
   `tuneAndRecenter()` instead of `onFrequencyChanged()` which sent
   `autopan=0`, preventing the radio from scrolling to the new band
+- **NVIDIA NIM BNR (Background Noise Removal)**: GPU-accelerated neural
+  audio denoising via self-hosted Docker container. gRPC bidirectional
+  streaming (48kHz mono float32, 10ms chunks). Async worker thread for
+  all gRPC I/O, jitter buffer (50ms priming) for smooth playback.
+  Intensity slider (0–100%) in overlay DSP panel. BNR button in VFO DSP
+  tab and overlay menu, 3-way mutual exclusion with NR2/RN2.
+  Radio Setup → Audio: container management panel (autostart, start/stop,
+  status indicator). Requires NVIDIA RTX 4000+ GPU + Docker. (#288)
+- **Band zoom buttons**: S (segment_zoom) and B (band_zoom) at bottom-left
+  of waterfall, matching SmartSDR protocol from pcap capture
+- **XVTR crash fix**: QPointer<PanadapterApplet> prevents SEGV when
+  panadapter destroyed during XVTR band switch
+- **CW decoder fix**: initial m_panApplet wasn't wired through
+  setActivePanApplet(), CW decode output went nowhere on first pan
 
 ## What's NOT Yet Implemented
 
