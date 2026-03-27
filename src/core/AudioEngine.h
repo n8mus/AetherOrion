@@ -194,6 +194,8 @@ private:
     std::unique_ptr<Resampler> m_bnrDown;  // 48k→24k mono
     bool m_bnrEnabled{false};
     QString m_bnrAddress{"localhost:8001"};
+    QByteArray m_bnrOutBuf;  // jitter buffer: denoised 24kHz stereo int16
+    bool m_bnrPrimed{false}; // true after enough denoised data accumulated
     void processBnr(const QByteArray& stereoPcm);
 
     // Pre-allocated NR2 work buffers (avoid per-call heap allocation)

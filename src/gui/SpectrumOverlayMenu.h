@@ -50,6 +50,7 @@ public:
     void setXvtrBands(const QVector<XvtrBand>& bands);
     QPushButton* dspNr2Button() const;
     QPushButton* dspRn2Button() const;
+    QPushButton* dspBnrButton() const;
 
 protected:
     bool eventFilter(QObject* obj, QEvent* event) override;
@@ -64,6 +65,7 @@ signals:
     void daxClicked();
     void nr2Toggled(bool on);
     void rn2Toggled(bool on);
+    void bnrToggled(bool on);
     // Display sub-panel signals
     void fftAverageChanged(int frames);
     void fftFpsChanged(int fps);

@@ -45,19 +45,24 @@ bool NvidiaBnrFilter::connectToServer(const QString& address)
 
     if (!m_stream->Write(configReq)) {
         qWarning() << "NvidiaBnrFilter: failed to send config";
-        closeStream();
+        m_stream.reset();
+        m_context.reset();
         emit errorOccurred("Failed to send configuration");
         return false;
     }
 
     m_connected.store(true);
-    m_inAccum.clear();
+    {
+        QMutexLocker lock(&m_inMutex);
+        m_inBuf.clear();
+    }
     {
         QMutexLocker lock(&m_outMutex);
         m_outBuf.clear();
     }
 
-    m_readerThread = std::thread(&NvidiaBnrFilter::readerLoop, this);
+    // Start worker thread (handles all gRPC read/write)
+    m_workerThread = std::thread(&NvidiaBnrFilter::workerLoop, this);
 
     qDebug() << "NvidiaBnrFilter: connected to" << address
              << "intensity:" << m_intensityRatio;
@@ -67,17 +72,28 @@ bool NvidiaBnrFilter::connectToServer(const QString& address)
 
 void NvidiaBnrFilter::disconnect()
 {
-    if (!m_connected.load() && !m_readerThread.joinable()) return;
+    if (!m_connected.load() && !m_workerThread.joinable()) return;
 
     m_stopping.store(true);
     m_connected.store(false);
 
-    closeStream();
+    // Cancel the gRPC context to unblock any pending Read/Write in the worker
+    if (m_context)
+        m_context->TryCancel();
 
-    if (m_readerThread.joinable())
-        m_readerThread.join();
+    if (m_workerThread.joinable())
+        m_workerThread.join();
 
-    m_inAccum.clear();
+    // Clean up after worker has exited
+    if (m_stream) {
+        m_stream.reset();
+    }
+    m_context.reset();
+
+    {
+        QMutexLocker lock(&m_inMutex);
+        m_inBuf.clear();
+    }
     {
         QMutexLocker lock(&m_outMutex);
         m_outBuf.clear();
@@ -92,51 +108,29 @@ bool NvidiaBnrFilter::isConnected() const
     return m_connected.load();
 }
 
-void NvidiaBnrFilter::closeStream()
-{
-    if (m_stream) {
-        m_stream->WritesDone();
-        m_stream->Finish();
-        m_stream.reset();
-    }
-    m_context.reset();
-}
-
 void NvidiaBnrFilter::setIntensityRatio(float ratio)
 {
     m_intensityRatio = std::clamp(ratio, 0.0f, 1.0f);
-
-    if (m_connected.load() && m_stream) {
-        nvidia::maxine::bnr::v1::EnhanceAudioRequest configReq;
-        auto* config = configReq.mutable_config();
-        config->set_intensity_ratio(m_intensityRatio);
-        m_stream->Write(configReq);
-    }
+    // Config update will be sent by the worker thread on next iteration
 }
 
 QByteArray NvidiaBnrFilter::process(const float* samples, int numSamples)
 {
     if (!m_connected.load()) return {};
 
-    m_inAccum.append(reinterpret_cast<const char*>(samples),
-                     numSamples * sizeof(float));
+    // Non-blocking: push samples into input buffer for the worker thread
+    {
+        QMutexLocker lock(&m_inMutex);
+        m_inBuf.append(reinterpret_cast<const char*>(samples),
+                       numSamples * sizeof(float));
 
-    while (m_inAccum.size() >= kFrameBytes) {
-        nvidia::maxine::bnr::v1::EnhanceAudioRequest req;
-        req.set_audio_stream_data(m_inAccum.constData(), kFrameBytes);
-        m_inAccum.remove(0, kFrameBytes);
-
-        if (!m_stream->Write(req)) {
-            qWarning() << "NvidiaBnrFilter: write failed, disconnecting";
-            m_connected.store(false);
-            QMetaObject::invokeMethod(this, [this]() {
-                emit connectionChanged(false);
-                emit errorOccurred("gRPC write failed");
-            }, Qt::QueuedConnection);
-            return {};
-        }
+        // Cap input buffer at ~200ms to prevent runaway growth
+        constexpr int maxInBytes = kFrameBytes * 20;
+        if (m_inBuf.size() > maxInBytes)
+            m_inBuf.remove(0, m_inBuf.size() - maxInBytes);
     }
 
+    // Non-blocking: return any denoised data from the worker thread
     QMutexLocker lock(&m_outMutex);
     if (m_outBuf.isEmpty()) return {};
 
@@ -145,28 +139,68 @@ QByteArray NvidiaBnrFilter::process(const float* samples, int numSamples)
     return result;
 }
 
-void NvidiaBnrFilter::readerLoop()
+void NvidiaBnrFilter::workerLoop()
 {
-    nvidia::maxine::bnr::v1::EnhanceAudioResponse response;
+    // Worker thread: pulls from m_inBuf, writes to gRPC, reads responses,
+    // pushes to m_outBuf. All gRPC I/O happens here, never on audio/main thread.
 
-    while (!m_stopping.load() && m_stream && m_stream->Read(&response)) {
+    while (!m_stopping.load()) {
+        // Pull a frame from input buffer
+        QByteArray frame;
+        {
+            QMutexLocker lock(&m_inMutex);
+            if (m_inBuf.size() >= kFrameBytes) {
+                frame = m_inBuf.left(kFrameBytes);
+                m_inBuf.remove(0, kFrameBytes);
+            }
+        }
+
+        if (frame.isEmpty()) {
+            // No data yet — sleep briefly to avoid busy-wait
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
+
+        // Write frame to gRPC stream
+        nvidia::maxine::bnr::v1::EnhanceAudioRequest req;
+        req.set_audio_stream_data(frame.constData(), kFrameBytes);
+
+        if (!m_stream->Write(req)) {
+            if (!m_stopping.load()) {
+                qWarning() << "NvidiaBnrFilter: gRPC write failed";
+                m_connected.store(false);
+                QMetaObject::invokeMethod(this, [this]() {
+                    emit connectionChanged(false);
+                    emit errorOccurred("gRPC write failed");
+                }, Qt::QueuedConnection);
+            }
+            return;
+        }
+
+        // Read denoised response (blocking, but on worker thread — not audio)
+        nvidia::maxine::bnr::v1::EnhanceAudioResponse response;
+        if (!m_stream->Read(&response)) {
+            if (!m_stopping.load()) {
+                qWarning() << "NvidiaBnrFilter: gRPC read failed";
+                m_connected.store(false);
+                QMetaObject::invokeMethod(this, [this]() {
+                    emit connectionChanged(false);
+                    emit errorOccurred("BNR container stream ended");
+                }, Qt::QueuedConnection);
+            }
+            return;
+        }
+
         if (response.has_audio_stream_data()) {
             const auto& data = response.audio_stream_data();
             QMutexLocker lock(&m_outMutex);
             m_outBuf.append(data.data(), data.size());
 
-            constexpr int maxBytes = kFrameBytes * 10;  // cap at ~100ms
-            if (m_outBuf.size() > maxBytes)
-                m_outBuf.remove(0, m_outBuf.size() - maxBytes);
+            // Cap output buffer at ~200ms
+            constexpr int maxOutBytes = kFrameBytes * 20;
+            if (m_outBuf.size() > maxOutBytes)
+                m_outBuf.remove(0, m_outBuf.size() - maxOutBytes);
         }
-    }
-
-    if (!m_stopping.load() && m_connected.load()) {
-        m_connected.store(false);
-        QMetaObject::invokeMethod(this, [this]() {
-            emit connectionChanged(false);
-            emit errorOccurred("BNR container stream ended");
-        }, Qt::QueuedConnection);
     }
 }
 

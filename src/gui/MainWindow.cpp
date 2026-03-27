@@ -605,8 +605,22 @@ MainWindow::MainWindow(QWidget* parent)
             }
         }
     };
+    auto syncBnr = [this](bool on) {
+        if (m_panStack) {
+            for (auto* applet : m_panStack->allApplets()) {
+                auto* sw = applet->spectrumWidget();
+                if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
+                    QSignalBlocker sb(vfo->bnrButton());
+                    vfo->bnrButton()->setChecked(on);
+                }
+                if (auto* btn = sw->overlayMenu()->dspBnrButton())
+                    { QSignalBlocker sb(btn); btn->setChecked(on); }
+            }
+        }
+    };
     connect(&m_audio, &AudioEngine::nr2EnabledChanged, this, syncNr2);
     connect(&m_audio, &AudioEngine::rn2EnabledChanged, this, syncRn2);
+    connect(&m_audio, &AudioEngine::bnrEnabledChanged, this, syncBnr);
     // NR2/RN2 overlay sync is wired in wirePanadapter()
     // RxApplet NR button 3-state cycle → NR2 enable/disable
     connect(m_appletPanel->rxApplet(), &RxApplet::nr2CycleToggled,
@@ -983,6 +997,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     // Save client-side DSP state before destructor disables them
     s.setValue("ClientNr2Enabled", m_audio.nr2Enabled() ? "True" : "False");
     s.setValue("ClientRn2Enabled", m_audio.rn2Enabled() ? "True" : "False");
+    s.setValue("ClientBnrEnabled", m_audio.bnrEnabled() ? "True" : "False");
 
     s.save();
     m_discovery.stopListening();
@@ -2040,6 +2055,8 @@ void MainWindow::onSliceAdded(SliceModel* s)
                 enableNr2WithWisdom();
             else if (settings.value("ClientRn2Enabled", "False").toString() == "True")
                 m_audio.setRn2Enabled(true);
+            else if (settings.value("ClientBnrEnabled", "False").toString() == "True")
+                m_audio.setBnrEnabled(true);
         });
     }
 
@@ -2823,6 +2840,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 // Client-side DSP
                 settings.setValue(pfx + "NR2",  m_audio.nr2Enabled() ? "True" : "False");
                 settings.setValue(pfx + "RN2",  m_audio.rn2Enabled() ? "True" : "False");
+                settings.setValue(pfx + "BNR",  m_audio.bnrEnabled() ? "True" : "False");
                 // AGC
                 settings.setValue(pfx + "AgcMode",      s->agcMode());
                 settings.setValue(pfx + "AgcThreshold",  QString::number(s->agcThreshold()));
@@ -2907,8 +2925,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             // Client-side DSP
             bool nr2Saved = settings.value(pfx + "NR2", "False").toString() == "True";
             bool rn2Saved = settings.value(pfx + "RN2", "False").toString() == "True";
+            bool bnrSaved = settings.value(pfx + "BNR", "False").toString() == "True";
             if (nr2Saved != m_audio.nr2Enabled()) m_audio.setNr2Enabled(nr2Saved);
             if (rn2Saved != m_audio.rn2Enabled()) m_audio.setRn2Enabled(rn2Saved);
+            if (bnrSaved != m_audio.bnrEnabled()) m_audio.setBnrEnabled(bnrSaved);
 
             // AGC
             QString agcMode = settings.value(pfx + "AgcMode", "").toString();
@@ -3019,6 +3039,11 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         }
         // VFO button sync happens via AudioEngine::rn2EnabledChanged signal
     });
+    connect(menu, &SpectrumOverlayMenu::bnrToggled,
+            this, [this](bool on) {
+        m_audio.setBnrEnabled(on);
+        // VFO button sync happens via AudioEngine::bnrEnabledChanged signal
+    });
 }
 
 void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
@@ -3087,6 +3112,9 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
     // RN2 toggle
     connect(w, &VfoWidget::rn2Toggled, this, [this](bool on) {
         m_audio.setRn2Enabled(on);
+    });
+    connect(w, &VfoWidget::bnrToggled, this, [this](bool on) {
+        m_audio.setBnrEnabled(on);
     });
 
 #ifdef HAVE_RADE

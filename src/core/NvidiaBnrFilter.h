@@ -3,9 +3,9 @@
 #include <QObject>
 #include <QByteArray>
 #include <QString>
+#include <QMutex>
 
 #ifdef HAVE_BNR
-#include <QMutex>
 #include <memory>
 #include <thread>
 #include <atomic>
@@ -16,8 +16,9 @@
 namespace AetherSDR {
 
 // gRPC client for NVIDIA NIM BNR (Background Noise Removal).
-// Connects to a self-hosted Docker container running the Maxine BNR model.
-// Audio flows as bidirectional gRPC streaming: 48kHz mono float32, 10ms chunks.
+// All gRPC I/O runs on a dedicated worker thread to avoid blocking
+// the audio callback or main thread. The audio thread pushes samples
+// into an input buffer via process(), and reads denoised samples back.
 //
 // When built without HAVE_BNR, all methods are no-ops.
 class NvidiaBnrFilter : public QObject {
@@ -31,8 +32,8 @@ public:
     void disconnect();
     bool isConnected() const;
 
-    // Process 48kHz mono float32 samples. Returns denoised samples when
-    // available, or empty QByteArray if accumulating or not connected.
+    // Non-blocking: pushes samples into input buffer, returns any available
+    // denoised samples. Both input and output are 48kHz mono float32.
     QByteArray process(const float* samples, int numSamples);
 
     void setIntensityRatio(float ratio);
@@ -46,8 +47,7 @@ private:
     float m_intensityRatio{1.0f};
 
 #ifdef HAVE_BNR
-    void readerLoop();
-    void closeStream();
+    void workerLoop();
 
     std::shared_ptr<grpc::Channel> m_channel;
     std::unique_ptr<nvidia::maxine::bnr::v1::MaxineBNR::Stub> m_stub;
@@ -56,13 +56,18 @@ private:
         nvidia::maxine::bnr::v1::EnhanceAudioRequest,
         nvidia::maxine::bnr::v1::EnhanceAudioResponse>> m_stream;
 
-    std::thread m_readerThread;
+    // Worker thread handles all gRPC read/write
+    std::thread m_workerThread;
     std::atomic<bool> m_connected{false};
     std::atomic<bool> m_stopping{false};
 
+    // Input buffer: audio thread writes, worker thread reads
+    QMutex m_inMutex;
+    QByteArray m_inBuf;
+
+    // Output buffer: worker thread writes, audio thread reads
     QMutex m_outMutex;
     QByteArray m_outBuf;
-    QByteArray m_inAccum;
 
     static constexpr int kSampleRate = 48000;
     static constexpr int kFrameSamples = 480;  // 10ms at 48kHz

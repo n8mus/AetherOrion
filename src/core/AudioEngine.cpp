@@ -248,6 +248,8 @@ void AudioEngine::setBnrEnabled(bool on)
         // Resamplers: 24kHz mono ↔ 48kHz mono
         m_bnrUp   = std::make_unique<Resampler>(24000, 48000);
         m_bnrDown = std::make_unique<Resampler>(48000, 24000);
+        m_bnrOutBuf.clear();
+        m_bnrPrimed = false;
 
         if (!m_bnr->connectToServer(m_bnrAddress)) {
             qCWarning(lcAudio) << "AudioEngine: BNR connect failed — disabling";
@@ -290,11 +292,12 @@ bool AudioEngine::bnrConnected() const
 
 void AudioEngine::processBnr(const QByteArray& stereoPcm)
 {
+    // ── Feed input to BNR container (non-blocking) ───────────────────────
+
     // 1. 24kHz stereo int16 → 24kHz mono int16 (average L+R)
     const auto* src = reinterpret_cast<const int16_t*>(stereoPcm.constData());
-    const int stereoFrames = stereoPcm.size() / 4;  // L+R pairs
+    const int stereoFrames = stereoPcm.size() / 4;
 
-    // Reuse NR2 mono buffer
     if (static_cast<int>(m_nr2Mono.size()) < stereoFrames)
         m_nr2Mono.resize(stereoFrames);
     for (int i = 0; i < stereoFrames; ++i)
@@ -303,61 +306,76 @@ void AudioEngine::processBnr(const QByteArray& stereoPcm)
     // 2. 24kHz mono → 48kHz mono (r8brain)
     QByteArray mono48k = m_bnrUp->process(m_nr2Mono.data(), stereoFrames);
 
-    // 3. int16 → float32 for BNR container
+    // 3. int16 → float32
     const auto* mono48kSrc = reinterpret_cast<const int16_t*>(mono48k.constData());
     const int mono48kSamples = mono48k.size() / 2;
     QVector<float> floatBuf(mono48kSamples);
     for (int i = 0; i < mono48kSamples; ++i)
         floatBuf[i] = mono48kSrc[i] / 32768.0f;
 
-    // 4. Send to BNR container, get denoised data back
+    // 4. Push to BNR container (non-blocking), pull any denoised data
     QByteArray denoised = m_bnr->process(floatBuf.constData(), mono48kSamples);
 
-    // If no denoised data yet (accumulating), pass through original
-    if (denoised.isEmpty()) {
-        auto writeAudio = [this](const QByteArray& data) {
-            if (!m_audioDevice || !m_audioDevice->isOpen()) return;
-            if (m_resampleTo48k)
-                m_audioDevice->write(resampleStereo(data));
-            else
-                m_audioDevice->write(data);
-        };
-        writeAudio(stereoPcm);
-        emit levelChanged(computeRMS(stereoPcm));
-        return;
+    // ── Convert denoised data and add to jitter buffer ───────────────────
+
+    if (!denoised.isEmpty()) {
+        // 5. float32 → int16 (48kHz mono)
+        const auto* df = reinterpret_cast<const float*>(denoised.constData());
+        const int dn = denoised.size() / sizeof(float);
+        QByteArray di16(dn * 2, Qt::Uninitialized);
+        auto* d16 = reinterpret_cast<int16_t*>(di16.data());
+        for (int i = 0; i < dn; ++i) {
+            float s = std::clamp(df[i] * 32768.0f, -32768.0f, 32767.0f);
+            d16[i] = static_cast<int16_t>(s);
+        }
+
+        // 6. 48kHz mono → 24kHz mono (r8brain)
+        QByteArray mono24k = m_bnrDown->process(d16, dn);
+
+        // 7. Mono → stereo
+        const auto* m24 = reinterpret_cast<const int16_t*>(mono24k.constData());
+        const int n24 = mono24k.size() / 2;
+        QByteArray stereo(n24 * 4, Qt::Uninitialized);
+        auto* ds = reinterpret_cast<int16_t*>(stereo.data());
+        for (int i = 0; i < n24; ++i) {
+            ds[2 * i]     = m24[i];
+            ds[2 * i + 1] = m24[i];
+        }
+
+        m_bnrOutBuf.append(stereo);
+
+        // Cap jitter buffer at ~500ms (24kHz stereo int16 = 96000 bytes/sec)
+        constexpr int maxBufBytes = 48000;  // 500ms
+        if (m_bnrOutBuf.size() > maxBufBytes)
+            m_bnrOutBuf.remove(0, m_bnrOutBuf.size() - maxBufBytes);
     }
 
-    // 5. float32 → int16 (denoised 48kHz mono)
-    const auto* denoisedFloat = reinterpret_cast<const float*>(denoised.constData());
-    const int denoisedSamples = denoised.size() / sizeof(float);
-    QByteArray denoisedInt16(denoisedSamples * 2, Qt::Uninitialized);
-    auto* dst16 = reinterpret_cast<int16_t*>(denoisedInt16.data());
-    for (int i = 0; i < denoisedSamples; ++i) {
-        float s = std::clamp(denoisedFloat[i] * 32768.0f, -32768.0f, 32767.0f);
-        dst16[i] = static_cast<int16_t>(s);
-    }
+    // ── Play from jitter buffer ──────────────────────────────────────────
 
-    // 6. 48kHz mono → 24kHz mono (r8brain)
-    QByteArray mono24k = m_bnrDown->process(dst16, denoisedSamples);
-
-    // 7. Mono → stereo (duplicate both channels)
-    const auto* mono24kSrc = reinterpret_cast<const int16_t*>(mono24k.constData());
-    const int mono24kSamples = mono24k.size() / 2;
-    QByteArray stereoOut(mono24kSamples * 4, Qt::Uninitialized);
-    auto* dstStereo = reinterpret_cast<int16_t*>(stereoOut.data());
-    for (int i = 0; i < mono24kSamples; ++i) {
-        dstStereo[2 * i]     = mono24kSrc[i];
-        dstStereo[2 * i + 1] = mono24kSrc[i];
-    }
-
-    // 8. Write to audio output
-    if (m_audioDevice && m_audioDevice->isOpen()) {
-        if (m_resampleTo48k)
-            m_audioDevice->write(resampleStereo(stereoOut));
+    // Wait for ~50ms of buffered audio before starting playback (priming)
+    constexpr int primeBytes = 4800;  // 50ms of 24kHz stereo int16
+    if (!m_bnrPrimed) {
+        if (m_bnrOutBuf.size() >= primeBytes)
+            m_bnrPrimed = true;
         else
-            m_audioDevice->write(stereoOut);
+            return;  // still priming — silence (no audio output)
     }
-    emit levelChanged(computeRMS(stereoOut));
+
+    // Play the same amount of audio as the incoming chunk to maintain sync
+    const int wantBytes = stereoPcm.size();
+    if (m_bnrOutBuf.size() >= wantBytes) {
+        QByteArray chunk = m_bnrOutBuf.left(wantBytes);
+        m_bnrOutBuf.remove(0, wantBytes);
+
+        if (m_audioDevice && m_audioDevice->isOpen()) {
+            if (m_resampleTo48k)
+                m_audioDevice->write(resampleStereo(chunk));
+            else
+                m_audioDevice->write(chunk);
+        }
+        emit levelChanged(computeRMS(chunk));
+    }
+    // If buffer underrun, skip this callback (brief silence, not choppy)
 }
 
 void AudioEngine::processNr2(const QByteArray& stereoPcm)

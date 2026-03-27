@@ -371,6 +371,7 @@ void SpectrumOverlayMenu::setSlice(SliceModel* slice)
         {&S::setNrf,  &S::nrfChanged},   // 8
         {&S::setAnfl, &S::anflChanged},  // 9
         {&S::setAnft, &S::anftChanged},  // 10
+        {nullptr,     nullptr},           // 11 — BNR (client-side, wired separately)
     };
 
     for (int i = 0; i < 11; ++i) {
@@ -441,6 +442,15 @@ void SpectrumOverlayMenu::setSlice(SliceModel* slice)
             emit rn2Toggled(on);
     });
 
+    // BNR (client-side, index 11) — emit signal for MainWindow to handle
+    connect(m_dspRows[11].btn, &QPushButton::toggled, this, [this](bool on) {
+        if (!m_updatingFromModel)
+            emit bnrToggled(on);
+    });
+#ifndef HAVE_BNR
+    m_dspRows[11].btn->setVisible(false);
+#endif
+
     // DAX
     connect(m_slice, &SliceModel::daxChannelChanged, this, [this](int ch) {
         m_updatingFromModel = true;
@@ -499,6 +509,7 @@ void SpectrumOverlayMenu::buildDspPanel()
         {"NRF",  true},   // 8
         {"ANFL", true},   // 9
         {"ANFT", false},  // 10
+        {"BNR",  false},  // 11 — client-side NVIDIA NIM
     };
 
     for (const auto& def : defs) {
@@ -1089,6 +1100,11 @@ QPushButton* SpectrumOverlayMenu::dspNr2Button() const
 QPushButton* SpectrumOverlayMenu::dspRn2Button() const
 {
     return m_dspRows.size() > 7 ? m_dspRows[7].btn : nullptr;
+}
+
+QPushButton* SpectrumOverlayMenu::dspBnrButton() const
+{
+    return m_dspRows.size() > 11 ? m_dspRows[11].btn : nullptr;
 }
 
 bool SpectrumOverlayMenu::eventFilter(QObject* obj, QEvent* event)
