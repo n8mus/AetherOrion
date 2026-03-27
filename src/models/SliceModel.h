@@ -98,6 +98,12 @@ public:
     bool isDiversityChild() const { return m_diversityChild; }
     bool isDiversityParent() const { return m_diversityParent; }
     int  diversityIndex() const { return m_diversityIndex; }
+    bool escEnabled() const { return m_escEnabled; }
+    float escGain() const { return m_escGain; }
+    float escPhaseShift() const { return m_escPhaseShift; }
+    void setEscEnabled(bool on);
+    void setEscGain(float gain);
+    void setEscPhaseShift(float deg);
     void setRxAntenna(const QString& ant);
     void setTxAntenna(const QString& ant);
     void setLocked(bool locked);
@@ -182,6 +188,9 @@ signals:
     void agcThresholdChanged(int value);
     void audioMuteChanged(bool mute);
     void diversityChanged(bool on);
+    void escEnabledChanged(bool on);
+    void escGainChanged(float gain);
+    void escPhaseShiftChanged(float deg);
     void rfGainChanged(float gain);
     void squelchChanged(bool on, int level);
     void stepChanged(int hz, const QVector<int>& stepList);
@@ -228,6 +237,9 @@ private:
     bool    m_diversityChild{false};
     bool    m_diversityParent{false};
     int     m_diversityIndex{-1};
+    bool    m_escEnabled{false};
+    float   m_escGain{1.0f};
+    float   m_escPhaseShift{0.0f};
     bool    m_nb{false};
     bool    m_nr{false};
     bool    m_anf{false};

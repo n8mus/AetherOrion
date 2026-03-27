@@ -1,4 +1,5 @@
 #include "VfoWidget.h"
+#include "PhaseKnob.h"
 #include "ComboStyle.h"
 #include "SliceColors.h"
 #include "models/SliceModel.h"
@@ -141,7 +142,8 @@ VfoWidget::VfoWidget(QWidget* parent)
     : QWidget(parent)
 {
     setObjectName("VfoWidgetRoot");
-    setFixedWidth(WIDGET_W);
+    setMinimumWidth(WIDGET_W);
+    setMaximumWidth(WIDGET_W);
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
     setAttribute(Qt::WA_TranslucentBackground);
     setAutoFillBackground(false);
@@ -477,6 +479,48 @@ void VfoWidget::buildTabContent()
         gainRow->addWidget(afVal);
         vb->addLayout(gainRow);
 
+        // SQL row
+        auto* sqlRow = new QHBoxLayout;
+        sqlRow->setSpacing(3);
+        m_sqlBtn = new QPushButton("SQL");
+        m_sqlBtn->setCheckable(true);
+        m_sqlBtn->setFixedHeight(20);
+        m_sqlBtn->setStyleSheet(kDspToggle + kDisabledBtn);
+        sqlRow->addWidget(m_sqlBtn);
+        m_sqlSlider = new QSlider(Qt::Horizontal);
+        m_sqlSlider->setRange(0, 100);
+        m_sqlSlider->setValue(20);
+        m_sqlSlider->setStyleSheet(kSliderStyle);
+        sqlRow->addWidget(m_sqlSlider, 1);
+        auto* sqlVal = new QLabel("20");
+        sqlVal->setStyleSheet(kLabelStyle);
+        sqlVal->setFixedWidth(20);
+        sqlVal->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        sqlRow->addWidget(sqlVal);
+        vb->addLayout(sqlRow);
+
+        // AGC-T row: mode combo + threshold slider
+        auto* agcRow = new QHBoxLayout;
+        agcRow->setSpacing(3);
+        m_agcCmb = new QComboBox;
+        m_agcCmb->addItems({"Off", "Slow", "Med", "Fast"});
+        m_agcCmb->setFixedHeight(20);
+        m_agcCmb->setFixedWidth(60);
+        m_sqlBtn->setFixedWidth(60);  // match AGC combo width
+        AetherSDR::applyComboStyle(m_agcCmb);
+        agcRow->addWidget(m_agcCmb);
+        m_agcTSlider = new QSlider(Qt::Horizontal);
+        m_agcTSlider->setRange(0, 100);
+        m_agcTSlider->setValue(65);
+        m_agcTSlider->setStyleSheet(kSliderStyle);
+        agcRow->addWidget(m_agcTSlider, 1);
+        auto* agcVal = new QLabel("65");
+        agcVal->setStyleSheet(kLabelStyle);
+        agcVal->setFixedWidth(20);
+        agcVal->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        agcRow->addWidget(agcVal);
+        vb->addLayout(agcRow);
+
         // Pan row: DIV button + L + slider (with center marker) + R
         auto* panRow = new QHBoxLayout;
         panRow->setSpacing(3);
@@ -504,15 +548,75 @@ void VfoWidget::buildTabContent()
         panRow->addWidget(panR);
         vb->addLayout(panRow);
 
+        // ESC (Enhanced Signal Clarity) panel — visible only when DIV is active
+        m_escPanel = new QWidget;
+        m_escPanel->setVisible(false);
+        auto* escVbox = new QVBoxLayout(m_escPanel);
+        escVbox->setContentsMargins(0, 0, 0, 2);
+        escVbox->setSpacing(3);
+
+        // ESC toggle + phase slider row
+        auto* escTopRow = new QHBoxLayout;
+        escTopRow->setSpacing(3);
+        m_escBtn = new QPushButton("ESC");
+        m_escBtn->setCheckable(true);
+        m_escBtn->setFixedHeight(20);
+        m_escBtn->setFixedWidth(60);
+        m_escBtn->setStyleSheet(kDspToggle);
+        escTopRow->addWidget(m_escBtn);
+        auto* phaseLbl = new QLabel("P");
+        phaseLbl->setStyleSheet(kLabelStyle);
+        escTopRow->addWidget(phaseLbl);
+        m_escPhaseSlider = new QSlider(Qt::Horizontal);
+        m_escPhaseSlider->setRange(0, 72);   // 0–360° in 5° steps
+        m_escPhaseSlider->setValue(0);
+        m_escPhaseSlider->setStyleSheet(kSliderStyle);
+        escTopRow->addWidget(m_escPhaseSlider, 1);
+        m_escPhaseLbl = new QLabel("0\u00B0");
+        m_escPhaseLbl->setStyleSheet(kLabelStyle);
+        m_escPhaseLbl->setFixedWidth(28);
+        m_escPhaseLbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        escTopRow->addWidget(m_escPhaseLbl);
+        escVbox->addLayout(escTopRow);
+
+        // Gain vertical slider + polar plot row
+        auto* escBodyRow = new QHBoxLayout;
+        escBodyRow->setContentsMargins(10, 0, 30, 10);
+        escBodyRow->setSpacing(4);
+
+        // Gain vertical slider + label
+        auto* gainCol = new QVBoxLayout;
+        gainCol->setSpacing(1);
+        m_escGainLbl = new QLabel("1.00");
+        m_escGainLbl->setStyleSheet(kLabelStyle);
+        m_escGainLbl->setAlignment(Qt::AlignHCenter);
+        gainCol->addWidget(m_escGainLbl);
+        m_escGainSlider = new QSlider(Qt::Vertical);
+        m_escGainSlider->setRange(0, 200);   // 0.0 – 2.0
+        m_escGainSlider->setValue(100);       // default 1.0
+        m_escGainSlider->setStyleSheet(kSliderStyle);
+        gainCol->addWidget(m_escGainSlider, 1);
+        auto* gainLbl = new QLabel("G");
+        gainLbl->setStyleSheet(kLabelStyle);
+        gainLbl->setAlignment(Qt::AlignHCenter);
+        gainCol->addWidget(gainLbl);
+        escBodyRow->addLayout(gainCol);
+
+        // Polar plot
+        escBodyRow->addStretch();
+        m_phaseKnob = new PhaseKnob;
+        escBodyRow->addWidget(m_phaseKnob);
+        escVbox->addLayout(escBodyRow);
+
+        vb->addWidget(m_escPanel);
+
+        // ── Audio tab connects (all widgets now created) ──
         connect(m_afGainSlider, &QSlider::valueChanged, this, [this, afVal](int v) {
             afVal->setText(QString::number(v));
             if (!m_updatingFromModel) {
                 if (m_slice) m_slice->setAudioGain(v);
                 emit afGainChanged(v);
             }
-        });
-        connect(m_panSlider, &QSlider::valueChanged, this, [this](int v) {
-            if (!m_updatingFromModel && m_slice) m_slice->setAudioPan(v);
         });
         connect(m_muteBtn, &QPushButton::toggled, this, [this](bool on) {
             if (!m_updatingFromModel && m_slice) m_slice->setAudioMute(on);
@@ -521,31 +625,6 @@ void VfoWidget::buildTabContent()
             m_tabBtns[0]->setText(on ? QString::fromUtf8("\xF0\x9F\x94\x87")
                                      : QString::fromUtf8("\xF0\x9F\x94\x8A"));
         });
-        // SQL row
-        auto* sqlRow = new QHBoxLayout;
-        sqlRow->setSpacing(3);
-        m_sqlBtn = new QPushButton("SQL");
-        m_sqlBtn->setCheckable(true);
-        m_sqlBtn->setFixedHeight(20);
-        m_sqlBtn->setStyleSheet(kDspToggle + kDisabledBtn);
-        sqlRow->addWidget(m_sqlBtn);
-        m_sqlSlider = new QSlider(Qt::Horizontal);
-        m_sqlSlider->setRange(0, 100);
-        m_sqlSlider->setValue(20);
-        m_sqlSlider->setStyleSheet(kSliderStyle);
-        sqlRow->addWidget(m_sqlSlider, 1);
-        auto* sqlVal = new QLabel("20");
-        sqlVal->setStyleSheet(kLabelStyle);
-        sqlVal->setFixedWidth(20);
-        sqlVal->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        sqlRow->addWidget(sqlVal);
-        vb->addLayout(sqlRow);
-
-        connect(m_divBtn, &QPushButton::toggled, this, [this](bool on) {
-            if (!m_updatingFromModel && m_slice)
-                m_slice->setDiversity(on);
-        });
-
         connect(m_sqlBtn, &QPushButton::toggled, this, [this](bool on) {
             if (!m_updatingFromModel && m_slice)
                 m_slice->setSquelch(on, m_sqlSlider->value());
@@ -555,32 +634,8 @@ void VfoWidget::buildTabContent()
             if (!m_updatingFromModel && m_slice)
                 m_slice->setSquelch(m_sqlBtn->isChecked(), v);
         });
-
-        // AGC-T row: mode combo + threshold slider
-        auto* agcRow = new QHBoxLayout;
-        agcRow->setSpacing(3);
-        m_agcCmb = new QComboBox;
-        m_agcCmb->addItems({"Off", "Slow", "Med", "Fast"});
-        m_agcCmb->setFixedHeight(20);
-        m_agcCmb->setFixedWidth(60);
-        m_sqlBtn->setFixedWidth(60);  // match AGC combo width
-        AetherSDR::applyComboStyle(m_agcCmb);
-        agcRow->addWidget(m_agcCmb);
-        m_agcTSlider = new QSlider(Qt::Horizontal);
-        m_agcTSlider->setRange(0, 100);
-        m_agcTSlider->setValue(65);
-        m_agcTSlider->setStyleSheet(kSliderStyle);
-        agcRow->addWidget(m_agcTSlider, 1);
-        auto* agcVal = new QLabel("65");
-        agcVal->setStyleSheet(kLabelStyle);
-        agcVal->setFixedWidth(20);
-        agcVal->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        agcRow->addWidget(agcVal);
-        vb->addLayout(agcRow);
-
         connect(m_agcCmb, &QComboBox::currentTextChanged, this, [this](const QString& text) {
             if (!m_updatingFromModel && m_slice) {
-                // Map display text to protocol value
                 QString mode = text.toLower();
                 if (mode == "off") mode = "off";
                 else if (mode == "slow") mode = "slow";
@@ -592,6 +647,35 @@ void VfoWidget::buildTabContent()
         connect(m_agcTSlider, &QSlider::valueChanged, this, [this, agcVal](int v) {
             agcVal->setText(QString::number(v));
             if (!m_updatingFromModel && m_slice) m_slice->setAgcThreshold(v);
+        });
+        connect(m_panSlider, &QSlider::valueChanged, this, [this](int v) {
+            if (!m_updatingFromModel && m_slice) m_slice->setAudioPan(v);
+        });
+        connect(m_divBtn, &QPushButton::toggled, this, [this](bool on) {
+            if (!m_updatingFromModel && m_slice)
+                m_slice->setDiversity(on);
+            // ESC panel only on diversity parent, not child
+            m_escPanel->setVisible(on && m_slice && !m_slice->isDiversityChild());
+            resize(sizeHint());
+        });
+        connect(m_escBtn, &QPushButton::toggled, this, [this](bool on) {
+            if (!m_updatingFromModel && m_slice)
+                m_slice->setEscEnabled(on);
+        });
+        connect(m_escPhaseSlider, &QSlider::valueChanged, this, [this](int v) {
+            int deg = v * 5;  // 5° steps
+            float rad = deg * static_cast<float>(M_PI) / 180.0f;
+            m_escPhaseLbl->setText(QString::number(deg) + QChar(0x00B0));
+            m_phaseKnob->setPhase(rad);
+            if (!m_updatingFromModel && m_slice)
+                m_slice->setEscPhaseShift(rad);
+        });
+        connect(m_escGainSlider, &QSlider::valueChanged, this, [this](int v) {
+            float gain = v / 100.0f;
+            m_escGainLbl->setText(QString::number(gain, 'f', 2));
+            m_phaseKnob->setGain(gain);
+            if (!m_updatingFromModel && m_slice)
+                m_slice->setEscGain(gain);
         });
 
         m_tabStack->addWidget(m_audioTab);
@@ -1236,6 +1320,11 @@ void VfoWidget::showTab(int index)
 void VfoWidget::setDiversityAllowed(bool allowed)
 {
     if (m_divBtn) m_divBtn->setVisible(allowed);
+    // ESC panel only visible when DIV is active on a dual-SCU radio
+    if (m_escPanel && !allowed) {
+        m_escPanel->setVisible(false);
+        resize(sizeHint());
+    }
 }
 
 void VfoWidget::setAfGain(int pct)
@@ -1574,6 +1663,52 @@ void VfoWidget::setSlice(SliceModel* slice)
     connect(m_slice, &SliceModel::diversityChanged, this, [this](bool on) {
         QSignalBlocker sb(m_divBtn);
         m_divBtn->setChecked(on);
+        m_escPanel->setVisible(on && !m_slice->isDiversityChild());
+        resize(sizeHint());
+    });
+    // ESC sync — phase is in radians, display as degrees
+    {
+        QSignalBlocker sb(m_escBtn);
+        m_escBtn->setChecked(m_slice->escEnabled());
+    }
+    {
+        float gain = m_slice->escGain();
+        QSignalBlocker sb(m_escGainSlider);
+        m_escGainSlider->setValue(static_cast<int>(gain * 100.0f));
+        m_escGainLbl->setText(QString::number(gain, 'f', 2));
+        m_phaseKnob->setGain(gain);
+    }
+    {
+        float rad = m_slice->escPhaseShift();
+        int deg = static_cast<int>(rad * 180.0f / M_PI) % 360;
+        QSignalBlocker sb(m_escPhaseSlider);
+        m_escPhaseSlider->setValue(deg / 5);
+        m_escPhaseLbl->setText(QString::number(deg) + QChar(0x00B0));
+        m_phaseKnob->setPhase(rad);
+    }
+    m_escPanel->setVisible(m_slice->diversity() && !m_slice->isDiversityChild());
+    connect(m_slice, &SliceModel::escEnabledChanged, this, [this](bool on) {
+        m_updatingFromModel = true;
+        QSignalBlocker sb(m_escBtn);
+        m_escBtn->setChecked(on);
+        m_updatingFromModel = false;
+    });
+    connect(m_slice, &SliceModel::escGainChanged, this, [this](float gain) {
+        m_updatingFromModel = true;
+        QSignalBlocker sb(m_escGainSlider);
+        m_escGainSlider->setValue(static_cast<int>(gain * 100.0f));
+        m_escGainLbl->setText(QString::number(gain, 'f', 2));
+        m_phaseKnob->setGain(gain);
+        m_updatingFromModel = false;
+    });
+    connect(m_slice, &SliceModel::escPhaseShiftChanged, this, [this](float rad) {
+        m_updatingFromModel = true;
+        int deg = static_cast<int>(rad * 180.0f / M_PI) % 360;
+        QSignalBlocker sb(m_escPhaseSlider);
+        m_escPhaseSlider->setValue(deg / 5);
+        m_escPhaseLbl->setText(QString::number(deg) + QChar(0x00B0));
+        m_phaseKnob->setPhase(rad);
+        m_updatingFromModel = false;
     });
     // DSP toggles
     auto connectDsp = [this](auto signal, QPushButton* btn) {
@@ -1802,6 +1937,28 @@ void VfoWidget::syncFromSlice()
         QSignalBlocker sb(m_agcTSlider);
         m_agcTSlider->setValue(m_slice->agcThreshold());
     }
+
+    // ESC (diversity beamforming) — phase in radians, display as degrees
+    {
+        QSignalBlocker sb(m_escBtn);
+        m_escBtn->setChecked(m_slice->escEnabled());
+    }
+    {
+        float gain = m_slice->escGain();
+        QSignalBlocker sb(m_escGainSlider);
+        m_escGainSlider->setValue(static_cast<int>(gain * 100.0f));
+        m_escGainLbl->setText(QString::number(gain, 'f', 2));
+        m_phaseKnob->setGain(gain);
+    }
+    {
+        float rad = m_slice->escPhaseShift();
+        int deg = static_cast<int>(rad * 180.0f / M_PI) % 360;
+        QSignalBlocker sb(m_escPhaseSlider);
+        m_escPhaseSlider->setValue(deg / 5);
+        m_escPhaseLbl->setText(QString::number(deg) + QChar(0x00B0));
+        m_phaseKnob->setPhase(rad);
+    }
+    m_escPanel->setVisible(m_slice->diversity() && !m_slice->isDiversityChild());
 
     // DSP
     auto syncDsp = [](QPushButton* btn, bool on) {

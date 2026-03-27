@@ -20,6 +20,7 @@ namespace AetherSDR {
 
 class SliceModel;
 class TransmitModel;
+class PhaseKnob;
 
 // Floating VFO info panel attached to the VFO marker on the spectrum display.
 // Shows slice info (antennas, frequency, signal level, filter width, TX/SPLIT)
@@ -128,6 +129,14 @@ private:
     QSlider* m_panSlider{nullptr};
     QPushButton* m_muteBtn{nullptr};
     QPushButton* m_divBtn{nullptr};
+    // ESC (Enhanced Signal Clarity) panel — shown when DIV is active (parent only)
+    QWidget*     m_escPanel{nullptr};
+    QPushButton* m_escBtn{nullptr};
+    PhaseKnob*   m_phaseKnob{nullptr};
+    QSlider*     m_escPhaseSlider{nullptr};
+    QSlider*     m_escGainSlider{nullptr};
+    QLabel*      m_escPhaseLbl{nullptr};
+    QLabel*      m_escGainLbl{nullptr};
     QPushButton* m_sqlBtn{nullptr};
     bool         m_savedSquelchOn{false};
 public:

@@ -2853,7 +2853,13 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 m_radioModel.sendCommand(
                     QString("slice m %1 pan=%2").arg(recallFreq, 0, 'f', 6).arg(applet->panId()));
             } else {
-                onFrequencyChanged(recallFreq);
+                // Band change: use tuneAndRecenter to recenter the pan on the
+                // new band. onFrequencyChanged uses autopan=0 which prevents
+                // the radio from scrolling the panadapter to the new frequency.
+                if (s) {
+                    s->tuneAndRecenter(recallFreq);
+                    spectrum()->setVfoFrequency(recallFreq);
+                }
             }
             // Filter offsets: let the radio apply the correct default for
             // the recalled mode. Recalling saved filter widths across mode
@@ -2938,7 +2944,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 m_radioModel.sendCommand(
                     QString("slice m %1 pan=%2").arg(freqMhz, 0, 'f', 6).arg(applet->panId()));
             } else {
-                onFrequencyChanged(freqMhz);
+                if (s) {
+                    s->tuneAndRecenter(freqMhz);
+                    spectrum()->setVfoFrequency(freqMhz);
+                }
             }
             qDebug() << "BandStack: first visit to" << bandName << "using defaults";
         }

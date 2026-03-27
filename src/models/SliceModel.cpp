@@ -412,6 +412,36 @@ void SliceModel::setDiversity(bool on)
     emit diversityChanged(on);
 }
 
+void SliceModel::setEscEnabled(bool on)
+{
+    if (m_escEnabled == on) return;
+    m_escEnabled = on;
+    // FlexLib: only diversity parent sends ESC commands (Slice.cs:3367)
+    // SmartSDR pcap: uses "on"/"off" not "1"/"0"
+    if (!m_diversityChild)
+        sendCommand(QString("slice set %1 esc=%2").arg(m_id).arg(on ? "on" : "off"));
+    emit escEnabledChanged(on);
+}
+
+void SliceModel::setEscGain(float gain)
+{
+    gain = std::clamp(gain, 0.0f, 2.0f);
+    if (qFuzzyCompare(m_escGain, gain)) return;
+    m_escGain = gain;
+    if (!m_diversityChild)
+        sendCommand(QString("slice set %1 esc_gain=%2").arg(m_id).arg(gain, 0, 'f', 6));
+    emit escGainChanged(gain);
+}
+
+void SliceModel::setEscPhaseShift(float deg)
+{
+    if (qFuzzyCompare(m_escPhaseShift, deg)) return;
+    m_escPhaseShift = deg;
+    if (!m_diversityChild)
+        sendCommand(QString("slice set %1 esc_phase_shift=%2").arg(m_id).arg(deg, 0, 'f', 6));
+    emit escPhaseShiftChanged(deg);
+}
+
 void SliceModel::setAudioPan(int pan)
 {
     pan = qBound(0, pan, 100);
@@ -515,6 +545,12 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
             emit audioMuteChanged(mute);
         }
     }
+    // Parse child/parent flags before emitting diversityChanged so handlers
+    // can check isDiversityChild() to gate ESC panel visibility.
+    if (kvs.contains("diversity_child"))
+        m_diversityChild = kvs["diversity_child"] == "1";
+    if (kvs.contains("diversity_parent"))
+        m_diversityParent = kvs["diversity_parent"] == "1";
     if (kvs.contains("diversity")) {
         bool div = kvs["diversity"] == "1";
         if (div != m_diversity) {
@@ -522,12 +558,23 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
             emit diversityChanged(div);
         }
     }
-    if (kvs.contains("diversity_child"))
-        m_diversityChild = kvs["diversity_child"] == "1";
-    if (kvs.contains("diversity_parent"))
-        m_diversityParent = kvs["diversity_parent"] == "1";
     if (kvs.contains("diversity_index"))
         m_diversityIndex = kvs["diversity_index"].toInt();
+
+    // ESC (Enhanced Signal Clarity) — diversity beamforming
+    if (kvs.contains("esc")) {
+        const QString& v = kvs["esc"];
+        bool on = (v == "1" || v == "on");
+        if (on != m_escEnabled) { m_escEnabled = on; emit escEnabledChanged(on); }
+    }
+    if (kvs.contains("esc_gain")) {
+        float g = kvs["esc_gain"].toFloat();
+        if (!qFuzzyCompare(m_escGain, g)) { m_escGain = g; emit escGainChanged(g); }
+    }
+    if (kvs.contains("esc_phase_shift")) {
+        float p = kvs["esc_phase_shift"].toFloat();
+        if (!qFuzzyCompare(m_escPhaseShift, p)) { m_escPhaseShift = p; emit escPhaseShiftChanged(p); }
+    }
 
     // Slice control state
     if (kvs.contains("rxant")) {
