@@ -66,6 +66,7 @@ signals:
     void nr2Toggled(bool on);
     void rn2Toggled(bool on);
     void bnrToggled(bool on);
+    void bnrIntensityChanged(float ratio);
     // Display sub-panel signals
     void fftAverageChanged(int frames);
     void fftFpsChanged(int fps);

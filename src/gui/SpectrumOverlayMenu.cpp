@@ -447,8 +447,22 @@ void SpectrumOverlayMenu::setSlice(SliceModel* slice)
         if (!m_updatingFromModel)
             emit bnrToggled(on);
     });
+    if (m_dspRows[11].slider) {
+        m_dspRows[11].slider->setRange(0, 100);
+        m_dspRows[11].slider->setValue(100);  // default: max denoising
+        if (m_dspRows[11].valueLbl)
+            m_dspRows[11].valueLbl->setText("100");
+        connect(m_dspRows[11].slider, &QSlider::valueChanged, this, [this](int v) {
+            if (m_dspRows[11].valueLbl)
+                m_dspRows[11].valueLbl->setText(QString::number(v));
+            if (!m_updatingFromModel)
+                emit bnrIntensityChanged(v / 100.0f);
+        });
+    }
 #ifndef HAVE_BNR
     m_dspRows[11].btn->setVisible(false);
+    if (m_dspRows[11].slider) m_dspRows[11].slider->setVisible(false);
+    if (m_dspRows[11].valueLbl) m_dspRows[11].valueLbl->setVisible(false);
 #endif
 
     // DAX
@@ -509,7 +523,7 @@ void SpectrumOverlayMenu::buildDspPanel()
         {"NRF",  true},   // 8
         {"ANFL", true},   // 9
         {"ANFT", false},  // 10
-        {"BNR",  false},  // 11 — client-side NVIDIA NIM
+        {"BNR",  true},   // 11 — client-side NVIDIA NIM (intensity slider)
     };
 
     for (const auto& def : defs) {

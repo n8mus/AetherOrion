@@ -997,7 +997,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     // Save client-side DSP state before destructor disables them
     s.setValue("ClientNr2Enabled", m_audio.nr2Enabled() ? "True" : "False");
     s.setValue("ClientRn2Enabled", m_audio.rn2Enabled() ? "True" : "False");
-    s.setValue("ClientBnrEnabled", m_audio.bnrEnabled() ? "True" : "False");
+    // BNR not persisted — requires manual enable each session
 
     s.save();
     m_discovery.stopListening();
@@ -2055,8 +2055,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
                 enableNr2WithWisdom();
             else if (settings.value("ClientRn2Enabled", "False").toString() == "True")
                 m_audio.setRn2Enabled(true);
-            else if (settings.value("ClientBnrEnabled", "False").toString() == "True")
-                m_audio.setBnrEnabled(true);
+            // BNR not auto-restored — requires manual enable each session
         });
     }
 
@@ -2840,7 +2839,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 // Client-side DSP
                 settings.setValue(pfx + "NR2",  m_audio.nr2Enabled() ? "True" : "False");
                 settings.setValue(pfx + "RN2",  m_audio.rn2Enabled() ? "True" : "False");
-                settings.setValue(pfx + "BNR",  m_audio.bnrEnabled() ? "True" : "False");
+                // BNR not persisted per-band — requires manual enable
                 // AGC
                 settings.setValue(pfx + "AgcMode",      s->agcMode());
                 settings.setValue(pfx + "AgcThreshold",  QString::number(s->agcThreshold()));
@@ -2925,10 +2924,9 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             // Client-side DSP
             bool nr2Saved = settings.value(pfx + "NR2", "False").toString() == "True";
             bool rn2Saved = settings.value(pfx + "RN2", "False").toString() == "True";
-            bool bnrSaved = settings.value(pfx + "BNR", "False").toString() == "True";
+            // BNR not restored per-band
             if (nr2Saved != m_audio.nr2Enabled()) m_audio.setNr2Enabled(nr2Saved);
             if (rn2Saved != m_audio.rn2Enabled()) m_audio.setRn2Enabled(rn2Saved);
-            if (bnrSaved != m_audio.bnrEnabled()) m_audio.setBnrEnabled(bnrSaved);
 
             // AGC
             QString agcMode = settings.value(pfx + "AgcMode", "").toString();
@@ -3043,6 +3041,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             this, [this](bool on) {
         m_audio.setBnrEnabled(on);
         // VFO button sync happens via AudioEngine::bnrEnabledChanged signal
+    });
+    connect(menu, &SpectrumOverlayMenu::bnrIntensityChanged,
+            this, [this](float ratio) {
+        m_audio.setBnrIntensity(ratio);
     });
 }
 

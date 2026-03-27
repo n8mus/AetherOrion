@@ -60,6 +60,7 @@ private:
     std::thread m_workerThread;
     std::atomic<bool> m_connected{false};
     std::atomic<bool> m_stopping{false};
+    std::atomic<bool> m_configDirty{false};
 
     // Input buffer: audio thread writes, worker thread reads
     QMutex m_inMutex;
