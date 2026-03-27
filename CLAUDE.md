@@ -199,11 +199,16 @@ Words 0–6 of the VITA-49 header. Key field: **PCC** in lower 16 bits of word 3
 
 ### FFT Bin Conversion
 
+The radio encodes FFT bin values as **pixel Y positions** (0 = top/max_dbm,
+ypixels-1 = bottom/min_dbm), NOT as 0-65535 uint16 range:
+
 ```
-dBm = min_dbm + (sample / 65535.0) × (max_dbm − min_dbm)
+dBm = max_dbm - (sample / (y_pixels - 1.0)) × (max_dbm − min_dbm)
 ```
 
 `min_dbm` / `max_dbm` come from `display pan` status messages (typically -135 / -40).
+`y_pixels` comes from `display pan` status (must be tracked per-stream via
+`PanadapterStream::setYPixels()`).
 
 ### FFT Frame Assembly
 
@@ -364,8 +369,9 @@ save.
 - UI preferences (window geometry, applet visibility, UI scale)
 - Display preferences (FFT fill color/alpha, waterfall color scheme)
 - CWX panel visibility, keyboard shortcuts enabled
-- Band stack display settings (bandwidth zoom, dBm scale — these are per-pan
-  display preferences, not radio state)
+- Band stack display settings (dBm scale — per-pan display preference, not
+  radio state). NOTE: bandwidth/center are radio-authoritative — do NOT
+  persist or restore them (see #291).
 - DX spot settings (colors, font size, opacity)
 
 **Why:** When both the radio and client persist the same setting, they fight
@@ -550,14 +556,14 @@ FFT by `panStreamId()`.
    defaults to `xpixels=50 ypixels=20` which produces empty FFT bins.
    Send actual widget dimensions immediately after `panadapterAdded`.
 
-7. **SmartSDR never sends `slice set <id> active=1`.** Active slice is
-   managed entirely client-side. Sending `active=1` causes the radio to
-   pause waterfall tiles on the outgoing pan for ~3-5 seconds. Don't send
-   it in multi-pan mode.
+7. **Never send `slice set <id> active=1`.** Active slice is managed
+   entirely client-side. The radio bounces `active` between slices when
+   two share a pan, creating infinite feedback loops. See pitfall #16.
 
-8. **Use `slice m <freq> pan=<panId>` for click-to-tune** (matches SmartSDR
-   protocol). The radio routes the tune to the correct slice for that pan.
-   BUT `slice m` does NOT recenter the pan when crossing band boundaries.
+8. **Use `slice m <freq> pan=<panId>` for cross-pan click-to-tune only.**
+   For same-pan tuning (scroll wheel, click on active slice's pan), use
+   `onFrequencyChanged()` → `slice tune <sliceId>`. See pitfall #18.
+   `slice m` does NOT recenter the pan when crossing band boundaries.
 
 9. **Band changes need `slice tune` + `slice m`.** `slice tune <id> <freq>`
    recenters the pan's FFT/waterfall on the new band. `slice m <freq>
@@ -594,6 +600,36 @@ FFT by `panStreamId()`.
 
 15. **`FWDPWR` meter source is `TX-` (with trailing dash), not `TX`.**
     Use `startsWith("TX")` for matching, not exact equality.
+
+16. **Never send `slice set <id> active=1` — not even in single-pan mode.**
+    The radio bounces `active` between slices when two share a pan, creating
+    an infinite feedback loop (slice 0 active → we send active=1 for 0 →
+    radio sets slice 1 active → we react → loop). SmartSDR manages active
+    entirely client-side. The radio sets `active=` as a side-effect of
+    `slice m` commands. Removed `s->setActive(true)` from `setActiveSlice()`
+    entirely.
+
+17. **`activePanChanged` must sync ALL slice-dependent UI.** In multi-pan mode,
+    `setActiveSlice()` does NOT fire on pan click (pitfall #7). So step size,
+    CW decode, applet panel controls, and overlay menu slice binding must all
+    be synced in the `activePanChanged` handler. Use `setActivePanApplet()`
+    to rewire CW decoder connections.
+
+18. **Click-to-tune must not switch slices within the same pan.** The
+    `frequencyClicked` handler should only switch active slice when clicking
+    on a DIFFERENT pan. When multiple slices share a pan, always tune the
+    current active slice via `onFrequencyChanged()` → `slice tune`. Switching
+    to the other slice on each scroll event causes both VFOs to move.
+
+19. **+RX must target the button's own pan, not `m_activePanId`.** The
+    `addRxClicked` signal must carry the panId from `SpectrumOverlayMenu`.
+    Use `RadioModel::addSliceOnPan(panId)` with explicit panId in the
+    `slice create pan=<panId>` command.
+
+20. **`setActivePanApplet()` rewires CW decoder.** When the active pan
+    changes, disconnect `textDecoded`/`statsUpdated`/pitch/speed signals
+    from the old applet and reconnect to the new one. The CW decoder is
+    a singleton — its output must follow the active pan.
 
 ---
 

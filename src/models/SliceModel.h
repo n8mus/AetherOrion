@@ -85,7 +85,8 @@ public:
     int     fmDeviation()         const { return m_fmDeviation; }
 
     // Setters (emit signals AND send radio commands)
-    void setFrequency(double mhz);
+    void setFrequency(double mhz);           // slice tune autopan=0 — no recenter
+    void tuneAndRecenter(double mhz);      // slice tune — recenters pan (band changes)
     void setMode(const QString& mode);
     void setFilterWidth(int low, int high);
     void setAudioGain(float gain);

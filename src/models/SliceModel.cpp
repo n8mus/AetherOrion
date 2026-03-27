@@ -18,9 +18,22 @@ void SliceModel::sendCommand(const QString& cmd)
 
 void SliceModel::setFrequency(double mhz)
 {
-    if (m_locked) return;           // software lock — block tune while locked
+    if (m_locked) return;
     if (qFuzzyCompare(m_frequency, mhz)) return;
     m_frequency = mhz;
+    // autopan=0 prevents the radio from recentering the pan (#292).
+    // SmartSDR pcap confirms: scroll-wheel uses "slice tune <id> <freq> autopan=0".
+    sendCommand(QString("slice tune %1 %2 autopan=0").arg(m_id).arg(mhz, 0, 'f', 6));
+    emit frequencyChanged(mhz);
+}
+
+void SliceModel::tuneAndRecenter(double mhz)
+{
+    if (m_locked) return;
+    if (qFuzzyCompare(m_frequency, mhz)) return;
+    m_frequency = mhz;
+    // Without autopan=0, the radio recenters the pan on the new frequency.
+    // Used for band changes where recentering is desired.
     sendCommand(QString("slice tune %1 %2").arg(m_id).arg(mhz, 0, 'f', 6));
     emit frequencyChanged(mhz);
 }

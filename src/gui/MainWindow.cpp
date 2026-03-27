@@ -2132,12 +2132,11 @@ void MainWindow::onSliceAdded(SliceModel* s)
     // When the radio notifies us that this slice became active, switch to it
     connect(s, &SliceModel::activeChanged, this, [this, s](bool active) {
         if (!active) return;
-        // In multi-pan mode, ignore radio-side active changes — we manage
-        // active slice client-side. The radio echoes active=1 on every
-        // "slice m" command, which would trigger setActiveSlice and cause
-        // waterfall pauses via setActiveSlice overhead.
-        if (m_panStack && m_panStack->count() > 1) return;
+        // Accept radio's active echo — update client state but use
+        // m_updatingFromModel to prevent sending active=1 back (feedback loop).
+        m_updatingFromModel = true;
         setActiveSlice(s->sliceId());
+        m_updatingFromModel = false;
     });
 
     // Update filter limits when the active slice's mode changes
@@ -2346,11 +2345,11 @@ void MainWindow::setActiveSlice(int sliceId)
     const int prevId = m_activeSliceId;
     m_activeSliceId = sliceId;
 
-    // In multi-pan mode, don't tell the radio about active slice changes —
-    // it causes the outgoing pan's waterfall to pause for ~3-5 seconds.
-    // The radio's "active" flag mainly affects CW keying target.
-    // In single-pan mode, always notify the radio.
-    if (sliceId != prevId && (!m_panStack || m_panStack->count() <= 1))
+    // Send "slice set N active=1" only when switching to a different slice
+    // (matches SmartSDR pcap — sent on VFO flag click, not on every tune).
+    // Guard: don't send if triggered by the radio's own activeChanged echo
+    // (m_updatingFromModel is set in the activeChanged handler).
+    if (sliceId != prevId && !m_updatingFromModel)
         s->setActive(true);
 
     // Update all overlay isActive flags on each slice's correct spectrum
@@ -2694,21 +2693,21 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         }
 
         if (!panId.isEmpty()) {
-            // Check if we need to switch pans
-            bool switchedPan = false;
-            for (auto* s : m_radioModel.slices()) {
-                if (s->panId() == panId && s->sliceId() != m_activeSliceId) {
-                    setActiveSlice(s->sliceId());
-                    switchedPan = true;
-                    break;
+            // Check if the active slice is on a DIFFERENT pan — if so, switch
+            // to a slice on the clicked pan. Don't switch when multiple slices
+            // share the same pan (that causes alternating tune targets).
+            auto* curSlice = activeSlice();
+            bool differentPan = curSlice && curSlice->panId() != panId;
+
+            if (differentPan) {
+                for (auto* s : m_radioModel.slices()) {
+                    if (s->panId() == panId) {
+                        setActiveSlice(s->sliceId());
+                        break;
+                    }
                 }
-            }
-            if (switchedPan)
                 m_panStack->setActivePan(panId);
 
-            // Use slice m with pan= for cross-pan tuning,
-            // standard onFrequencyChanged for same-pan (updates model immediately)
-            if (switchedPan) {
                 if (auto* s = activeSlice(); s && !s->isLocked()) {
                     m_radioModel.sendCommand(
                         QString("slice m %1 pan=%2").arg(mhz, 0, 'f', 6).arg(panId));
@@ -3451,7 +3450,7 @@ void MainWindow::restoreBandState(const BandSnapshot& snap)
     m_updatingFromModel = true;
     if (auto* s = activeSlice()) {
         s->setMode(snap.mode);
-        s->setFrequency(snap.frequencyMhz);
+        s->tuneAndRecenter(snap.frequencyMhz);
         if (!snap.rxAntenna.isEmpty())
             s->setRxAntenna(snap.rxAntenna);
         s->setFilterWidth(snap.filterLow, snap.filterHigh);
