@@ -443,6 +443,9 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_radioModel.transmitModel(), &TransmitModel::micStateChanged,
             this, [this]() {
         if (m_radioModel.transmitModel()->micSelection() == "PC") {
+            // Restore PC mic gain from client-side settings
+            int gain = AppSettings::instance().value("PcMicGain", 100).toInt();
+            m_audio.setPcMicGain(gain);
             // Only start if TX stream ID is already assigned (avoid streamId=0)
             if (!m_audio.isTxStreaming() && m_audio.txStreamId() != 0) {
                 m_audio.startTxStream(
@@ -450,6 +453,8 @@ MainWindow::MainWindow(QWidget* parent)
                     4991);
             }
         } else {
+            // Reset to full gain — radio handles hardware mic gain
+            m_audio.setPcMicGain(100);
             m_audio.stopTxStream();
         }
     });

@@ -2,6 +2,7 @@
 #include "ComboStyle.h"
 #include "HGauge.h"
 #include "models/TransmitModel.h"
+#include "core/AppSettings.h"
 
 #include <QPushButton>
 #include <QLabel>
@@ -616,8 +617,15 @@ void PhoneCwApplet::syncPhoneFromModel()
         if (idx >= 0) m_micSourceCombo->setCurrentIndex(idx);
     }
 
-    m_micLevelSlider->setValue(m_model->micLevel());
-    m_micLevelLabel->setText(QString::number(m_model->micLevel()));
+    // PC mic gain is client-authoritative (radio always returns mic_level=0 for PC)
+    if (m_model->micSelection() == "PC") {
+        int pcGain = AppSettings::instance().value("PcMicGain", 100).toInt();
+        m_micLevelSlider->setValue(pcGain);
+        m_micLevelLabel->setText(QString::number(pcGain));
+    } else {
+        m_micLevelSlider->setValue(m_model->micLevel());
+        m_micLevelLabel->setText(QString::number(m_model->micLevel()));
+    }
     m_accBtn->setChecked(m_model->micAcc());
     m_procBtn->setChecked(m_model->speechProcessorEnable());
 
