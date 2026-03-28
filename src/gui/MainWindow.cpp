@@ -237,7 +237,10 @@ MainWindow::MainWindow(QWidget* parent)
     // Dedup helper — returns true if spot should be skipped
     auto isDuplicateSpot = [this](const DxSpot& spot) -> bool {
         qint64 now = QDateTime::currentMSecsSinceEpoch();
-        int lifetimeMs = AppSettings::instance().value("DxClusterSpotLifetime", 30).toInt() * 60000;
+        auto& as = AppSettings::instance();
+        int lifetimeMs = (spot.source == "WSJT-X")
+            ? as.value("WsjtxSpotLifetime", 120).toInt() * 1000    // seconds
+            : as.value("DxClusterSpotLifetime", 30).toInt() * 60000;  // minutes
         auto it = m_spotDedup.find(spot.dxCall);
         if (it != m_spotDedup.end()) {
             bool sameFreq = std::abs(it->freqMhz - spot.freqMhz) < 0.001;
@@ -263,6 +266,11 @@ MainWindow::MainWindow(QWidget* parent)
                            AppSettings::instance().value("DxClusterSpotLifetime", 30).toInt() * 60);
         if (!spot.comment.isEmpty())
             cmd += " comment=" + QString(spot.comment).replace(' ', QChar(0x7f));
+        if (!spot.color.isEmpty()) {
+            QString c = spot.color;
+            if (c.length() == 7) c = "#FF" + c.mid(1);  // #RRGGBB → #FFRRGGBB
+            cmd += " color=" + c;
+        }
         m_spotCmdBatch.append(cmd);
     };
 
@@ -290,8 +298,76 @@ MainWindow::MainWindow(QWidget* parent)
     });
 
     connect(m_wsjtxClient, &WsjtxClient::spotReceived,
-            this, [queueSpotCmd](const DxSpot& spot) {
-        queueSpotCmd(spot, "WSJT-X");
+            this, [this, isDuplicateSpot](const DxSpot& spot) {
+        if (!m_radioModel.isConnected()) return;
+        if (isDuplicateSpot(spot)) return;
+
+        auto& as = AppSettings::instance();
+        const QString& msg = spot.comment;
+        bool isCQ = msg.startsWith("CQ ");
+        bool isPOTA = msg.contains("CQ POTA");
+        bool isCallingMe = false;
+        {
+            QString myCall = as.value("DxClusterCallsign").toString();
+            if (!myCall.isEmpty()) {
+                QStringList parts = msg.split(' ', Qt::SkipEmptyParts);
+                if (parts.size() >= 2 && parts[0] == myCall)
+                    isCallingMe = true;
+            }
+        }
+
+        // Filter
+        bool fCQ   = as.value("WsjtxFilterCQ", "True").toString() == "True";
+        bool fPOTA = as.value("WsjtxFilterPOTA", "True").toString() == "True";
+        bool fMe   = as.value("WsjtxFilterCallingMe", "True").toString() == "True";
+        bool anyFilter = fCQ || fPOTA || fMe;
+        if (anyFilter) {
+            bool pass = false;
+            if (fCQ && isCQ) pass = true;
+            if (fPOTA && isPOTA) pass = true;
+            if (fMe && isCallingMe) pass = true;
+            if (!pass) return;
+        }
+
+        // Color
+        DxSpot colored = spot;
+        if (isCallingMe)
+            colored.color = as.value("WsjtxColorCallingMe", "#FF0000").toString();
+        else if (isPOTA)
+            colored.color = as.value("WsjtxColorPOTA", "#00FFFF").toString();
+        else if (isCQ)
+            colored.color = as.value("WsjtxColorCQ", "#00FF00").toString();
+        else
+            colored.color = as.value("WsjtxColorDefault", "#FFFFFF").toString();
+
+        // Compute alpha from SNR: -24→64, 0→192, +10→255 (linear interpolation)
+        int alpha;
+        if (colored.snr <= -24)
+            alpha = 64;
+        else if (colored.snr >= 10)
+            alpha = 255;
+        else if (colored.snr <= 0)
+            alpha = 64 + (colored.snr + 24) * (192 - 64) / 24;   // -24..0 → 64..192
+        else
+            alpha = 192 + colored.snr * (255 - 192) / 10;         // 0..+10 → 192..255
+
+        // Convert to #AARRGGBB format for radio
+        if (colored.color.length() == 7)  // #RRGGBB → #AARRGGBB
+            colored.color = QString("#%1%2").arg(alpha, 2, 16, QChar('0')).arg(colored.color.mid(1));
+
+        QString call = QString(colored.dxCall).replace(' ', QChar(0x7f));
+        QString freq = QString::number(colored.freqMhz, 'f', 6);
+        QString cmd = "spot add callsign=" + call + " rx_freq=" + freq
+                     + " tx_freq=" + freq
+                     + " source=WSJT-X"
+                     + " spotter_callsign=" + colored.spotterCall
+                     + " lifetime_seconds=" + QString::number(
+                           as.value("WsjtxSpotLifetime", 120).toInt());
+        if (!colored.comment.isEmpty())
+            cmd += " comment=" + QString(colored.comment).replace(' ', QChar(0x7f));
+        if (!colored.color.isEmpty())
+            cmd += " color=" + colored.color;
+        m_spotCmdBatch.append(cmd);
     });
 
     // ── Wire up radio model ────────────────────────────────────────────────

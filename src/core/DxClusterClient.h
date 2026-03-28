@@ -16,7 +16,9 @@ struct DxSpot {
     QString dxCall;         // JA1ABC
     QString comment;        // "CW big signal"
     QTime   utcTime;        // 18:24 UTC
-    QString source;         // "Cluster" or "RBN"
+    QString source;         // "Cluster", "RBN", "WSJT-X"
+    QString color;          // #AARRGGBB for radio spot color (optional)
+    int     snr{0};         // signal-to-noise ratio (dB), for WSJT-X decodes
 };
 
 // Telnet client for DX cluster nodes (DX Spider, AR-Cluster, CC Cluster).

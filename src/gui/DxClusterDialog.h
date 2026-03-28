@@ -12,6 +12,7 @@ class QLineEdit;
 class QSpinBox;
 class QPushButton;
 class QLabel;
+class QCheckBox;
 class QPlainTextEdit;
 class QTabWidget;
 class QTableView;
@@ -86,6 +87,7 @@ signals:
     void rbnDisconnectRequested();
     void wsjtxStartRequested(const QString& address, quint16 port);
     void wsjtxStopRequested();
+    void wsjtxSpotFiltered(const DxSpot& spot);  // WSJT-X spot after filter+color
     void tuneRequested(double freqMhz);
     void settingsChanged();
     void spotsClearedAll();
@@ -131,6 +133,13 @@ private:
     QPushButton*    m_wsjtxAutoStartBtn;
     QLabel*         m_wsjtxStatusLabel;
     QPlainTextEdit* m_wsjtxConsole;
+    QCheckBox*      m_wsjtxFilterCQ;
+    QCheckBox*      m_wsjtxFilterPOTA;
+    QCheckBox*      m_wsjtxFilterCallingMe;
+    QPushButton*    m_wsjtxColorCQ;
+    QPushButton*    m_wsjtxColorPOTA;
+    QPushButton*    m_wsjtxColorCallingMe;
+    QPushButton*    m_wsjtxColorDefault;
 
     // Spot batching (1/sec flush)
     QVector<DxSpot>        m_spotBatch;

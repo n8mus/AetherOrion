@@ -177,6 +177,7 @@ void WsjtxClient::parseDecode(QDataStream& ds)
     spot.comment = message.trimmed();
     spot.utcTime = QTime::fromMSecsSinceStartOfDay(static_cast<int>(timeMs));
     spot.source = "WSJT-X";
+    spot.snr = snr;
 
     // Log the decode
     QString logLine = QString("%1  %2  %3 kHz  %4 dB  %5")
@@ -224,10 +225,12 @@ QString WsjtxClient::extractCallsign(const QString& message) const
         return {};
     }
 
-    // Directed message: "THEIRCALL MYCALL ..." — first word is a callsign
-    auto m = callRx.match(parts[0]);
-    if (m.hasMatch())
-        return m.captured(1);
+    // Directed message: "MYCALL THEIRCALL report" — second word is who's calling
+    if (parts.size() >= 2) {
+        auto m = callRx.match(parts[1]);
+        if (m.hasMatch())
+            return m.captured(1);
+    }
 
     return {};
 }

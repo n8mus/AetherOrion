@@ -356,7 +356,50 @@ DxClusterDialog::DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient
 
     connect(wsjtxClient, &WsjtxClient::spotReceived, this, [this](DxSpot spot) {
         spot.source = "WSJT-X";
+        // Apply spot filters:
+        // - Nothing checked: everything passes
+        // - CQ checked: only "CQ ..." messages
+        // - CQ POTA checked: only "CQ POTA ..." messages
+        // - Calling Me checked: only directed messages to my callsign
+        // CQ and CQ POTA are mutually exclusive; Calling Me can combine with either
+        const QString& msg = spot.comment;
+        auto& as = AppSettings::instance();
+        bool anyFilter = m_wsjtxFilterCQ->isChecked() || m_wsjtxFilterPOTA->isChecked()
+                        || m_wsjtxFilterCallingMe->isChecked();
+
+        // Determine which category matches and assign color
+        bool isCQ = msg.startsWith("CQ ");
+        bool isPOTA = msg.contains("CQ POTA");
+        bool isCallingMe = false;
+        {
+            QString myCall = as.value("DxClusterCallsign").toString();
+            if (!myCall.isEmpty()) {
+                QStringList parts = msg.split(' ', Qt::SkipEmptyParts);
+                if (parts.size() >= 2 && parts[0] == myCall)
+                    isCallingMe = true;
+            }
+        }
+
+        // Apply color always: Calling Me > POTA > CQ > default
+        if (isCallingMe)
+            spot.color = as.value("WsjtxColorCallingMe", "#FF0000").toString();
+        else if (isPOTA)
+            spot.color = as.value("WsjtxColorPOTA", "#00FFFF").toString();
+        else if (isCQ)
+            spot.color = as.value("WsjtxColorCQ", "#00FF00").toString();
+        else
+            spot.color = as.value("WsjtxColorDefault", "#FFFFFF").toString();
+
+        // Filter: if any checkbox is checked, only matching spots pass
+        if (anyFilter) {
+            bool pass = false;
+            if (m_wsjtxFilterCQ->isChecked() && isCQ) pass = true;
+            if (m_wsjtxFilterPOTA->isChecked() && isPOTA) pass = true;
+            if (m_wsjtxFilterCallingMe->isChecked() && isCallingMe) pass = true;
+            if (!pass) return;
+        }
         m_spotBatch.append(spot);
+        emit wsjtxSpotFiltered(spot);
     });
 
     connect(wsjtxClient, &WsjtxClient::listening, this, [this] {
@@ -779,9 +822,149 @@ void DxClusterDialog::buildWsjtxTab(QTabWidget* tabs)
     layout->addWidget(connGroup);
 
     // ── Console output ──────────────────────────────────────────────────
+    // ── Spot filters with color pickers ────────────────────────────────
+    auto* filterRow = new QHBoxLayout;
+    filterRow->setSpacing(6);
+    auto* filterLabel = new QLabel("Spot Filter:");
+    filterLabel->setStyleSheet("QLabel { color: #808080; font-size: 14px; }");
+    filterRow->addWidget(filterLabel);
+
+    QString cbStyle = "QCheckBox { color: #a0b0c0; font-size: 14px; spacing: 3px; }"
+                      "QCheckBox::indicator { width: 14px; height: 14px; }";
+    auto swatchStyle = [](const QColor& c) {
+        return QString("QPushButton { background: %1; border: 2px solid #405060; border-radius: 3px; }"
+                       "QPushButton:hover { border-color: #c8d8e8; }").arg(c.name());
+    };
+
+    // CQ color + checkbox
+    QColor cqColor(s.value("WsjtxColorCQ", "#00FF00").toString());
+    m_wsjtxColorCQ = new QPushButton;
+    m_wsjtxColorCQ->setFixedSize(18, 18);
+    m_wsjtxColorCQ->setStyleSheet(swatchStyle(cqColor));
+    connect(m_wsjtxColorCQ, &QPushButton::clicked, this, [this, swatchStyle] {
+        QColor c = QColorDialog::getColor(QColor(AppSettings::instance().value("WsjtxColorCQ", "#00FF00").toString()), this, "CQ Spot Color");
+        if (c.isValid()) {
+            m_wsjtxColorCQ->setStyleSheet(swatchStyle(c));
+            AppSettings::instance().setValue("WsjtxColorCQ", c.name());
+            AppSettings::instance().save();
+        }
+    });
+    filterRow->addWidget(m_wsjtxColorCQ);
+
+    m_wsjtxFilterCQ = new QCheckBox("CQ");
+    m_wsjtxFilterCQ->setChecked(s.value("WsjtxFilterCQ", "True").toString() == "True");
+    m_wsjtxFilterCQ->setStyleSheet(cbStyle);
+    connect(m_wsjtxFilterCQ, &QCheckBox::toggled, this, [this](bool on) {
+        if (on) m_wsjtxFilterPOTA->setChecked(false);
+        auto& s = AppSettings::instance();
+        s.setValue("WsjtxFilterCQ", on ? "True" : "False");
+        s.save();
+    });
+    filterRow->addWidget(m_wsjtxFilterCQ, 1);
+
+    // CQ POTA color + checkbox
+    QColor potaColor(s.value("WsjtxColorPOTA", "#00FFFF").toString());
+    m_wsjtxColorPOTA = new QPushButton;
+    m_wsjtxColorPOTA->setFixedSize(18, 18);
+    m_wsjtxColorPOTA->setStyleSheet(swatchStyle(potaColor));
+    connect(m_wsjtxColorPOTA, &QPushButton::clicked, this, [this, swatchStyle] {
+        QColor c = QColorDialog::getColor(QColor(AppSettings::instance().value("WsjtxColorPOTA", "#00FFFF").toString()), this, "CQ POTA Spot Color");
+        if (c.isValid()) {
+            m_wsjtxColorPOTA->setStyleSheet(swatchStyle(c));
+            AppSettings::instance().setValue("WsjtxColorPOTA", c.name());
+            AppSettings::instance().save();
+        }
+    });
+    filterRow->addWidget(m_wsjtxColorPOTA);
+
+    m_wsjtxFilterPOTA = new QCheckBox("CQ POTA");
+    m_wsjtxFilterPOTA->setChecked(s.value("WsjtxFilterPOTA", "True").toString() == "True");
+    m_wsjtxFilterPOTA->setStyleSheet(cbStyle);
+    connect(m_wsjtxFilterPOTA, &QCheckBox::toggled, this, [this](bool on) {
+        if (on) m_wsjtxFilterCQ->setChecked(false);
+        auto& s = AppSettings::instance();
+        s.setValue("WsjtxFilterPOTA", on ? "True" : "False");
+        s.save();
+    });
+    filterRow->addWidget(m_wsjtxFilterPOTA, 1);
+
+    // Calling Me color + checkbox
+    QColor callingMeColor(s.value("WsjtxColorCallingMe", "#FF0000").toString());
+    m_wsjtxColorCallingMe = new QPushButton;
+    m_wsjtxColorCallingMe->setFixedSize(18, 18);
+    m_wsjtxColorCallingMe->setStyleSheet(swatchStyle(callingMeColor));
+    connect(m_wsjtxColorCallingMe, &QPushButton::clicked, this, [this, swatchStyle] {
+        QColor c = QColorDialog::getColor(QColor(AppSettings::instance().value("WsjtxColorCallingMe", "#FF0000").toString()), this, "Calling Me Spot Color");
+        if (c.isValid()) {
+            m_wsjtxColorCallingMe->setStyleSheet(swatchStyle(c));
+            AppSettings::instance().setValue("WsjtxColorCallingMe", c.name());
+            AppSettings::instance().save();
+        }
+    });
+    filterRow->addWidget(m_wsjtxColorCallingMe);
+
+    m_wsjtxFilterCallingMe = new QCheckBox("Calling Me");
+    m_wsjtxFilterCallingMe->setChecked(s.value("WsjtxFilterCallingMe", "True").toString() == "True");
+    m_wsjtxFilterCallingMe->setStyleSheet(cbStyle);
+    connect(m_wsjtxFilterCallingMe, &QCheckBox::toggled, this, [](bool on) {
+        auto& s = AppSettings::instance();
+        s.setValue("WsjtxFilterCallingMe", on ? "True" : "False");
+        s.save();
+    });
+    filterRow->addWidget(m_wsjtxFilterCallingMe, 1);
+
+    // Default color (no checkbox)
+    QColor defaultColor(s.value("WsjtxColorDefault", "#FFFFFF").toString());
+    m_wsjtxColorDefault = new QPushButton;
+    m_wsjtxColorDefault->setFixedSize(18, 18);
+    m_wsjtxColorDefault->setStyleSheet(swatchStyle(defaultColor));
+    connect(m_wsjtxColorDefault, &QPushButton::clicked, this, [this, swatchStyle] {
+        QColor c = QColorDialog::getColor(QColor(AppSettings::instance().value("WsjtxColorDefault", "#FFFFFF").toString()), this, "Default Spot Color");
+        if (c.isValid()) {
+            m_wsjtxColorDefault->setStyleSheet(swatchStyle(c));
+            AppSettings::instance().setValue("WsjtxColorDefault", c.name());
+            AppSettings::instance().save();
+        }
+    });
+    filterRow->addWidget(m_wsjtxColorDefault);
+    auto* defaultLabel = new QLabel("Default");
+    defaultLabel->setStyleSheet("QLabel { color: #a0b0c0; font-size: 14px; }");
+    filterRow->addWidget(defaultLabel);
+
+    layout->addLayout(filterRow);
+
+    // ── Console output ──────────────────────────────────────────────────
+    // Decodes label + spot lifetime slider
+    auto* decodeRow = new QHBoxLayout;
     auto* consoleLabel = new QLabel("WSJT-X Decodes");
     consoleLabel->setStyleSheet("QLabel { color: #00b4d8; font-weight: bold; }");
-    layout->addWidget(consoleLabel);
+    decodeRow->addWidget(consoleLabel);
+    decodeRow->addStretch();
+
+    auto* lifeLabel = new QLabel("Spot Life:");
+    lifeLabel->setStyleSheet("QLabel { color: #808080; font-size: 12px; }");
+    decodeRow->addWidget(lifeLabel);
+
+    int wsjtxLife = s.value("WsjtxSpotLifetime", 120).toInt();
+    auto* wsjtxLifeSlider = new QSlider(Qt::Horizontal);
+    wsjtxLifeSlider->setRange(30, 300);
+    wsjtxLifeSlider->setValue(wsjtxLife);
+    wsjtxLifeSlider->setFixedWidth(120);
+    decodeRow->addWidget(wsjtxLifeSlider);
+
+    auto* wsjtxLifeValue = new QLabel(QString("%1s").arg(wsjtxLife));
+    wsjtxLifeValue->setFixedWidth(35);
+    wsjtxLifeValue->setAlignment(Qt::AlignRight);
+    wsjtxLifeValue->setStyleSheet("QLabel { color: #a0b0c0; font-size: 12px; }");
+    decodeRow->addWidget(wsjtxLifeValue);
+
+    connect(wsjtxLifeSlider, &QSlider::valueChanged, this, [wsjtxLifeValue](int v) {
+        wsjtxLifeValue->setText(QString("%1s").arg(v));
+        auto& s = AppSettings::instance();
+        s.setValue("WsjtxSpotLifetime", v);
+        s.save();
+    });
+    layout->addLayout(decodeRow);
 
     m_wsjtxConsole = new QPlainTextEdit;
     m_wsjtxConsole->setReadOnly(true);
