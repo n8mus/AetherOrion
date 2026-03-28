@@ -33,7 +33,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf autoconf automake libtool`
 
-Current version: **0.7.7** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.7.8** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -746,7 +746,10 @@ and panadapter. The radio assigns these to our `client_handle`.
 - **r8brain-free-src resampling**: professional polyphase resampler replacing all
   hand-rolled sample rate conversion (AudioEngine, RNNoiseFilter, RADEEngine)
 - PC audio toggle button (radio line out vs PC speakers)
-- Audio TX (mic → VITA-49 float32 stereo, PC audio TX via DAX)
+- Audio TX: PC mic → Opus stereo 10ms → VITA-49 on remote_audio_tx (voice),
+  DAX TX → uncompressed float32 on dax_tx (digital modes).
+  Client-side PC mic gain (0-100%), client-side mic level metering with
+  VU ballistics, VOX support via met_in_rx=1
 - 48kHz audio fallback for devices that don't support 24kHz
 - TNF management: add/drag/right-click/width/depth, permanent vs temporary
 - CAT control: 4-channel rigctld TCP + PTY virtual serial ports
