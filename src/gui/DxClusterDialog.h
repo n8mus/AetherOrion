@@ -8,6 +8,7 @@
 #include "core/DxClusterClient.h"
 #include "core/WsjtxClient.h"
 #include "core/PotaClient.h"
+#include "core/FreeDvClient.h"
 
 class QLineEdit;
 class QSpinBox;
@@ -76,6 +77,7 @@ class DxClusterDialog : public QDialog {
 public:
     explicit DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient* rbnClient,
                              WsjtxClient* wsjtxClient, PotaClient* potaClient,
+                             FreeDvClient* freedvClient,
                              RadioModel* radioModel, QWidget* parent = nullptr);
 
     void updateStatus();
@@ -90,6 +92,8 @@ signals:
     void wsjtxStopRequested();
     void potaStartRequested(int intervalSec);
     void potaStopRequested();
+    void freedvStartRequested();
+    void freedvStopRequested();
     void wsjtxSpotFiltered(const DxSpot& spot);  // WSJT-X spot after filter+color
     void tuneRequested(double freqMhz);
     void settingsChanged();
@@ -100,6 +104,7 @@ private:
     void buildRbnTab(QTabWidget* tabs);
     void buildWsjtxTab(QTabWidget* tabs);
     void buildPotaTab(QTabWidget* tabs);
+    void buildFreeDvTab(QTabWidget* tabs);
     void buildSpotListTab(QTabWidget* tabs);
     void buildDisplayTab(QTabWidget* tabs);
 
@@ -107,6 +112,7 @@ private:
     DxClusterClient* m_rbnClient;
     WsjtxClient*     m_wsjtxClient;
     PotaClient*      m_potaClient;
+    FreeDvClient*    m_freedvClient;
     RadioModel*      m_radioModel;
 
     // Cluster tab
@@ -148,6 +154,12 @@ private:
     QPushButton*    m_potaAutoStartBtn;
     QLabel*         m_potaStatusLabel;
     QPlainTextEdit* m_potaConsole;
+
+    // FreeDV tab
+    QPushButton*    m_freedvStartBtn;
+    QPushButton*    m_freedvAutoStartBtn;
+    QLabel*         m_freedvStatusLabel;
+    QPlainTextEdit* m_freedvConsole;
 
     QPushButton*    m_wsjtxColorCQ;
     QPushButton*    m_wsjtxColorPOTA;

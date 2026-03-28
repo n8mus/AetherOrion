@@ -226,12 +226,14 @@ MainWindow::MainWindow(QWidget* parent)
     m_rbnClient->setLogFileName("rbn.log");
     m_wsjtxClient = new WsjtxClient;
     m_potaClient = new PotaClient;
+    m_freedvClient = new FreeDvClient;
     m_spotThread = new QThread(this);
     m_spotThread->setObjectName("SpotClients");
     m_dxCluster->moveToThread(m_spotThread);
     m_rbnClient->moveToThread(m_spotThread);
     m_wsjtxClient->moveToThread(m_spotThread);
     m_potaClient->moveToThread(m_spotThread);
+    m_freedvClient->moveToThread(m_spotThread);
     m_spotThread->start();
 
     // ── Spot forwarding: dedup + batch queue + 1/sec flush ────────────────
@@ -245,6 +247,8 @@ MainWindow::MainWindow(QWidget* parent)
             lifetimeMs = spot.lifetimeSec * 1000;                      // source-provided
         else if (spot.source == "WSJT-X")
             lifetimeMs = as.value("WsjtxSpotLifetime", 120).toInt() * 1000;
+        else if (spot.source == "FreeDV")
+            lifetimeMs = as.value("FreeDvSpotLifetime", 120).toInt() * 1000;
         else
             lifetimeMs = as.value("DxClusterSpotLifetime", 30).toInt() * 60000;
         auto it = m_spotDedup.find(spot.dxCall);
@@ -281,6 +285,8 @@ MainWindow::MainWindow(QWidget* parent)
                 spotColor = as.value("DxClusterSpotColor", "#D2B48C").toString();
             else if (source == "RBN")
                 spotColor = as.value("RbnSpotColor", "#4488FF").toString();
+            else if (source == "FreeDV")
+                spotColor = as.value("FreeDvSpotColor", "#FF8C00").toString();
         }
         if (!spotColor.isEmpty()) {
             if (spotColor.length() == 7) spotColor = "#FF" + spotColor.mid(1);
@@ -388,6 +394,11 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_potaClient, &PotaClient::spotReceived,
             this, [queueSpotCmd](const DxSpot& spot) {
         queueSpotCmd(spot, "POTA");
+    });
+
+    connect(m_freedvClient, &FreeDvClient::spotReceived,
+            this, [queueSpotCmd](const DxSpot& spot) {
+        queueSpotCmd(spot, "FreeDV");
     });
 
     // ── Wire up radio model ────────────────────────────────────────────────
@@ -1253,6 +1264,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
         delete m_rbnClient;  m_rbnClient = nullptr;
         delete m_wsjtxClient; m_wsjtxClient = nullptr;
         delete m_potaClient;  m_potaClient = nullptr;
+        delete m_freedvClient; m_freedvClient = nullptr;
     }
 
     QMainWindow::closeEvent(event);
@@ -1445,7 +1457,7 @@ void MainWindow::buildMenuBar()
     auto* spotsAction = settingsMenu->addAction("SpotHub...");
     connect(spotsAction, &QAction::triggered, this, [this] {
         DxClusterDialog dlg(m_dxCluster, m_rbnClient, m_wsjtxClient, m_potaClient,
-                            &m_radioModel, this);
+                            m_freedvClient, &m_radioModel, this);
         dlg.setTotalSpots(m_radioModel.spotModel()->spots().size());
         // Live preview: refresh spots on every display settings change
         auto refreshSpots = [this]() {
@@ -1495,6 +1507,10 @@ void MainWindow::buildMenuBar()
         });
         connect(&dlg, &DxClusterDialog::potaStopRequested,
                 this, [this] { QMetaObject::invokeMethod(m_potaClient, [=] { m_potaClient->stopPolling(); }); });
+        connect(&dlg, &DxClusterDialog::freedvStartRequested,
+                this, [this] { QMetaObject::invokeMethod(m_freedvClient, [=] { m_freedvClient->startConnection(); }); });
+        connect(&dlg, &DxClusterDialog::freedvStopRequested,
+                this, [this] { QMetaObject::invokeMethod(m_freedvClient, [=] { m_freedvClient->stopConnection(); }); });
         connect(&dlg, &DxClusterDialog::spotsClearedAll,
                 this, [this] { m_spotDedup.clear(); });
         connect(&dlg, &DxClusterDialog::tuneRequested,
@@ -2278,12 +2294,18 @@ void MainWindow::onConnectionStateChanged(bool connected)
                 if (!m_potaClient->isPolling())
                     QMetaObject::invokeMethod(m_potaClient, [=] { m_potaClient->startPolling(pInterval); });
             }
+            // Auto-start FreeDV Reporter if enabled
+            if (cs.value("FreeDvAutoStart", "False").toString() == "True") {
+                if (!m_freedvClient->isConnected())
+                    QMetaObject::invokeMethod(m_freedvClient, [=] { m_freedvClient->startConnection(); });
+            }
         }
     } else {
         QMetaObject::invokeMethod(m_dxCluster, [=] { m_dxCluster->disconnect(); });
         QMetaObject::invokeMethod(m_rbnClient, [=] { m_rbnClient->disconnect(); });
         QMetaObject::invokeMethod(m_wsjtxClient, [=] { m_wsjtxClient->stopListening(); });
         QMetaObject::invokeMethod(m_potaClient, [=] { m_potaClient->stopPolling(); });
+        QMetaObject::invokeMethod(m_freedvClient, [=] { m_freedvClient->stopConnection(); });
         m_connStatusLabel->setText("Disconnected");
         m_radioInfoLabel->setText("");
         m_radioVersionLabel->setText("");

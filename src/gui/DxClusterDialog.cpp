@@ -167,9 +167,11 @@ bool BandFilterProxy::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
 
 DxClusterDialog::DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient* rbnClient,
                                    WsjtxClient* wsjtxClient, PotaClient* potaClient,
+                                   FreeDvClient* freedvClient,
                                    RadioModel* radioModel, QWidget* parent)
     : QDialog(parent), m_client(clusterClient), m_rbnClient(rbnClient),
-      m_wsjtxClient(wsjtxClient), m_potaClient(potaClient), m_radioModel(radioModel)
+      m_wsjtxClient(wsjtxClient), m_potaClient(potaClient),
+      m_freedvClient(freedvClient), m_radioModel(radioModel)
 {
     setWindowTitle("SpotHub");
     setMinimumSize(620, 500);
@@ -190,6 +192,7 @@ DxClusterDialog::DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient
     buildRbnTab(tabs);
     buildWsjtxTab(tabs);
     buildPotaTab(tabs);
+    buildFreeDvTab(tabs);
     buildSpotListTab(tabs);
     buildDisplayTab(tabs);
 
@@ -473,6 +476,55 @@ DxClusterDialog::DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient
             m_potaConsole->appendPlainText(line);
         }
         auto* sb = m_potaConsole->verticalScrollBar();
+        sb->setValue(sb->maximum());
+    }
+
+    // ── Live updates from FreeDV client ───────────────────────────────
+    connect(freedvClient, &FreeDvClient::rawLineReceived, this, [this, isAtBottom](const QString& line) {
+        bool follow = isAtBottom(m_freedvConsole);
+        m_freedvConsole->appendPlainText(line);
+        if (follow) {
+            auto* sb = m_freedvConsole->verticalScrollBar();
+            sb->setValue(sb->maximum());
+        }
+    });
+    connect(freedvClient, &FreeDvClient::spotReceived, this, [this](DxSpot spot) {
+        spot.source = "FreeDV";
+        m_spotBatch.append(spot);
+    });
+    connect(freedvClient, &FreeDvClient::started, this, [this] {
+        m_freedvStatusLabel->setText("Connecting...");
+        m_freedvStatusLabel->setStyleSheet("QLabel { color: #00b4d8; font-size: 11px; }");
+        m_freedvStartBtn->setText("Stop");
+        m_freedvConsole->appendPlainText("--- Connecting ---");
+    });
+    connect(freedvClient, &FreeDvClient::stopped, this, [this] {
+        m_freedvStatusLabel->setText("Stopped");
+        m_freedvStatusLabel->setStyleSheet("QLabel { color: #808080; font-size: 11px; }");
+        m_freedvStartBtn->setText("Start");
+        m_freedvConsole->appendPlainText("--- Stopped ---");
+    });
+    connect(freedvClient, &FreeDvClient::connectionError, this, [this](const QString& err) {
+        m_freedvConsole->appendPlainText("--- Error: " + err + " ---");
+    });
+
+    // Update status when FreeDV connects via Socket.IO
+    connect(freedvClient, &FreeDvClient::rawLineReceived, this, [this](const QString& line) {
+        if (line.startsWith("Connected to")) {
+            m_freedvStatusLabel->setText("Connected");
+            m_freedvStatusLabel->setStyleSheet("QLabel { color: #30d050; font-size: 11px; }");
+        }
+    });
+
+    // Load FreeDV log
+    QFile freedvLogFile(freedvClient->logFilePath());
+    if (freedvLogFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!freedvLogFile.atEnd()) {
+            QString line = QString::fromUtf8(freedvLogFile.readLine()).trimmed();
+            if (line.isEmpty()) continue;
+            m_freedvConsole->appendPlainText(line);
+        }
+        auto* sb = m_freedvConsole->verticalScrollBar();
         sb->setValue(sb->maximum());
     }
 
@@ -1216,6 +1268,122 @@ void DxClusterDialog::buildPotaTab(QTabWidget* tabs)
     layout->addWidget(m_potaConsole, 1);
 
     tabs->addTab(page, "POTA");
+}
+
+void DxClusterDialog::buildFreeDvTab(QTabWidget* tabs)
+{
+    auto* page = new QWidget;
+    auto* layout = new QVBoxLayout(page);
+    layout->setSpacing(8);
+
+    auto& s = AppSettings::instance();
+
+    // ── Settings ────────────────────────────────────────────────────────
+    auto* connGroup = new QGroupBox("FreeDV QSO Reporter");
+    auto* connLayout = new QVBoxLayout(connGroup);
+    connLayout->setSpacing(4);
+
+    auto* grid = new QGridLayout;
+    grid->setColumnStretch(1, 1);
+    int row = 0;
+
+    grid->addWidget(new QLabel("Server:"), row, 0);
+    auto* serverLabel = new QLabel("qso.freedv.org (WebSocket)");
+    serverLabel->setStyleSheet("QLabel { color: #808890; }");
+    grid->addWidget(serverLabel, row, 1);
+    row++;
+
+    connLayout->addLayout(grid);
+
+    // Button row
+    auto* btnRow = new QHBoxLayout;
+    m_freedvAutoStartBtn = new QPushButton(
+        s.value("FreeDvAutoStart", "False").toString() == "True" ? "Auto-Start: ON" : "Auto-Start: OFF");
+    m_freedvAutoStartBtn->setCheckable(true);
+    m_freedvAutoStartBtn->setChecked(s.value("FreeDvAutoStart", "False").toString() == "True");
+    m_freedvAutoStartBtn->setStyleSheet(
+        "QPushButton { background: #206030; color: white; border: 1px solid #305040; padding: 4px 10px; }"
+        "QPushButton:!checked { background: #603020; }");
+    connect(m_freedvAutoStartBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_freedvAutoStartBtn->setText(on ? "Auto-Start: ON" : "Auto-Start: OFF");
+        auto& s = AppSettings::instance();
+        s.setValue("FreeDvAutoStart", on ? "True" : "False");
+        s.save();
+    });
+    btnRow->addWidget(m_freedvAutoStartBtn);
+    btnRow->addStretch();
+
+    m_freedvStatusLabel = new QLabel("Stopped");
+    m_freedvStatusLabel->setStyleSheet("QLabel { color: #808080; font-size: 11px; }");
+    btnRow->addWidget(m_freedvStatusLabel);
+    btnRow->addStretch();
+
+    m_freedvStartBtn = new QPushButton(m_freedvClient->isConnected() ? "Stop" : "Start");
+    m_freedvStartBtn->setFixedWidth(100);
+    m_freedvStartBtn->setStyleSheet(
+        "QPushButton { background: #00b4d8; color: #0f0f1a; font-weight: bold; "
+        "border: 1px solid #008ba8; padding: 4px; border-radius: 3px; }"
+        "QPushButton:hover { background: #00c8f0; }"
+        "QPushButton:disabled { background: #404060; color: #808080; }");
+    connect(m_freedvStartBtn, &QPushButton::clicked, this, [this] {
+        if (m_freedvClient->isConnected()) {
+            emit freedvStopRequested();
+            return;
+        }
+        emit freedvStartRequested();
+    });
+    btnRow->addWidget(m_freedvStartBtn);
+    connLayout->addLayout(btnRow);
+
+    layout->addWidget(connGroup);
+
+    // ── Console output ──────────────────────────────────────────────────
+    auto* consoleRow = new QHBoxLayout;
+    auto* consoleLabel = new QLabel("FreeDV Spots");
+    consoleLabel->setStyleSheet("QLabel { color: #00b4d8; font-weight: bold; }");
+    consoleRow->addWidget(consoleLabel);
+    consoleRow->addStretch();
+
+    auto* spotColorLabel = new QLabel("Spot Color:");
+    spotColorLabel->setStyleSheet("QLabel { color: #808080; font-size: 12px; }");
+    consoleRow->addWidget(spotColorLabel);
+
+    QColor freedvColor(s.value("FreeDvSpotColor", "#FF8C00").toString());
+    auto* freedvColorBtn = new QPushButton;
+    freedvColorBtn->setFixedSize(18, 18);
+    freedvColorBtn->setStyleSheet(QString(
+        "QPushButton { background: %1; border: 2px solid #405060; border-radius: 3px; }"
+        "QPushButton:hover { border-color: #c8d8e8; }").arg(freedvColor.name()));
+    connect(freedvColorBtn, &QPushButton::clicked, this, [this, freedvColorBtn] {
+        QColor c = QColorDialog::getColor(
+            QColor(AppSettings::instance().value("FreeDvSpotColor", "#FF8C00").toString()),
+            this, "FreeDV Spot Color");
+        if (c.isValid()) {
+            freedvColorBtn->setStyleSheet(QString(
+                "QPushButton { background: %1; border: 2px solid #405060; border-radius: 3px; }"
+                "QPushButton:hover { border-color: #c8d8e8; }").arg(c.name()));
+            AppSettings::instance().setValue("FreeDvSpotColor", c.name());
+            AppSettings::instance().save();
+        }
+    });
+    consoleRow->addWidget(freedvColorBtn);
+    layout->addLayout(consoleRow);
+
+    m_freedvConsole = new QPlainTextEdit;
+    m_freedvConsole->setReadOnly(true);
+    m_freedvConsole->setMaximumBlockCount(2000);
+    m_freedvConsole->setStyleSheet(
+        "QPlainTextEdit {"
+        "  background: #0a0a14;"
+        "  color: #a0b0c0;"
+        "  font-family: monospace;"
+        "  font-size: 11px;"
+        "  border: 1px solid #203040;"
+        "  padding: 4px;"
+        "}");
+    layout->addWidget(m_freedvConsole, 1);
+
+    tabs->addTab(page, "FreeDV");
 }
 
 void DxClusterDialog::buildSpotListTab(QTabWidget* tabs)

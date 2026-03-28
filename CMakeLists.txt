@@ -18,6 +18,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     Network
     Multimedia
+    WebSockets
 )
 find_package(Qt6 QUIET COMPONENTS SerialPort)
 if(Qt6SerialPort_FOUND)
@@ -157,6 +158,7 @@ set(CORE_SOURCES
     src/core/DxClusterClient.cpp
     src/core/WsjtxClient.cpp
     src/core/PotaClient.cpp
+    src/core/FreeDvClient.cpp
     src/core/RigctlServer.cpp
     src/core/FirmwareUploader.cpp
     src/core/DvkWavTransfer.cpp
@@ -359,6 +361,7 @@ target_link_libraries(AetherSDR PRIVATE
     Qt6::Widgets
     Qt6::Network
     Qt6::Multimedia
+    Qt6::WebSockets
 )
 
 if(Qt6SerialPort_FOUND)
