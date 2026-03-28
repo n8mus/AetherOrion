@@ -48,6 +48,7 @@ Tested with the **FLEX-8600** running v4.1.5 software. Should work with other Fl
 - dBm scale with drag-to-adjust, time scale on waterfall
 - ARRL band plan overlay on FFT display (color-coded CW/DATA/PHONE segments with license classes)
 - Spot frequency markers with hover tooltips (QRP calling, beacons, SSTV, etc.)
+- **SpotHub** — unified spot manager (Settings → SpotHub) with DX Cluster, RBN, WSJT-X, and POTA sources, sortable spot list with band filters, density badges, per-source color coding, and configurable lifetimes
 - Floating VFO widget with S-meter, frequency, and quick controls
 - Band selector with ARRL band plan defaults
 - Display sub-menu: AVG, FPS, FFT fill (opacity + color), weighted average
@@ -269,7 +270,7 @@ This places `AetherSDR` in `/usr/local/bin`, the `.desktop` file in the app laun
 ### Planned
 - [ ] DAX audio channels — Windows virtual audio devices (#87)
 - [ ] Band stacking registers
-- [ ] Spot / DX cluster integration
+- [x] SpotHub — DX Cluster, RBN, WSJT-X, POTA spot integration with density badges
 - [ ] CW keyer memories and CWX macros (#18)
 - [ ] Keyboard shortcuts and hotkeys
 - [ ] Master PC volume control (#137)

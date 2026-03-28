@@ -166,10 +166,10 @@ bool BandFilterProxy::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
 // ── DxClusterDialog ─────────────────────────────────────────────────────────
 
 DxClusterDialog::DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient* rbnClient,
-                                   WsjtxClient* wsjtxClient, RadioModel* radioModel,
-                                   QWidget* parent)
+                                   WsjtxClient* wsjtxClient, PotaClient* potaClient,
+                                   RadioModel* radioModel, QWidget* parent)
     : QDialog(parent), m_client(clusterClient), m_rbnClient(rbnClient),
-      m_wsjtxClient(wsjtxClient), m_radioModel(radioModel)
+      m_wsjtxClient(wsjtxClient), m_potaClient(potaClient), m_radioModel(radioModel)
 {
     setWindowTitle("SpotHub");
     setMinimumSize(620, 500);
@@ -189,6 +189,7 @@ DxClusterDialog::DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient
     buildClusterTab(tabs);
     buildRbnTab(tabs);
     buildWsjtxTab(tabs);
+    buildPotaTab(tabs);
     buildSpotListTab(tabs);
     buildDisplayTab(tabs);
 
@@ -429,6 +430,52 @@ DxClusterDialog::DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient
         sb->setValue(sb->maximum());
     }
 
+    // ── Live updates from POTA client ─────────────────────────────────
+    connect(potaClient, &PotaClient::rawLineReceived, this, [this, isAtBottom](const QString& line) {
+        bool follow = isAtBottom(m_potaConsole);
+        m_potaConsole->appendPlainText(line);
+        if (follow) {
+            auto* sb = m_potaConsole->verticalScrollBar();
+            sb->setValue(sb->maximum());
+        }
+    });
+
+    connect(potaClient, &PotaClient::spotReceived, this, [this](DxSpot spot) {
+        spot.source = "POTA";
+        m_spotBatch.append(spot);
+    });
+
+    connect(potaClient, &PotaClient::started, this, [this] {
+        m_potaStatusLabel->setText("Polling...");
+        m_potaStatusLabel->setStyleSheet("QLabel { color: #00b4d8; font-size: 11px; }");
+        m_potaStartBtn->setText("Stop");
+        m_potaConsole->appendPlainText("--- Polling started ---");
+    });
+    connect(potaClient, &PotaClient::stopped, this, [this] {
+        m_potaStatusLabel->setText("Stopped");
+        m_potaStatusLabel->setStyleSheet("QLabel { color: #808080; font-size: 11px; }");
+        m_potaStartBtn->setText("Start");
+        m_potaConsole->appendPlainText("--- Stopped ---");
+    });
+    connect(potaClient, &PotaClient::pollError, this, [this](const QString& err) {
+        m_potaConsole->appendPlainText("--- Error: " + err + " ---");
+    });
+    connect(potaClient, &PotaClient::pollComplete, this, [this](int total, int newCount) {
+        m_potaStatusLabel->setText(QString("Polling... (%1 active, %2 new)").arg(total).arg(newCount));
+    });
+
+    // Load POTA log
+    QFile potaLogFile(potaClient->logFilePath());
+    if (potaLogFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!potaLogFile.atEnd()) {
+            QString line = QString::fromUtf8(potaLogFile.readLine()).trimmed();
+            if (line.isEmpty()) continue;
+            m_potaConsole->appendPlainText(line);
+        }
+        auto* sb = m_potaConsole->verticalScrollBar();
+        sb->setValue(sb->maximum());
+    }
+
     // Scroll spot table to show newest entries
     m_spotTable->scrollToBottom();
 
@@ -532,9 +579,36 @@ void DxClusterDialog::buildClusterTab(QTabWidget* tabs)
     layout->addWidget(connGroup);
 
     // ── Console output ──────────────────────────────────────────────────
+    auto* consoleRow = new QHBoxLayout;
     auto* consoleLabel = new QLabel("Cluster Console");
     consoleLabel->setStyleSheet("QLabel { color: #00b4d8; font-weight: bold; }");
-    layout->addWidget(consoleLabel);
+    consoleRow->addWidget(consoleLabel);
+    consoleRow->addStretch();
+
+    auto* dxcColorLabel = new QLabel("Spot Color:");
+    dxcColorLabel->setStyleSheet("QLabel { color: #808080; font-size: 12px; }");
+    consoleRow->addWidget(dxcColorLabel);
+
+    QColor dxcColor(s.value("DxClusterSpotColor", "#D2B48C").toString());
+    auto* dxcColorBtn = new QPushButton;
+    dxcColorBtn->setFixedSize(18, 18);
+    dxcColorBtn->setStyleSheet(QString(
+        "QPushButton { background: %1; border: 2px solid #405060; border-radius: 3px; }"
+        "QPushButton:hover { border-color: #c8d8e8; }").arg(dxcColor.name()));
+    connect(dxcColorBtn, &QPushButton::clicked, this, [this, dxcColorBtn] {
+        QColor c = QColorDialog::getColor(
+            QColor(AppSettings::instance().value("DxClusterSpotColor", "#D2B48C").toString()),
+            this, "DX Cluster Spot Color");
+        if (c.isValid()) {
+            dxcColorBtn->setStyleSheet(QString(
+                "QPushButton { background: %1; border: 2px solid #405060; border-radius: 3px; }"
+                "QPushButton:hover { border-color: #c8d8e8; }").arg(c.name()));
+            AppSettings::instance().setValue("DxClusterSpotColor", c.name());
+            AppSettings::instance().save();
+        }
+    });
+    consoleRow->addWidget(dxcColorBtn);
+    layout->addLayout(consoleRow);
 
     m_console = new QPlainTextEdit;
     m_console->setReadOnly(true);
@@ -694,9 +768,36 @@ void DxClusterDialog::buildRbnTab(QTabWidget* tabs)
     layout->addWidget(connGroup);
 
     // ── Console output ──────────────────────────────────────────────────
-    auto* consoleLabel = new QLabel("RBN Console");
-    consoleLabel->setStyleSheet("QLabel { color: #00b4d8; font-weight: bold; }");
-    layout->addWidget(consoleLabel);
+    auto* rbnConsoleRow = new QHBoxLayout;
+    auto* rbnConsoleLabel = new QLabel("RBN Console");
+    rbnConsoleLabel->setStyleSheet("QLabel { color: #00b4d8; font-weight: bold; }");
+    rbnConsoleRow->addWidget(rbnConsoleLabel);
+    rbnConsoleRow->addStretch();
+
+    auto* rbnColorLabel = new QLabel("Spot Color:");
+    rbnColorLabel->setStyleSheet("QLabel { color: #808080; font-size: 12px; }");
+    rbnConsoleRow->addWidget(rbnColorLabel);
+
+    QColor rbnColor(s.value("RbnSpotColor", "#4488FF").toString());
+    auto* rbnColorBtn = new QPushButton;
+    rbnColorBtn->setFixedSize(18, 18);
+    rbnColorBtn->setStyleSheet(QString(
+        "QPushButton { background: %1; border: 2px solid #405060; border-radius: 3px; }"
+        "QPushButton:hover { border-color: #c8d8e8; }").arg(rbnColor.name()));
+    connect(rbnColorBtn, &QPushButton::clicked, this, [this, rbnColorBtn] {
+        QColor c = QColorDialog::getColor(
+            QColor(AppSettings::instance().value("RbnSpotColor", "#4488FF").toString()),
+            this, "RBN Spot Color");
+        if (c.isValid()) {
+            rbnColorBtn->setStyleSheet(QString(
+                "QPushButton { background: %1; border: 2px solid #405060; border-radius: 3px; }"
+                "QPushButton:hover { border-color: #c8d8e8; }").arg(c.name()));
+            AppSettings::instance().setValue("RbnSpotColor", c.name());
+            AppSettings::instance().save();
+        }
+    });
+    rbnConsoleRow->addWidget(rbnColorBtn);
+    layout->addLayout(rbnConsoleRow);
 
     m_rbnConsole = new QPlainTextEdit;
     m_rbnConsole->setReadOnly(true);
@@ -981,6 +1082,140 @@ void DxClusterDialog::buildWsjtxTab(QTabWidget* tabs)
     layout->addWidget(m_wsjtxConsole, 1);
 
     tabs->addTab(page, "WSJT-X");
+}
+
+void DxClusterDialog::buildPotaTab(QTabWidget* tabs)
+{
+    auto* page = new QWidget;
+    auto* layout = new QVBoxLayout(page);
+    layout->setSpacing(8);
+
+    auto& s = AppSettings::instance();
+
+    // ── Settings ────────────────────────────────────────────────────────
+    auto* connGroup = new QGroupBox("POTA Spot Feed");
+    auto* connLayout = new QVBoxLayout(connGroup);
+    connLayout->setSpacing(4);
+
+    auto* grid = new QGridLayout;
+    grid->setColumnStretch(1, 1);
+    int row = 0;
+
+    grid->addWidget(new QLabel("Server:"), row, 0);
+    auto* serverLabel = new QLabel("api.pota.app (HTTP polling)");
+    serverLabel->setStyleSheet("QLabel { color: #808890; }");
+    grid->addWidget(serverLabel, row, 1);
+    row++;
+
+    grid->addWidget(new QLabel("Poll Interval:"), row, 0);
+    m_potaIntervalSpin = new QSpinBox;
+    m_potaIntervalSpin->setRange(15, 300);
+    m_potaIntervalSpin->setValue(s.value("PotaPollInterval", 30).toInt());
+    m_potaIntervalSpin->setSuffix(" sec");
+    m_potaIntervalSpin->setStyleSheet("QSpinBox { background: #1a1a2e; color: #c8d8e8; border: 1px solid #203040; padding: 3px; }");
+    connect(m_potaIntervalSpin, &QSpinBox::valueChanged, this, [](int v) {
+        auto& s = AppSettings::instance();
+        s.setValue("PotaPollInterval", v);
+        s.save();
+    });
+    grid->addWidget(m_potaIntervalSpin, row, 1);
+    row++;
+
+    connLayout->addLayout(grid);
+
+    // Button row
+    auto* btnRow = new QHBoxLayout;
+    m_potaAutoStartBtn = new QPushButton(
+        s.value("PotaAutoStart", "False").toString() == "True" ? "Auto-Start: ON" : "Auto-Start: OFF");
+    m_potaAutoStartBtn->setCheckable(true);
+    m_potaAutoStartBtn->setChecked(s.value("PotaAutoStart", "False").toString() == "True");
+    m_potaAutoStartBtn->setStyleSheet(
+        "QPushButton { background: #206030; color: white; border: 1px solid #305040; padding: 4px 10px; }"
+        "QPushButton:!checked { background: #603020; }");
+    connect(m_potaAutoStartBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_potaAutoStartBtn->setText(on ? "Auto-Start: ON" : "Auto-Start: OFF");
+        auto& s = AppSettings::instance();
+        s.setValue("PotaAutoStart", on ? "True" : "False");
+        s.save();
+    });
+    btnRow->addWidget(m_potaAutoStartBtn);
+    btnRow->addStretch();
+
+    m_potaStatusLabel = new QLabel("Stopped");
+    m_potaStatusLabel->setStyleSheet("QLabel { color: #808080; font-size: 11px; }");
+    btnRow->addWidget(m_potaStatusLabel);
+    btnRow->addStretch();
+
+    m_potaStartBtn = new QPushButton(m_potaClient->isPolling() ? "Stop" : "Start");
+    m_potaStartBtn->setFixedWidth(100);
+    m_potaStartBtn->setStyleSheet(
+        "QPushButton { background: #00b4d8; color: #0f0f1a; font-weight: bold; "
+        "border: 1px solid #008ba8; padding: 4px; border-radius: 3px; }"
+        "QPushButton:hover { background: #00c8f0; }"
+        "QPushButton:disabled { background: #404060; color: #808080; }");
+    connect(m_potaStartBtn, &QPushButton::clicked, this, [this] {
+        if (m_potaClient->isPolling()) {
+            emit potaStopRequested();
+            return;
+        }
+        int interval = m_potaIntervalSpin->value();
+        auto& s = AppSettings::instance();
+        s.setValue("PotaPollInterval", interval);
+        s.save();
+        emit potaStartRequested(interval);
+    });
+    btnRow->addWidget(m_potaStartBtn);
+    connLayout->addLayout(btnRow);
+
+    layout->addWidget(connGroup);
+
+    // ── Console output ──────────────────────────────────────────────────
+    auto* consoleRow = new QHBoxLayout;
+    auto* consoleLabel = new QLabel("POTA Activations");
+    consoleLabel->setStyleSheet("QLabel { color: #00b4d8; font-weight: bold; }");
+    consoleRow->addWidget(consoleLabel);
+    consoleRow->addStretch();
+
+    auto* spotColorLabel = new QLabel("Spot Color:");
+    spotColorLabel->setStyleSheet("QLabel { color: #808080; font-size: 12px; }");
+    consoleRow->addWidget(spotColorLabel);
+
+    QColor potaColor(s.value("PotaSpotColor", "#FFFF00").toString());
+    auto* potaColorBtn = new QPushButton;
+    potaColorBtn->setFixedSize(18, 18);
+    potaColorBtn->setStyleSheet(QString(
+        "QPushButton { background: %1; border: 2px solid #405060; border-radius: 3px; }"
+        "QPushButton:hover { border-color: #c8d8e8; }").arg(potaColor.name()));
+    connect(potaColorBtn, &QPushButton::clicked, this, [this, potaColorBtn] {
+        QColor c = QColorDialog::getColor(
+            QColor(AppSettings::instance().value("PotaSpotColor", "#FFFF00").toString()),
+            this, "POTA Spot Color");
+        if (c.isValid()) {
+            potaColorBtn->setStyleSheet(QString(
+                "QPushButton { background: %1; border: 2px solid #405060; border-radius: 3px; }"
+                "QPushButton:hover { border-color: #c8d8e8; }").arg(c.name()));
+            AppSettings::instance().setValue("PotaSpotColor", c.name());
+            AppSettings::instance().save();
+        }
+    });
+    consoleRow->addWidget(potaColorBtn);
+    layout->addLayout(consoleRow);
+
+    m_potaConsole = new QPlainTextEdit;
+    m_potaConsole->setReadOnly(true);
+    m_potaConsole->setMaximumBlockCount(2000);
+    m_potaConsole->setStyleSheet(
+        "QPlainTextEdit {"
+        "  background: #0a0a14;"
+        "  color: #a0b0c0;"
+        "  font-family: monospace;"
+        "  font-size: 11px;"
+        "  border: 1px solid #203040;"
+        "  padding: 4px;"
+        "}");
+    layout->addWidget(m_potaConsole, 1);
+
+    tabs->addTab(page, "POTA");
 }
 
 void DxClusterDialog::buildSpotListTab(QTabWidget* tabs)
@@ -1410,6 +1645,16 @@ void DxClusterDialog::updateStatus()
         m_wsjtxStatusLabel->setText("Stopped");
         m_wsjtxStatusLabel->setStyleSheet("QLabel { color: #808080; font-size: 11px; }");
         m_wsjtxStartBtn->setText("Start");
+    }
+    // POTA status
+    if (m_potaClient->isPolling()) {
+        m_potaStatusLabel->setText("Polling...");
+        m_potaStatusLabel->setStyleSheet("QLabel { color: #00b4d8; font-size: 11px; }");
+        m_potaStartBtn->setText("Stop");
+    } else {
+        m_potaStatusLabel->setText("Stopped");
+        m_potaStatusLabel->setStyleSheet("QLabel { color: #808080; font-size: 11px; }");
+        m_potaStartBtn->setText("Start");
     }
 }
 

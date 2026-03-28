@@ -125,6 +125,7 @@ src/
     ├── EqApplet          — 8-band graphic equalizer
     ├── SMeterWidget      — Analog S-meter gauge
     ├── RadioSetupDialog  — 8-tab settings dialog
+    ├── SpotHubDialog     — Unified spot manager (DX Cluster, RBN, WSJT-X, POTA, Spot List, Display)
     └── HGauge.h          — Reusable horizontal gauge (header-only)
 ```
 
@@ -452,6 +453,7 @@ technical and focused — treat it like a code review conversation.
 | Parse a new status object | `RadioModel::onStatusReceived()` — add routing for the object name |
 | Add a new meter display | `MeterModel` already parses all meters — wire to a gauge widget |
 | Add a new Radio Setup tab | `RadioSetupDialog.cpp` — follow existing tab patterns |
+| Add a new spot source | `SpotHubDialog.cpp` — follow DX Cluster/RBN/WSJT-X/POTA tab patterns |
 | Fix a protocol command | Check `reference/FlexLib/` for correct syntax, test with radio logs |
 
 ---

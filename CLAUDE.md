@@ -103,6 +103,8 @@ src/
     ├── MemoryDialog        — Memory channel manager with editable name column
     ├── ProfileManagerDialog— Global/TX/mic profile management
     ├── SpotSettingsDialog   — Spot/DX cluster settings
+    ├── SpotHubDialog        — Unified spot manager (6 tabs: DX Cluster, RBN, WSJT-X, POTA, Spot List, Display)
+    ├── SpotDensityBadge     — Clickable spot count badge with expand-to-list popup
     ├── NetworkDiagnosticsDialog — SmartLink network diagnostics
     ├── MeterSlider         — Combined level meter + gain slider widget (DAX channels)
     ├── HGauge.h            — Shared horizontal gauge widget (header-only)
@@ -904,6 +906,14 @@ and panadapter. The radio assigns these to our `client_handle`.
   panadapter destroyed during XVTR band switch
 - **CW decoder fix**: initial m_panApplet wasn't wired through
   setActivePanApplet(), CW decode output went nowhere on first pan
+- **SpotHub**: unified spot management dialog (Settings → SpotHub) with 6 tabs:
+  DX Cluster (telnet), RBN (telnet), WSJT-X (UDP multicast decode), POTA
+  (HTTP polling api.pota.app), Spot List (sortable table with band filters),
+  Display (spot rendering settings). All spot sources run on a dedicated
+  worker thread with 1/sec batched forwarding. Features: spot density badges
+  with click-to-expand popup, per-source color coding, deduplication,
+  configurable lifetimes, SNR-based alpha for WSJT-X, WSJT-X decode filters
+  (CQ/CQ POTA/Calling Me), log file history per source.
 
 ## What's NOT Yet Implemented
 
@@ -911,7 +921,6 @@ and panadapter. The radio assigns these to our `client_handle`.
 - RADE on Windows (#87)
 - DAX IQ streaming for SDR apps (#124)
 - DAX on Windows (virtual audio devices, #87)
-- Spot / DX cluster integration
 - SmartLink NAT hole-punching (for radios without UPnP/port forwarding)
 - SmartLink WAN auto-reconnect
 - SmartLink jitter buffer for high-latency connections

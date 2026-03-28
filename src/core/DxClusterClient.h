@@ -19,6 +19,7 @@ struct DxSpot {
     QString source;         // "Cluster", "RBN", "WSJT-X"
     QString color;          // #AARRGGBB for radio spot color (optional)
     int     snr{0};         // signal-to-noise ratio (dB), for WSJT-X decodes
+    int     lifetimeSec{0}; // 0 = use source default from AppSettings
 };
 
 // Telnet client for DX cluster nodes (DX Spider, AR-Cluster, CC Cluster).

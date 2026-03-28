@@ -7,6 +7,7 @@
 #include <QVector>
 #include "core/DxClusterClient.h"
 #include "core/WsjtxClient.h"
+#include "core/PotaClient.h"
 
 class QLineEdit;
 class QSpinBox;
@@ -74,8 +75,8 @@ class DxClusterDialog : public QDialog {
 
 public:
     explicit DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient* rbnClient,
-                             WsjtxClient* wsjtxClient, RadioModel* radioModel,
-                             QWidget* parent = nullptr);
+                             WsjtxClient* wsjtxClient, PotaClient* potaClient,
+                             RadioModel* radioModel, QWidget* parent = nullptr);
 
     void updateStatus();
     void setTotalSpots(int count);
@@ -87,6 +88,8 @@ signals:
     void rbnDisconnectRequested();
     void wsjtxStartRequested(const QString& address, quint16 port);
     void wsjtxStopRequested();
+    void potaStartRequested(int intervalSec);
+    void potaStopRequested();
     void wsjtxSpotFiltered(const DxSpot& spot);  // WSJT-X spot after filter+color
     void tuneRequested(double freqMhz);
     void settingsChanged();
@@ -96,12 +99,14 @@ private:
     void buildClusterTab(QTabWidget* tabs);
     void buildRbnTab(QTabWidget* tabs);
     void buildWsjtxTab(QTabWidget* tabs);
+    void buildPotaTab(QTabWidget* tabs);
     void buildSpotListTab(QTabWidget* tabs);
     void buildDisplayTab(QTabWidget* tabs);
 
     DxClusterClient* m_client;
     DxClusterClient* m_rbnClient;
     WsjtxClient*     m_wsjtxClient;
+    PotaClient*      m_potaClient;
     RadioModel*      m_radioModel;
 
     // Cluster tab
@@ -136,6 +141,14 @@ private:
     QCheckBox*      m_wsjtxFilterCQ;
     QCheckBox*      m_wsjtxFilterPOTA;
     QCheckBox*      m_wsjtxFilterCallingMe;
+
+    // POTA tab
+    QSpinBox*       m_potaIntervalSpin;
+    QPushButton*    m_potaStartBtn;
+    QPushButton*    m_potaAutoStartBtn;
+    QLabel*         m_potaStatusLabel;
+    QPlainTextEdit* m_potaConsole;
+
     QPushButton*    m_wsjtxColorCQ;
     QPushButton*    m_wsjtxColorPOTA;
     QPushButton*    m_wsjtxColorCallingMe;

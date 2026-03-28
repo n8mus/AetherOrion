@@ -225,11 +225,13 @@ MainWindow::MainWindow(QWidget* parent)
     m_rbnClient = new DxClusterClient;
     m_rbnClient->setLogFileName("rbn.log");
     m_wsjtxClient = new WsjtxClient;
+    m_potaClient = new PotaClient;
     m_spotThread = new QThread(this);
     m_spotThread->setObjectName("SpotClients");
     m_dxCluster->moveToThread(m_spotThread);
     m_rbnClient->moveToThread(m_spotThread);
     m_wsjtxClient->moveToThread(m_spotThread);
+    m_potaClient->moveToThread(m_spotThread);
     m_spotThread->start();
 
     // ── Spot forwarding: dedup + batch queue + 1/sec flush ────────────────
@@ -238,9 +240,13 @@ MainWindow::MainWindow(QWidget* parent)
     auto isDuplicateSpot = [this](const DxSpot& spot) -> bool {
         qint64 now = QDateTime::currentMSecsSinceEpoch();
         auto& as = AppSettings::instance();
-        int lifetimeMs = (spot.source == "WSJT-X")
-            ? as.value("WsjtxSpotLifetime", 120).toInt() * 1000    // seconds
-            : as.value("DxClusterSpotLifetime", 30).toInt() * 60000;  // minutes
+        int lifetimeMs;
+        if (spot.lifetimeSec > 0)
+            lifetimeMs = spot.lifetimeSec * 1000;                      // source-provided
+        else if (spot.source == "WSJT-X")
+            lifetimeMs = as.value("WsjtxSpotLifetime", 120).toInt() * 1000;
+        else
+            lifetimeMs = as.value("DxClusterSpotLifetime", 30).toInt() * 60000;
         auto it = m_spotDedup.find(spot.dxCall);
         if (it != m_spotDedup.end()) {
             bool sameFreq = std::abs(it->freqMhz - spot.freqMhz) < 0.001;
@@ -263,13 +269,22 @@ MainWindow::MainWindow(QWidget* parent)
                      + " source=" + source
                      + " spotter_callsign=" + spot.spotterCall
                      + " lifetime_seconds=" + QString::number(
-                           AppSettings::instance().value("DxClusterSpotLifetime", 30).toInt() * 60);
+                           spot.lifetimeSec > 0 ? spot.lifetimeSec
+                           : AppSettings::instance().value("DxClusterSpotLifetime", 30).toInt() * 60);
         if (!spot.comment.isEmpty())
             cmd += " comment=" + QString(spot.comment).replace(' ', QChar(0x7f));
-        if (!spot.color.isEmpty()) {
-            QString c = spot.color;
-            if (c.length() == 7) c = "#FF" + c.mid(1);  // #RRGGBB → #FFRRGGBB
-            cmd += " color=" + c;
+        // Apply source-specific color if not already set
+        QString spotColor = spot.color;
+        if (spotColor.isEmpty()) {
+            auto& as = AppSettings::instance();
+            if (source == "DXCluster")
+                spotColor = as.value("DxClusterSpotColor", "#D2B48C").toString();
+            else if (source == "RBN")
+                spotColor = as.value("RbnSpotColor", "#4488FF").toString();
+        }
+        if (!spotColor.isEmpty()) {
+            if (spotColor.length() == 7) spotColor = "#FF" + spotColor.mid(1);
+            cmd += " color=" + spotColor;
         }
         m_spotCmdBatch.append(cmd);
     };
@@ -368,6 +383,11 @@ MainWindow::MainWindow(QWidget* parent)
         if (!colored.color.isEmpty())
             cmd += " color=" + colored.color;
         m_spotCmdBatch.append(cmd);
+    });
+
+    connect(m_potaClient, &PotaClient::spotReceived,
+            this, [queueSpotCmd](const DxSpot& spot) {
+        queueSpotCmd(spot, "POTA");
     });
 
     // ── Wire up radio model ────────────────────────────────────────────────
@@ -1172,6 +1192,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
         delete m_dxCluster;  m_dxCluster = nullptr;
         delete m_rbnClient;  m_rbnClient = nullptr;
         delete m_wsjtxClient; m_wsjtxClient = nullptr;
+        delete m_potaClient;  m_potaClient = nullptr;
     }
 
     QMainWindow::closeEvent(event);
@@ -1362,7 +1383,7 @@ void MainWindow::buildMenuBar()
     settingsMenu->addAction("USB Cables...");
     auto* spotsAction = settingsMenu->addAction("SpotHub...");
     connect(spotsAction, &QAction::triggered, this, [this] {
-        DxClusterDialog dlg(m_dxCluster, m_rbnClient, m_wsjtxClient,
+        DxClusterDialog dlg(m_dxCluster, m_rbnClient, m_wsjtxClient, m_potaClient,
                             &m_radioModel, this);
         dlg.setTotalSpots(m_radioModel.spotModel()->spots().size());
         // Live preview: refresh spots on every display settings change
@@ -1407,6 +1428,12 @@ void MainWindow::buildMenuBar()
         });
         connect(&dlg, &DxClusterDialog::wsjtxStopRequested,
                 this, [this] { QMetaObject::invokeMethod(m_wsjtxClient, [=] { m_wsjtxClient->stopListening(); }); });
+        connect(&dlg, &DxClusterDialog::potaStartRequested,
+                this, [this](int interval) {
+            QMetaObject::invokeMethod(m_potaClient, [=] { m_potaClient->startPolling(interval); });
+        });
+        connect(&dlg, &DxClusterDialog::potaStopRequested,
+                this, [this] { QMetaObject::invokeMethod(m_potaClient, [=] { m_potaClient->stopPolling(); }); });
         connect(&dlg, &DxClusterDialog::spotsClearedAll,
                 this, [this] { m_spotDedup.clear(); });
         connect(&dlg, &DxClusterDialog::tuneRequested,
@@ -2184,11 +2211,18 @@ void MainWindow::onConnectionStateChanged(bool connected)
                 if (!m_wsjtxClient->isListening())
                     QMetaObject::invokeMethod(m_wsjtxClient, [=] { m_wsjtxClient->startListening(wAddr, wPort); });
             }
+            // Auto-start POTA polling if enabled
+            if (cs.value("PotaAutoStart", "False").toString() == "True") {
+                int pInterval = cs.value("PotaPollInterval", 30).toInt();
+                if (!m_potaClient->isPolling())
+                    QMetaObject::invokeMethod(m_potaClient, [=] { m_potaClient->startPolling(pInterval); });
+            }
         }
     } else {
         QMetaObject::invokeMethod(m_dxCluster, [=] { m_dxCluster->disconnect(); });
         QMetaObject::invokeMethod(m_rbnClient, [=] { m_rbnClient->disconnect(); });
         QMetaObject::invokeMethod(m_wsjtxClient, [=] { m_wsjtxClient->stopListening(); });
+        QMetaObject::invokeMethod(m_potaClient, [=] { m_potaClient->stopPolling(); });
         m_connStatusLabel->setText("Disconnected");
         m_radioInfoLabel->setText("");
         m_radioVersionLabel->setText("");
