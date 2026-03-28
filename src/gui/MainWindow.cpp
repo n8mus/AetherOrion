@@ -1520,7 +1520,7 @@ void MainWindow::buildMenuBar()
                 this, [this] { QMetaObject::invokeMethod(m_potaClient, [=] { m_potaClient->stopPolling(); }); });
 #ifdef HAVE_WEBSOCKETS
         connect(&dlg, &DxClusterDialog::freedvStartRequested,
-                this, [this] { QMetaObject::invokeMethod(m_freedvClient, [=] { m_freedvClient->startConnection(); }); });
+                this, [this] { QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->startConnection(); }); });
         connect(&dlg, &DxClusterDialog::freedvStopRequested,
                 this, [this] { QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->stopConnection(); }); });
 #endif
@@ -2311,7 +2311,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
             // Auto-start FreeDV Reporter if enabled
             if (cs.value("FreeDvAutoStart", "False").toString() == "True") {
                 if (!m_freedvClient->isConnected())
-                    QMetaObject::invokeMethod(m_freedvClient, [=] { m_freedvClient->startConnection(); });
+                    QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->startConnection(); });
             }
 #endif
         }

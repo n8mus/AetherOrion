@@ -365,7 +365,6 @@ target_link_libraries(AetherSDR PRIVATE
     Qt6::Widgets
     Qt6::Network
     Qt6::Multimedia
-    Qt6::WebSockets
 )
 
 if(Qt6SerialPort_FOUND)
