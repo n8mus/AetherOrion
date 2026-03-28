@@ -633,8 +633,8 @@ void AudioEngine::onTxAudioReady()
         }
         if (m_pcMicSampleCount >= kMicMeterWindowSamples) {
             float rms = static_cast<float>(std::sqrt(m_pcMicSumSq / m_pcMicSampleCount));
-            float peakDb = (m_pcMicPeak > 1e-10f) ? 20.0f * std::log10f(m_pcMicPeak) : -150.0f;
-            float rmsDb  = (rms > 1e-10f)         ? 20.0f * std::log10f(rms)          : -150.0f;
+            float peakDb = (m_pcMicPeak > 1e-10f) ? 20.0f * std::log10(m_pcMicPeak) : -150.0f;
+            float rmsDb  = (rms > 1e-10f)         ? 20.0f * std::log10(rms)          : -150.0f;
             emit pcMicLevelChanged(peakDb, rmsDb);
             m_pcMicPeak = 0.0f;
             m_pcMicSumSq = 0.0;
