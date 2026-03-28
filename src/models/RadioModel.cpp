@@ -137,6 +137,10 @@ void RadioModel::connectViaWan(WanConnection* wan, const QString& publicIp, quin
              << "udpPort=" << udpPort
              << "wanHandle=0x" << QString::number(wan->clientHandle(), 16);
 
+    // Disconnect any stale signal connections from a previous WAN session
+    if (m_wanConn)
+        m_wanConn->disconnect(this);
+
     m_wanConn = wan;
     m_wanPublicIp = publicIp;
     m_wanUdpPort = udpPort;
@@ -167,6 +171,7 @@ void RadioModel::disconnectFromRadio()
     m_reconnectTimer.stop();
     m_pingTimer.stop();
     if (m_wanConn) {
+        m_wanConn->disconnect(this);  // remove signal connections to prevent duplicates on reconnect (#224)
         m_wanConn->disconnectFromRadio();
         m_wanConn = nullptr;
     } else {
