@@ -15,7 +15,7 @@ AetherSDR brings FlexRadio operation to Linux without Wine or virtual machines. 
 > Linux is the primary supported platform. macOS and Windows builds are provided as a courtesy
 > but are unsupported and low priority until post-v1.0.
 
-![AetherSDR Screenshot](docs/screenshot-v4.png)
+![AetherSDR Screenshot](docs/screenshot-v5.png)
 
 <p><i>Native. Open. Yours.</i></p>
 

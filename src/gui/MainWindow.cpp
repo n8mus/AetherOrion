@@ -83,7 +83,7 @@ namespace AetherSDR {
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
-    setWindowTitle("AetherSDR");
+    setWindowTitle(QString("AetherSDR v%1").arg(QCoreApplication::applicationVersion()));
     setWindowIcon(QIcon(":/icon.png"));
     setMinimumSize(1024, 600);
     resize(1400, 800);

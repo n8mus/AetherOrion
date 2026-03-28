@@ -909,8 +909,6 @@ and panadapter. The radio assigns these to our `client_handle`.
 
 - RADE status indicator in VFO widget (sync/SNR display, #88)
 - RADE on Windows (#87)
-- Band stacking / band map
-- CW keyer / memories (keyboard input, CWX macros, practice mode — #18)
 - DAX IQ streaming for SDR apps (#124)
 - DAX on Windows (virtual audio devices, #87)
 - Spot / DX cluster integration
