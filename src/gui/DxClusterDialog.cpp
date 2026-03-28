@@ -166,9 +166,10 @@ bool BandFilterProxy::filterAcceptsRow(int sourceRow, const QModelIndex& sourceP
 // ── DxClusterDialog ─────────────────────────────────────────────────────────
 
 DxClusterDialog::DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient* rbnClient,
-                                   RadioModel* radioModel, QWidget* parent)
+                                   WsjtxClient* wsjtxClient, RadioModel* radioModel,
+                                   QWidget* parent)
     : QDialog(parent), m_client(clusterClient), m_rbnClient(rbnClient),
-      m_radioModel(radioModel)
+      m_wsjtxClient(wsjtxClient), m_radioModel(radioModel)
 {
     setWindowTitle("SpotHub");
     setMinimumSize(620, 500);
@@ -187,6 +188,7 @@ DxClusterDialog::DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient
 
     buildClusterTab(tabs);
     buildRbnTab(tabs);
+    buildWsjtxTab(tabs);
     buildSpotListTab(tabs);
     buildDisplayTab(tabs);
 
@@ -339,6 +341,48 @@ DxClusterDialog::DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient
             }
         }
         auto* sb = m_rbnConsole->verticalScrollBar();
+        sb->setValue(sb->maximum());
+    }
+
+    // ── Live updates from WSJT-X client ───────────────────────────────
+    connect(wsjtxClient, &WsjtxClient::rawLineReceived, this, [this, isAtBottom](const QString& line) {
+        bool follow = isAtBottom(m_wsjtxConsole);
+        m_wsjtxConsole->appendPlainText(line);
+        if (follow) {
+            auto* sb = m_wsjtxConsole->verticalScrollBar();
+            sb->setValue(sb->maximum());
+        }
+    });
+
+    connect(wsjtxClient, &WsjtxClient::spotReceived, this, [this](DxSpot spot) {
+        spot.source = "WSJT-X";
+        m_spotBatch.append(spot);
+    });
+
+    connect(wsjtxClient, &WsjtxClient::listening, this, [this] {
+        m_wsjtxStatusLabel->setText(QString("Listening on port %1").arg(m_wsjtxPortSpin->value()));
+        m_wsjtxStatusLabel->setStyleSheet("QLabel { color: #00b4d8; font-size: 11px; }");
+        m_wsjtxStartBtn->setText("Stop");
+        m_wsjtxConsole->appendPlainText("--- Listening ---");
+    });
+    connect(wsjtxClient, &WsjtxClient::stopped, this, [this] {
+        m_wsjtxStatusLabel->setText("Stopped");
+        m_wsjtxStatusLabel->setStyleSheet("QLabel { color: #808080; font-size: 11px; }");
+        m_wsjtxStartBtn->setText("Start");
+        m_wsjtxConsole->appendPlainText("--- Stopped ---");
+    });
+
+    // Load WSJT-X log file and replay spots
+    QFile wsjtxLogFile(wsjtxClient->logFilePath());
+    if (wsjtxLogFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        // WSJT-X log lines: "HH:mm:ss  CALL  FREQ kHz  SNR dB  message"
+        // Spots don't follow DX de format — just display in console, parse from fields
+        while (!wsjtxLogFile.atEnd()) {
+            QString line = QString::fromUtf8(wsjtxLogFile.readLine()).trimmed();
+            if (line.isEmpty()) continue;
+            m_wsjtxConsole->appendPlainText(line);
+        }
+        auto* sb = m_wsjtxConsole->verticalScrollBar();
         sb->setValue(sb->maximum());
     }
 
@@ -649,6 +693,111 @@ void DxClusterDialog::buildRbnTab(QTabWidget* tabs)
     layout->addLayout(cmdRow);
 
     tabs->addTab(page, "RBN");
+}
+
+void DxClusterDialog::buildWsjtxTab(QTabWidget* tabs)
+{
+    auto* page = new QWidget;
+    auto* layout = new QVBoxLayout(page);
+    layout->setSpacing(8);
+
+    auto& s = AppSettings::instance();
+
+    // ── Connection settings ─────────────────────────────────────────────
+    auto* connGroup = new QGroupBox("WSJT-X Listener Address");
+    auto* connLayout = new QVBoxLayout(connGroup);
+    connLayout->setSpacing(4);
+
+    auto* grid = new QGridLayout;
+    grid->setColumnStretch(1, 1);
+    int row = 0;
+
+    grid->addWidget(new QLabel("Address:"), row, 0);
+    m_wsjtxAddrEdit = new QLineEdit(s.value("WsjtxAddress", "224.0.0.1").toString());
+    m_wsjtxAddrEdit->setPlaceholderText("224.0.0.1 (multicast) or 0.0.0.0 (any)");
+    m_wsjtxAddrEdit->setStyleSheet("QLineEdit { background: #1a1a2e; color: #c8d8e8; border: 1px solid #203040; padding: 3px; }");
+    grid->addWidget(m_wsjtxAddrEdit, row, 1);
+    row++;
+
+    grid->addWidget(new QLabel("Port:"), row, 0);
+    m_wsjtxPortSpin = new QSpinBox;
+    m_wsjtxPortSpin->setRange(1, 65535);
+    m_wsjtxPortSpin->setValue(s.value("WsjtxPort", 2237).toInt());
+    m_wsjtxPortSpin->setStyleSheet("QSpinBox { background: #1a1a2e; color: #c8d8e8; border: 1px solid #203040; padding: 3px; }");
+    grid->addWidget(m_wsjtxPortSpin, row, 1);
+    row++;
+
+    connLayout->addLayout(grid);
+
+    // Button row
+    auto* btnRow = new QHBoxLayout;
+    m_wsjtxAutoStartBtn = new QPushButton(
+        s.value("WsjtxAutoStart", "False").toString() == "True" ? "Auto-Start: ON" : "Auto-Start: OFF");
+    m_wsjtxAutoStartBtn->setCheckable(true);
+    m_wsjtxAutoStartBtn->setChecked(s.value("WsjtxAutoStart", "False").toString() == "True");
+    m_wsjtxAutoStartBtn->setStyleSheet(
+        "QPushButton { background: #206030; color: white; border: 1px solid #305040; padding: 4px 10px; }"
+        "QPushButton:!checked { background: #603020; }");
+    connect(m_wsjtxAutoStartBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_wsjtxAutoStartBtn->setText(on ? "Auto-Start: ON" : "Auto-Start: OFF");
+        auto& s = AppSettings::instance();
+        s.setValue("WsjtxAutoStart", on ? "True" : "False");
+        s.save();
+    });
+    btnRow->addWidget(m_wsjtxAutoStartBtn);
+    btnRow->addStretch();
+
+    m_wsjtxStatusLabel = new QLabel("Stopped");
+    m_wsjtxStatusLabel->setStyleSheet("QLabel { color: #808080; font-size: 11px; }");
+    btnRow->addWidget(m_wsjtxStatusLabel);
+    btnRow->addStretch();
+
+    m_wsjtxStartBtn = new QPushButton(m_wsjtxClient->isListening() ? "Stop" : "Start");
+    m_wsjtxStartBtn->setFixedWidth(100);
+    m_wsjtxStartBtn->setStyleSheet(
+        "QPushButton { background: #00b4d8; color: #0f0f1a; font-weight: bold; "
+        "border: 1px solid #008ba8; padding: 4px; border-radius: 3px; }"
+        "QPushButton:hover { background: #00c8f0; }"
+        "QPushButton:disabled { background: #404060; color: #808080; }");
+    connect(m_wsjtxStartBtn, &QPushButton::clicked, this, [this] {
+        if (m_wsjtxClient->isListening()) {
+            emit wsjtxStopRequested();
+            return;
+        }
+        quint16 port = static_cast<quint16>(m_wsjtxPortSpin->value());
+        QString addr = m_wsjtxAddrEdit->text().trimmed();
+        if (addr.isEmpty()) addr = "224.0.0.1";
+        auto& s = AppSettings::instance();
+        s.setValue("WsjtxAddress", addr);
+        s.setValue("WsjtxPort", port);
+        s.save();
+        emit wsjtxStartRequested(addr, port);
+    });
+    btnRow->addWidget(m_wsjtxStartBtn);
+    connLayout->addLayout(btnRow);
+
+    layout->addWidget(connGroup);
+
+    // ── Console output ──────────────────────────────────────────────────
+    auto* consoleLabel = new QLabel("WSJT-X Decodes");
+    consoleLabel->setStyleSheet("QLabel { color: #00b4d8; font-weight: bold; }");
+    layout->addWidget(consoleLabel);
+
+    m_wsjtxConsole = new QPlainTextEdit;
+    m_wsjtxConsole->setReadOnly(true);
+    m_wsjtxConsole->setMaximumBlockCount(2000);
+    m_wsjtxConsole->setStyleSheet(
+        "QPlainTextEdit {"
+        "  background: #0a0a14;"
+        "  color: #a0b0c0;"
+        "  font-family: monospace;"
+        "  font-size: 11px;"
+        "  border: 1px solid #203040;"
+        "  padding: 4px;"
+        "}");
+    layout->addWidget(m_wsjtxConsole, 1);
+
+    tabs->addTab(page, "WSJT-X");
 }
 
 void DxClusterDialog::buildSpotListTab(QTabWidget* tabs)
@@ -1068,6 +1217,16 @@ void DxClusterDialog::updateStatus()
         m_rbnConnectBtn->setText("Connect");
         m_rbnCmdEdit->setEnabled(false);
         m_rbnSendBtn->setEnabled(false);
+    }
+    // WSJT-X status
+    if (m_wsjtxClient->isListening()) {
+        m_wsjtxStatusLabel->setText(QString("Listening on port %1").arg(m_wsjtxPortSpin->value()));
+        m_wsjtxStatusLabel->setStyleSheet("QLabel { color: #00b4d8; font-size: 11px; }");
+        m_wsjtxStartBtn->setText("Stop");
+    } else {
+        m_wsjtxStatusLabel->setText("Stopped");
+        m_wsjtxStatusLabel->setStyleSheet("QLabel { color: #808080; font-size: 11px; }");
+        m_wsjtxStartBtn->setText("Start");
     }
 }
 

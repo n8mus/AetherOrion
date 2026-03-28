@@ -155,6 +155,7 @@ set(CORE_SOURCES
     src/core/SmartLinkClient.cpp
     src/core/WanConnection.cpp
     src/core/DxClusterClient.cpp
+    src/core/WsjtxClient.cpp
     src/core/RigctlServer.cpp
     src/core/FirmwareUploader.cpp
     src/core/DvkWavTransfer.cpp

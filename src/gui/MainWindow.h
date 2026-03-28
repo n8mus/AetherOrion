@@ -11,6 +11,7 @@
 #include "core/WanConnection.h"
 #include "core/CwDecoder.h"
 #include "core/DxClusterClient.h"
+#include "core/WsjtxClient.h"
 #include <QThread>
 #ifdef HAVE_SERIALPORT
 #include "core/SerialPortController.h"
@@ -106,6 +107,7 @@ private:
     CwDecoder         m_cwDecoder;
     DxClusterClient*   m_dxCluster{nullptr};
     DxClusterClient*   m_rbnClient{nullptr};
+    WsjtxClient*       m_wsjtxClient{nullptr};
     QThread*           m_spotThread{nullptr};
 
     // Spot deduplication: callsign → {freqMhz, timestamp ms}

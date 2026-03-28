@@ -6,6 +6,7 @@
 #include <QSet>
 #include <QVector>
 #include "core/DxClusterClient.h"
+#include "core/WsjtxClient.h"
 
 class QLineEdit;
 class QSpinBox;
@@ -72,7 +73,8 @@ class DxClusterDialog : public QDialog {
 
 public:
     explicit DxClusterDialog(DxClusterClient* clusterClient, DxClusterClient* rbnClient,
-                             RadioModel* radioModel, QWidget* parent = nullptr);
+                             WsjtxClient* wsjtxClient, RadioModel* radioModel,
+                             QWidget* parent = nullptr);
 
     void updateStatus();
     void setTotalSpots(int count);
@@ -82,6 +84,8 @@ signals:
     void disconnectRequested();
     void rbnConnectRequested(const QString& host, quint16 port, const QString& callsign);
     void rbnDisconnectRequested();
+    void wsjtxStartRequested(const QString& address, quint16 port);
+    void wsjtxStopRequested();
     void tuneRequested(double freqMhz);
     void settingsChanged();
     void spotsClearedAll();
@@ -89,11 +93,13 @@ signals:
 private:
     void buildClusterTab(QTabWidget* tabs);
     void buildRbnTab(QTabWidget* tabs);
+    void buildWsjtxTab(QTabWidget* tabs);
     void buildSpotListTab(QTabWidget* tabs);
     void buildDisplayTab(QTabWidget* tabs);
 
     DxClusterClient* m_client;
     DxClusterClient* m_rbnClient;
+    WsjtxClient*     m_wsjtxClient;
     RadioModel*      m_radioModel;
 
     // Cluster tab
@@ -117,6 +123,14 @@ private:
     QPlainTextEdit* m_rbnConsole;
     QLineEdit*      m_rbnCmdEdit;
     QPushButton*    m_rbnSendBtn;
+
+    // WSJT-X tab
+    QLineEdit*      m_wsjtxAddrEdit;
+    QSpinBox*       m_wsjtxPortSpin;
+    QPushButton*    m_wsjtxStartBtn;
+    QPushButton*    m_wsjtxAutoStartBtn;
+    QLabel*         m_wsjtxStatusLabel;
+    QPlainTextEdit* m_wsjtxConsole;
 
     // Spot batching (1/sec flush)
     QVector<DxSpot>        m_spotBatch;

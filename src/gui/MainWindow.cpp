@@ -224,10 +224,12 @@ MainWindow::MainWindow(QWidget* parent)
     m_dxCluster = new DxClusterClient;
     m_rbnClient = new DxClusterClient;
     m_rbnClient->setLogFileName("rbn.log");
+    m_wsjtxClient = new WsjtxClient;
     m_spotThread = new QThread(this);
     m_spotThread->setObjectName("SpotClients");
     m_dxCluster->moveToThread(m_spotThread);
     m_rbnClient->moveToThread(m_spotThread);
+    m_wsjtxClient->moveToThread(m_spotThread);
     m_spotThread->start();
 
     // ── Spot forwarding: dedup + batch queue + 1/sec flush ────────────────
@@ -285,6 +287,11 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_rbnClient, &DxClusterClient::spotReceived,
             this, [queueSpotCmd](const DxSpot& spot) {
         queueSpotCmd(spot, "RBN");
+    });
+
+    connect(m_wsjtxClient, &WsjtxClient::spotReceived,
+            this, [queueSpotCmd](const DxSpot& spot) {
+        queueSpotCmd(spot, "WSJT-X");
     });
 
     // ── Wire up radio model ────────────────────────────────────────────────
@@ -1088,6 +1095,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
         m_spotThread->wait(3000);
         delete m_dxCluster;  m_dxCluster = nullptr;
         delete m_rbnClient;  m_rbnClient = nullptr;
+        delete m_wsjtxClient; m_wsjtxClient = nullptr;
     }
 
     QMainWindow::closeEvent(event);
@@ -1278,7 +1286,7 @@ void MainWindow::buildMenuBar()
     settingsMenu->addAction("USB Cables...");
     auto* spotsAction = settingsMenu->addAction("SpotHub...");
     connect(spotsAction, &QAction::triggered, this, [this] {
-        DxClusterDialog dlg(m_dxCluster, m_rbnClient,
+        DxClusterDialog dlg(m_dxCluster, m_rbnClient, m_wsjtxClient,
                             &m_radioModel, this);
         dlg.setTotalSpots(m_radioModel.spotModel()->spots().size());
         // Live preview: refresh spots on every display settings change
@@ -1317,6 +1325,12 @@ void MainWindow::buildMenuBar()
         });
         connect(&dlg, &DxClusterDialog::rbnDisconnectRequested,
                 this, [this] { QMetaObject::invokeMethod(m_rbnClient, [=] { m_rbnClient->disconnect(); }); });
+        connect(&dlg, &DxClusterDialog::wsjtxStartRequested,
+                this, [this](const QString& addr, quint16 port) {
+            QMetaObject::invokeMethod(m_wsjtxClient, [=] { m_wsjtxClient->startListening(addr, port); });
+        });
+        connect(&dlg, &DxClusterDialog::wsjtxStopRequested,
+                this, [this] { QMetaObject::invokeMethod(m_wsjtxClient, [=] { m_wsjtxClient->stopListening(); }); });
         connect(&dlg, &DxClusterDialog::spotsClearedAll,
                 this, [this] { m_spotDedup.clear(); });
         connect(&dlg, &DxClusterDialog::tuneRequested,
@@ -2087,10 +2101,18 @@ void MainWindow::onConnectionStateChanged(bool connected)
                 if (!call.isEmpty() && !m_rbnClient->isConnected())
                     QMetaObject::invokeMethod(m_rbnClient, [=] { m_rbnClient->connectToCluster(host, rPort, call); });
             }
+            // Auto-start WSJT-X listener if enabled
+            if (cs.value("WsjtxAutoStart", "False").toString() == "True") {
+                QString wAddr = cs.value("WsjtxAddress", "224.0.0.1").toString();
+                quint16 wPort = static_cast<quint16>(cs.value("WsjtxPort", 2237).toInt());
+                if (!m_wsjtxClient->isListening())
+                    QMetaObject::invokeMethod(m_wsjtxClient, [=] { m_wsjtxClient->startListening(wAddr, wPort); });
+            }
         }
     } else {
         QMetaObject::invokeMethod(m_dxCluster, [=] { m_dxCluster->disconnect(); });
         QMetaObject::invokeMethod(m_rbnClient, [=] { m_rbnClient->disconnect(); });
+        QMetaObject::invokeMethod(m_wsjtxClient, [=] { m_wsjtxClient->stopListening(); });
         m_connStatusLabel->setText("Disconnected");
         m_radioInfoLabel->setText("");
         m_radioVersionLabel->setText("");
