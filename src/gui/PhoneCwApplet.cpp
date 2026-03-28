@@ -671,26 +671,18 @@ void PhoneCwApplet::updateMeters(float micLevel, float compLevel,
                                   float micPeak, float compPeak)
 {
     Q_UNUSED(compLevel);
+    Q_UNUSED(compPeak);
 
     // Suppress mic meter when met_in_rx is off and not transmitting
     if (m_model && !m_model->metInRx() && !m_model->isTransmitting()) {
         m_levelGauge->setValue(-150.0f);
         m_levelGauge->setPeakValue(-150.0f);
-        m_compGauge->setValue(0.0f);
         return;
     }
 
     m_levelGauge->setValue(micLevel);
     m_levelGauge->setPeakValue(micPeak);
-
-    float comp = (compPeak < -30.0f || compPeak >= 0.0f) ? 0.0f : compPeak;
-
-    if (comp < m_compHeld) {
-        m_compHeld = comp;
-    } else {
-        m_compHeld = qMin(0.0f, m_compHeld + kCompDecayRate);
-    }
-    m_compGauge->setValue(m_compHeld);
+    // Compression gauge is now driven exclusively by updateCompression()
 }
 
 void PhoneCwApplet::updateCompression(float compPeak)

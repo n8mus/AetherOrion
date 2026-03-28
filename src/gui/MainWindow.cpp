@@ -994,16 +994,22 @@ MainWindow::MainWindow(QWidget* parent)
     // ── P/CW applet: mic meters + ALC meter + model ────────────────────────
     // Suppress radio CODEC meters when mic_selection=PC (they just show noise).
     // Client-side metering handles PC mic display below.
-    connect(m_radioModel.meterModel(), &MeterModel::micMetersChanged,
-            this, [this](float micLevel, float compLevel, float micPeak, float compPeak) {
-        if (m_radioModel.transmitModel()->micSelection() == "PC") {
-            // Suppress mic level (CODEC noise) — client-side metering handles it.
-            // Only update compression gauge directly.
-            m_appletPanel->phoneCwApplet()->updateCompression(compPeak);
-            return;
-        }
-        m_appletPanel->phoneCwApplet()->updateMeters(micLevel, compLevel, micPeak, compPeak);
-    });
+    // Compression gauge: throttled to ~5fps, gated on speech_processor_enable.
+    {
+        auto* compThrottle = new int(0);
+        connect(m_radioModel.meterModel(), &MeterModel::micMetersChanged,
+                this, [this, compThrottle](float micLevel, float compLevel, float micPeak, float compPeak) {
+            // Mic level: hardware mic uses radio meters, PC uses client-side
+            if (m_radioModel.transmitModel()->micSelection() != "PC")
+                m_appletPanel->phoneCwApplet()->updateMeters(micLevel, compLevel, micPeak, 0.0f);
+
+            // Compression gauge: 5fps throttle, gated on PROC, both mic paths
+            if (++(*compThrottle) % 4 == 0) {
+                float comp = m_radioModel.transmitModel()->speechProcessorEnable() ? compPeak : 0.0f;
+                m_appletPanel->phoneCwApplet()->updateCompression(comp);
+            }
+        });
+    }
     connect(m_radioModel.meterModel(), &MeterModel::alcChanged,
             m_appletPanel->phoneCwApplet(), &PhoneCwApplet::updateAlc);
     // Client-side PC mic metering — radio CODEC meters only see hardware mics.

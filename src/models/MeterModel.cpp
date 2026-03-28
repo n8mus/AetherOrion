@@ -26,6 +26,8 @@ void MeterModel::defineMeter(const MeterDef& def)
         m_micPeakIdx = def.index;
     else if (def.name == "COMPPEAK")
         m_compPeakIdx = def.index;
+    else if (def.name == "AFTEREQ")
+        m_afterEqIdx = def.index;
     else if (def.name == "MIC")
         m_micLevelIdx = def.index;
     else if (def.name == "COMP")
@@ -79,6 +81,7 @@ void MeterModel::removeMeter(int index)
     if (index == m_swrIdx)      m_swrIdx = -1;
     if (index == m_micPeakIdx)   m_micPeakIdx = -1;
     if (index == m_compPeakIdx)  m_compPeakIdx = -1;
+    if (index == m_afterEqIdx)   m_afterEqIdx = -1;
     if (index == m_micLevelIdx)  m_micLevelIdx = -1;
     if (index == m_compLevelIdx) m_compLevelIdx = -1;
     if (index == m_alcIdx)       m_alcIdx = -1;
@@ -155,8 +158,21 @@ void MeterModel::updateValues(const QVector<quint16>& ids, const QVector<qint16>
         } else if (idx == m_micPeakIdx) {
             m_micPeak = v;
             micChanged = true;
+        } else if (idx == m_afterEqIdx) {
+            // Smooth AFTEREQ to reduce async timing noise with COMPPEAK
+            constexpr float kEqAlpha = 0.3f;
+            m_afterEq = (m_afterEq < -140.0f) ? v : kEqAlpha * v + (1.0f - kEqAlpha) * m_afterEq;
         } else if (idx == m_compPeakIdx) {
-            m_compPeak = v;
+            // Smooth COMPPEAK similarly
+            constexpr float kCompAlpha = 0.3f;
+            float smoothed = (m_compPeakRaw < -140.0f) ? v : kCompAlpha * v + (1.0f - kCompAlpha) * m_compPeakRaw;
+            m_compPeakRaw = smoothed;
+            // Gain reduction = input - output (both smoothed)
+            // Only meaningful when both have signal
+            if (m_afterEq > -140.0f && smoothed > -140.0f)
+                m_compPeak = m_afterEq - smoothed;
+            else
+                m_compPeak = 0.0f;
             micChanged = true;
         } else if (idx == m_micLevelIdx) {
             m_micLevel = v;
