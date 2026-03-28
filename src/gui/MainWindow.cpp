@@ -412,7 +412,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&m_radioModel, &RadioModel::txAudioStreamReady,
             this, [this](quint32 streamId) {
         m_audio.setTxStreamId(streamId);
-        m_audio.setOpusTxEnabled(m_radioModel.audioCompressionParam() == "opus");
+        // TX audio on remote_audio_tx always requires Opus (radio enforces compression=OPUS)
+        m_audio.setOpusTxEnabled(true);
         qDebug() << "MainWindow: DAX TX stream ID set to" << Qt::hex << streamId;
         // Start PC audio TX if mic_selection is PC
         if (m_radioModel.transmitModel()->micSelection() == "PC") {
@@ -1355,7 +1356,8 @@ void MainWindow::buildMenuBar()
                 qDebug() << "MainWindow: audio compression changed from" << prevComp
                          << "to" << newComp << "— recreating audio stream";
                 m_radioModel.removeRxAudioStream();
-                m_audio.setOpusTxEnabled(newComp == "opus");
+                // TX always uses Opus (radio enforces it on remote_audio_tx).
+                // RX compression change doesn't affect TX encoding.
                 QTimer::singleShot(500, this, [this]() {
                     m_radioModel.createRxAudioStream();
                 });

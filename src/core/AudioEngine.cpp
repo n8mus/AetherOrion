@@ -573,7 +573,7 @@ void AudioEngine::stopTxStream()
 void AudioEngine::onTxAudioReady()
 {
 #ifdef Q_OS_MAC
-    if (!m_micBuffer || m_txStreamId == 0) return;
+    if (!m_micBuffer || (m_txStreamId == 0 && m_remoteTxStreamId == 0)) return;
     qint64 avail = m_micBuffer->pos();
     if (avail <= 0) return;
     QByteArray data = m_micBuffer->data();
@@ -581,7 +581,7 @@ void AudioEngine::onTxAudioReady()
     m_micBuffer->seek(0);
     if (data.isEmpty()) return;
 #else
-    if (!m_micDevice || m_txStreamId == 0) return;
+    if (!m_micDevice || (m_txStreamId == 0 && m_remoteTxStreamId == 0)) return;
     QByteArray data = m_micDevice->readAll();
     if (data.isEmpty()) return;
 #endif
@@ -610,19 +610,17 @@ void AudioEngine::onTxAudioReady()
 
     // When not transmitting, stream mic audio on the remote_audio_tx stream
     // so the radio can monitor it for VOX detection (met_in_rx=1).
-    // Don't send on the DAX TX stream during RX — it accumulates and
-    // plays back when TX starts, causing mic bleed.
     if (!m_transmitting) {
         if (m_remoteTxStreamId == 0) return;
-        // Send uncompressed VITA-49 mic audio for VOX monitoring
         sendVoiceTxPacket(data, m_remoteTxStreamId);
         return;
     }
 
-    // ── Opus TX path: encode 20ms frames (480 stereo samples) ──────────
+    // ── Opus TX path: encode 10ms frames (240 stereo samples) ──────────
     if (m_opusTxEnabled) {
         m_opusTxAccumulator.append(data);
-        constexpr int OPUS_FRAME_BYTES = 480 * 2 * sizeof(int16_t);  // 480 stereo pairs
+        // 240 stereo sample frames × 2 channels × 2 bytes = 960 bytes per 10ms frame
+        constexpr int OPUS_FRAME_BYTES = 240 * 2 * sizeof(int16_t);
 
         while (m_opusTxAccumulator.size() >= OPUS_FRAME_BYTES) {
             if (!m_opusTxCodec) {
@@ -641,21 +639,21 @@ void AudioEngine::onTxAudioReady()
             QByteArray opus = m_opusTxCodec->encode(frame);
             if (opus.isEmpty()) continue;
 
-            // Build VITA-49 Opus packet (raw bytes, no byte-swap)
-            // Header: 28 bytes + opus payload + 4 byte trailer
-            int words = (28 + opus.size() + 4 + 3) / 4;  // round up to 32-bit words
+            // Build VITA-49 Opus packet matching SmartSDR exactly:
+            // Header: 28 bytes + opus payload, NO trailer
+            int words = (28 + opus.size() + 3) / 4;  // round up to 32-bit words
             QByteArray pkt(words * 4, '\0');
             auto* p = reinterpret_cast<quint32*>(pkt.data());
 
-            // Word 0: type=3 (ExtDataWithStream), C=1, T=1, TSI=01, TSF=01, count, size
+            // Word 0: type=3 (ExtDataWithStream), C=1, T=0, TSI=3, TSF=1
             p[0] = qToBigEndian<quint32>(
-                (3u << 28) | (1u << 27) | (1u << 26) | (1u << 22) | (1u << 20)
+                (3u << 28) | (1u << 27) | (3u << 22) | (1u << 20)
                 | ((m_txPacketCount & 0x0F) << 16) | words);
             m_txPacketCount = (m_txPacketCount + 1) & 0x0F;
-            p[1] = qToBigEndian(m_txStreamId);
-            p[2] = qToBigEndian<quint32>(0x00001C2D);  // OUI
-            p[3] = qToBigEndian<quint32>(0x80050000 | 0x8005);  // ICC=0x8005, PCC=0x8005
-            p[4] = 0; p[5] = 0; p[6] = 0;  // timestamps
+            p[1] = qToBigEndian(m_remoteTxStreamId);    // remote_audio_tx stream
+            p[2] = qToBigEndian<quint32>(0x00001C2D);   // OUI (FlexRadio)
+            p[3] = qToBigEndian<quint32>(0x534C0000 | 0x8005);  // ICC=0x534C, PCC=0x8005
+            p[4] = 0; p[5] = 0; p[6] = 0;              // timestamps (all zero)
 
             memcpy(pkt.data() + 28, opus.constData(), opus.size());
             emit txPacketReady(pkt);
@@ -695,8 +693,8 @@ QByteArray AudioEngine::buildVitaTxPacket(const float* samples, int numStereoSam
     QByteArray packet(packetBytes, '\0');
     quint32* words = reinterpret_cast<quint32*>(packet.data());
 
-    // ── Word 0: Header ────────────────────────────────────────────────────
-    // Bits 31-28: packet type = 1 (IFDataWithStream) — DAX TX format
+    // ── Word 0: Header (DAX TX format, matches FlexLib DAXTXAudioStream) ─
+    // Bits 31-28: packet type = 1 (IFDataWithStream)
     // Bit  27:    C = 1 (class ID present)
     // Bit  26:    T = 0 (no trailer)
     // Bits 25-24: reserved = 0
@@ -714,7 +712,7 @@ QByteArray AudioEngine::buildVitaTxPacket(const float* samples, int numStereoSam
     hdr |= (packetWords & 0xFFFF);
     words[0] = qToBigEndian(hdr);
 
-    // ── Word 1: Stream ID ─────────────────────────────────────────────────
+    // ── Word 1: Stream ID (dax_tx stream for DAX TX audio) ──────────────
     words[1] = qToBigEndian(m_txStreamId);
 
     // ── Word 2: Class ID OUI (24-bit, right-justified in 32-bit word) ────
