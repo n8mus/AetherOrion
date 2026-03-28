@@ -199,7 +199,8 @@ sudo pacman -S qt6-base qt6-multimedia cmake ninja pkgconf autoconf automake lib
 
 # Ubuntu 24.04+ / Debian / Linux Mint
 sudo apt install qt6-base-dev qt6-multimedia-dev cmake ninja-build pkg-config \
-  autoconf automake libtool gstreamer1.0-pulseaudio gstreamer1.0-plugins-base
+  autoconf automake libtool gstreamer1.0-pulseaudio gstreamer1.0-plugins-base \
+  libxkbcommon-dev
 
 # Fedora
 sudo dnf install qt6-qtbase-devel qt6-qtmultimedia-devel cmake ninja-build \
