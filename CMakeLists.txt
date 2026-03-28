@@ -315,6 +315,11 @@ qt_add_resources(RESOURCES resources.qrc)
 
 add_executable(AetherSDR ${ALL_SOURCES} ${RNNOISE_SOURCES} ${GGMORSE_SOURCES} ${RADE_SOURCES} ${BNR_SOURCES} ${RESOURCES})
 
+# Windows: GUI app (no console window) + icon resource
+if(WIN32)
+    set_target_properties(AetherSDR PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+
 # macOS app bundle
 if(APPLE)
     set_target_properties(AetherSDR PROPERTIES
@@ -332,6 +337,12 @@ if(APPLE)
         target_sources(AetherSDR PRIVATE "${MACOSX_ICON}")
         set_source_files_properties("${MACOSX_ICON}" PROPERTIES
             MACOSX_PACKAGE_LOCATION "Resources")
+    endif()
+elseif(WIN32)
+    # Windows application icon (taskbar, Start Menu, Alt-Tab)
+    set(WIN_RC "${CMAKE_SOURCE_DIR}/docs/AetherSDR.rc")
+    if(EXISTS "${WIN_RC}")
+        target_sources(AetherSDR PRIVATE "${WIN_RC}")
     endif()
 endif()
 
