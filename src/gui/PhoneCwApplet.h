@@ -28,6 +28,7 @@ public slots:
     // Phone meters (mic level / compression)
     void updateMeters(float micLevel, float compLevel,
                       float micPeak, float compPeak);
+    void updateCompression(float compPeak);
 
     // CW meter (ALC 0–100)
     void updateAlc(float alc);

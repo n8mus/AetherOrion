@@ -7,6 +7,7 @@
 #include "NvidiaBnrFilter.h"
 #include "Resampler.h"
 
+#include <cmath>
 #include <QMediaDevices>
 #include <QAudioDevice>
 #include <QDir>
@@ -608,15 +609,32 @@ void AudioEngine::onTxAudioReady()
     // DAX TX mode: VirtualAudioBridge is the TX audio source.
     if (m_daxTxMode) return;
 
-    // When not transmitting, stream mic audio on the remote_audio_tx stream
-    // so the radio can monitor it for VOX detection (met_in_rx=1).
-    if (!m_transmitting) {
-        if (m_remoteTxStreamId == 0) return;
-        sendVoiceTxPacket(data, m_remoteTxStreamId);
-        return;
+    // ── Client-side PC mic level metering ────────────────────────────────
+    // Accumulate peak and RMS over a ~50ms window, then emit once.
+    // Only used when mic_selection=PC (gated in MainWindow).
+    {
+        const auto* pcm = reinterpret_cast<const int16_t*>(data.constData());
+        int sampleCount = data.size() / sizeof(int16_t);
+        for (int i = 0; i < sampleCount; i += 2) {  // stereo: use L channel
+            float s = std::abs(pcm[i]) / 32768.0f;
+            if (s > m_pcMicPeak) m_pcMicPeak = s;
+            m_pcMicSumSq += static_cast<double>(s) * s;
+            m_pcMicSampleCount++;
+        }
+        if (m_pcMicSampleCount >= kMicMeterWindowSamples) {
+            float rms = static_cast<float>(std::sqrt(m_pcMicSumSq / m_pcMicSampleCount));
+            float peakDb = (m_pcMicPeak > 1e-10f) ? 20.0f * std::log10f(m_pcMicPeak) : -150.0f;
+            float rmsDb  = (rms > 1e-10f)         ? 20.0f * std::log10f(rms)          : -150.0f;
+            emit pcMicLevelChanged(peakDb, rmsDb);
+            m_pcMicPeak = 0.0f;
+            m_pcMicSumSq = 0.0;
+            m_pcMicSampleCount = 0;
+        }
     }
 
-    // ── Opus TX path: encode 10ms frames (240 stereo samples) ──────────
+    // ── Opus TX path: always active for remote_audio_tx ────────────────
+    // Sends Opus during both RX (VOX/met_in_rx metering) and TX (voice).
+    // The radio requires Opus on remote_audio_tx (enforces compression=OPUS).
     if (m_opusTxEnabled) {
         m_opusTxAccumulator.append(data);
         // 240 stereo sample frames × 2 channels × 2 bytes = 960 bytes per 10ms frame

@@ -992,10 +992,42 @@ MainWindow::MainWindow(QWidget* parent)
 #endif
 
     // ── P/CW applet: mic meters + ALC meter + model ────────────────────────
+    // Suppress radio CODEC meters when mic_selection=PC (they just show noise).
+    // Client-side metering handles PC mic display below.
     connect(m_radioModel.meterModel(), &MeterModel::micMetersChanged,
-            m_appletPanel->phoneCwApplet(), &PhoneCwApplet::updateMeters);
+            this, [this](float micLevel, float compLevel, float micPeak, float compPeak) {
+        if (m_radioModel.transmitModel()->micSelection() == "PC") {
+            // Suppress mic level (CODEC noise) — client-side metering handles it.
+            // Only update compression gauge directly.
+            m_appletPanel->phoneCwApplet()->updateCompression(compPeak);
+            return;
+        }
+        m_appletPanel->phoneCwApplet()->updateMeters(micLevel, compLevel, micPeak, compPeak);
+    });
     connect(m_radioModel.meterModel(), &MeterModel::alcChanged,
             m_appletPanel->phoneCwApplet(), &PhoneCwApplet::updateAlc);
+    // Client-side PC mic metering — radio CODEC meters only see hardware mics.
+    // Apply VU-style ballistics: fast attack, slow decay (~20 dB/sec).
+    {
+        auto* heldLevel = new float(-150.0f);  // persists across calls
+        auto* heldPeak  = new float(-150.0f);
+        connect(&m_audio, &AudioEngine::pcMicLevelChanged,
+                this, [this, heldLevel, heldPeak](float peakDb, float avgDb) {
+            if (m_radioModel.transmitModel()->micSelection() != "PC") return;
+            constexpr float kDecayPerUpdate = 1.0f;  // ~20 dB/sec at 20 updates/sec
+            // Level: fast attack, slow decay
+            if (avgDb > *heldLevel)
+                *heldLevel = avgDb;
+            else
+                *heldLevel = qMax(avgDb, *heldLevel - kDecayPerUpdate);
+            // Peak: fast attack, slower decay
+            if (peakDb > *heldPeak)
+                *heldPeak = peakDb;
+            else
+                *heldPeak = qMax(*heldLevel, *heldPeak - kDecayPerUpdate * 0.5f);
+            m_appletPanel->phoneCwApplet()->updateMeters(*heldLevel, 0.0f, *heldPeak, 0.0f);
+        });
+    }
     m_appletPanel->phoneCwApplet()->setTransmitModel(m_radioModel.transmitModel());
 
     // ── PHNE applet: VOX + CW controls ──────────────────────────────────────

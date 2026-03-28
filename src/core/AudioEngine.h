@@ -132,6 +132,7 @@ signals:
     void bnrConnectionChanged(bool connected);
     void txRawPcmReady(const QByteArray& pcm);  // raw 24kHz stereo int16 PCM for RADEEngine
     void txPacketReady(const QByteArray& vitaPacket);  // VITA-49 TX packet for PanadapterStream
+    void pcMicLevelChanged(float peakDbfs, float avgDbfs);  // client-side PC mic metering
 
 private slots:
     void onTxAudioReady();
@@ -171,6 +172,12 @@ private:
     bool          m_opusTxEnabled{false}; // Opus TX encoding for SmartLink
     std::unique_ptr<class OpusCodec> m_opusTxCodec; // lazy-init on first TX with Opus
     QByteArray    m_opusTxAccumulator;  // accumulate 480 stereo samples for Opus frame
+
+    // Client-side PC mic metering (accumulated over ~50ms window)
+    float         m_pcMicPeak{0.0f};
+    double        m_pcMicSumSq{0.0};
+    int           m_pcMicSampleCount{0};
+    static constexpr int kMicMeterWindowSamples = 24000 / 20;  // ~50ms at 24kHz
 
     QAudioDevice m_outputDevice;
     QAudioDevice m_inputDevice;

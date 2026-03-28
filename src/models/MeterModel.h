@@ -125,9 +125,9 @@ private:
     QMap<int, int> m_escLevelIdxBySlice; // sliceIndex → meter index for "SLC"/"ESC"
     int m_fwdPwrIdx{-1};     // "FWDPWR"
     int m_swrIdx{-1};        // "SWR"
-    int m_micPeakIdx{-1};    // "COD-" / "MICPEAK"
+    int m_micPeakIdx{-1};    // "COD-" / "MICPEAK" (hardware mic)
     int m_compPeakIdx{-1};   // "TX" / "COMPPEAK"
-    int m_micLevelIdx{-1};   // "COD-" / "MIC" (RX level)
+    int m_micLevelIdx{-1};   // "COD-" / "MIC" (hardware mic RX level)
     int m_compLevelIdx{-1};  // "TX" / "COMP" (instantaneous)
     int m_alcIdx{-1};        // "TX" / "HWALC"
     int m_paTempIdx{-1};     // "RAD" / "PATEMP"

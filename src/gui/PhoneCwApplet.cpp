@@ -693,6 +693,18 @@ void PhoneCwApplet::updateMeters(float micLevel, float compLevel,
     m_compGauge->setValue(m_compHeld);
 }
 
+void PhoneCwApplet::updateCompression(float compPeak)
+{
+    float comp = (compPeak < -30.0f || compPeak >= 0.0f) ? 0.0f : compPeak;
+
+    if (comp < m_compHeld) {
+        m_compHeld = comp;
+    } else {
+        m_compHeld = qMin(0.0f, m_compHeld + kCompDecayRate);
+    }
+    m_compGauge->setValue(m_compHeld);
+}
+
 void PhoneCwApplet::updateAlc(float alc)
 {
     m_alcGauge->setValue(alc);
