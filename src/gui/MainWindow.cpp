@@ -1261,6 +1261,11 @@ void MainWindow::buildMenuBar()
         });
         connect(&dlg, &DxClusterDialog::disconnectRequested,
                 this, [this] { m_dxCluster.disconnect(); });
+        connect(&dlg, &DxClusterDialog::tuneRequested,
+                this, [this](double freqMhz) {
+            if (auto* sl = activeSlice())
+                sl->setFrequency(freqMhz);
+        });
         dlg.exec();
     });
     settingsMenu->addAction("multiFLEX...");

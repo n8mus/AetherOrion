@@ -946,6 +946,15 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
                         }
                     }
                 }
+                if (!foundCursor && m_showSpots) {
+                    for (const auto& [rect, freq] : m_spotClickRects) {
+                        if (rect.contains(pos)) {
+                            setCursor(Qt::PointingHandCursor);
+                            foundCursor = true;
+                            break;
+                        }
+                    }
+                }
                 if (!foundCursor) setCursor(Qt::CrossCursor);
             }
         }
