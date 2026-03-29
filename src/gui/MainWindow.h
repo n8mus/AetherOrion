@@ -171,6 +171,8 @@ private:
     // Status bar labels (SmartSDR-style)
     QLabel* m_connStatusLabel{nullptr};   // hidden, used for connection state logic
     QLabel* m_addPanLabel{nullptr};
+    QLabel* m_panelToggle{nullptr};
+    QAction* m_panelVisAction{nullptr};
     QLabel* m_tnfIndicator{nullptr};
     QLabel* m_cwxIndicator{nullptr};
     CwxPanel* m_cwxPanel{nullptr};

@@ -48,6 +48,7 @@
 #include <QPropertyAnimation>
 #include <QIcon>
 #include <QPixmap>
+#include <QPainter>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -1470,6 +1471,20 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         m_radioModel.setFullDuplex(on);
         return true;
     }
+    if (obj == m_panelToggle && event->type() == QEvent::MouseButtonPress) {
+        bool visible = m_appletPanel->isVisible();
+        m_appletPanel->setVisible(!visible);
+        m_panelToggle->setStyleSheet(!visible
+            ? "QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 22px; }"
+            : "QLabel { color: #404858; font-weight: bold; font-size: 22px; }");
+        AppSettings::instance().setValue("AppletPanelVisible", !visible ? "True" : "False");
+        AppSettings::instance().save();
+        if (m_panelVisAction) {
+            QSignalBlocker sb(m_panelVisAction);
+            m_panelVisAction->setChecked(!visible);
+        }
+        return true;
+    }
     if (obj == m_addPanLabel && event->type() == QEvent::MouseButtonPress) {
         if (!m_radioModel.isConnected()) return true;
         const QString& model = m_radioModel.model();
@@ -1931,6 +1946,20 @@ void MainWindow::buildMenuBar()
 
     auto* viewMenu = menuBar()->addMenu("&View");
 
+    m_panelVisAction = viewMenu->addAction("Applet Panel");
+    m_panelVisAction->setCheckable(true);
+    m_panelVisAction->setChecked(
+        AppSettings::instance().value("AppletPanelVisible", "True").toString() == "True");
+    connect(m_panelVisAction, &QAction::toggled, this, [this](bool on) {
+        m_appletPanel->setVisible(on);
+        m_panelToggle->setStyleSheet(on
+            ? "QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 22px; }"
+            : "QLabel { color: #404858; font-weight: bold; font-size: 22px; }");
+        AppSettings::instance().setValue("AppletPanelVisible", on ? "True" : "False");
+        AppSettings::instance().save();
+    });
+    viewMenu->addSeparator();
+
     auto* bandPlanAct = viewMenu->addAction("Band Plan Overlay");
     bandPlanAct->setCheckable(true);
     bandPlanAct->setChecked(
@@ -2122,6 +2151,10 @@ void MainWindow::buildUI()
     const int centerWidth = qMax(400, width() - 310);
     splitter->setSizes({0, 0, centerWidth, 310});
 
+    // Restore applet panel visibility
+    if (AppSettings::instance().value("AppletPanelVisible", "True").toString() != "True")
+        m_appletPanel->hide();
+
     // ── Status bar (SmartSDR-style, double height) ─────────────────────
     statusBar()->setFixedHeight(40);
     statusBar()->setSizeGripEnabled(false);
@@ -2156,12 +2189,48 @@ void MainWindow::buildUI()
     m_connStatusLabel->hide();
 
     // ── Left section ─────────────────────────────────────────────────────
-    auto* addPanBtn = new QLabel("+PAN");
-    addPanBtn->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 24px; }");
-    addPanBtn->setCursor(Qt::PointingHandCursor);
-    addPanBtn->installEventFilter(this);
-    hbox->addWidget(addPanBtn);
-    m_addPanLabel = addPanBtn;
+    // +PAN icon: mini spectrum with + overlay
+    {
+        QPixmap pm(36, 28);
+        pm.fill(Qt::transparent);
+        QPainter pp(&pm);
+        pp.setRenderHint(QPainter::Antialiasing);
+        // Spectrum line — flat noise floor with two signal peaks
+        pp.setPen(QPen(QColor(255, 255, 255, 128), 1.8));
+        const QPointF pts[] = {
+            {0,22}, {4,21}, {7,20}, {9,14}, {10,7}, {11,14}, {13,20},
+            {16,21}, {18,20}, {20,10}, {21,4}, {22,10}, {24,20},
+            {27,21}, {30,22}
+        };
+        pp.drawPolyline(pts, 15);
+        // + sign in upper-right
+        pp.setPen(QPen(QColor(255, 255, 255, 200), 2.2));
+        pp.drawLine(30, 4, 30, 14);   // vertical
+        pp.drawLine(25, 9, 35, 9);    // horizontal
+        pp.end();
+        auto* addPanBtn = new QLabel;
+        addPanBtn->setPixmap(pm);
+        addPanBtn->setCursor(Qt::PointingHandCursor);
+        addPanBtn->setToolTip("Add Panadapter");
+        addPanBtn->installEventFilter(this);
+        hbox->addWidget(addPanBtn);
+        m_addPanLabel = addPanBtn;
+    }
+
+    hbox->addSpacing(8);
+
+    bool panelVis = AppSettings::instance().value("AppletPanelVisible", "True").toString() == "True";
+    m_panelToggle = new QLabel(QString::fromUtf8("\xe2\x98\xb0"));  // ☰ hamburger
+    m_panelToggle->setStyleSheet(panelVis
+        ? "QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 22px; }"
+        : "QLabel { color: #404858; font-weight: bold; font-size: 22px; }");
+    m_panelToggle->setAlignment(Qt::AlignBottom);
+    m_panelToggle->setCursor(Qt::PointingHandCursor);
+    m_panelToggle->setToolTip("Toggle applet panel");
+    m_panelToggle->installEventFilter(this);
+    hbox->addWidget(m_panelToggle);
+
+    hbox->addSpacing(8);
 
     m_tnfIndicator = new QLabel("TNF");
     m_tnfIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 24px; }");
