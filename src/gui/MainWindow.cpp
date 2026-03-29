@@ -2546,10 +2546,13 @@ void MainWindow::onSliceAdded(SliceModel* s)
         if (m_bandSettings.currentBand().isEmpty())
             m_bandSettings.setCurrentBand(BandSettings::bandForFrequency(s->frequency()));
 
-        // Re-create audio stream if it was invalidated by a profile load
+        // Re-create audio stream if it was invalidated by a profile load.
+        // Only create if PC Audio is enabled — if the user is listening
+        // through the radio's hardware outputs, don't switch to PC. (#336)
         if (m_needAudioStream) {
             m_needAudioStream = false;
-            m_radioModel.createAudioStream();
+            if (AppSettings::instance().value("PcAudioEnabled", "True").toString() == "True")
+                m_radioModel.createRxAudioStream();
         }
 
         // Restore saved DAX channel from last session
