@@ -30,7 +30,7 @@ static const QString kComboStyle =
 
 static const QString kBtnStyle =
     "QPushButton { background: #00b4d8; color: #0f0f1a; font-weight: bold; "
-    "border: 1px solid #008ba8; padding: 4px 12px; border-radius: 3px; }"
+    "border: 1px solid #008ba8; padding: 5px 14px; border-radius: 3px; }"
     "QPushButton:hover { background: #00c8f0; }"
     "QPushButton:disabled { background: #404060; color: #808080; }";
 
@@ -59,13 +59,11 @@ MidiMappingDialog::MidiMappingDialog(MidiControlManager* manager, QWidget* paren
 
         auto* refreshBtn = new QPushButton("Refresh");
         refreshBtn->setStyleSheet(kBtnStyle);
-        refreshBtn->setFixedWidth(70);
         connect(refreshBtn, &QPushButton::clicked, this, &MidiMappingDialog::refreshPortList);
         grid->addWidget(refreshBtn, 0, 2);
 
         m_connectBtn = new QPushButton("Connect");
         m_connectBtn->setStyleSheet(kBtnStyle);
-        m_connectBtn->setFixedWidth(90);
         connect(m_connectBtn, &QPushButton::clicked, this, [this] {
             if (m_manager->isOpen()) {
                 m_manager->closePort();
@@ -211,7 +209,6 @@ MidiMappingDialog::MidiMappingDialog(MidiControlManager* manager, QWidget* paren
 
         auto* saveProfileBtn = new QPushButton("Save");
         saveProfileBtn->setStyleSheet(kBtnStyle);
-        saveProfileBtn->setFixedWidth(50);
         connect(saveProfileBtn, &QPushButton::clicked, this, [this] {
             QString name = m_profileCombo->currentText().trimmed();
             if (name.isEmpty()) return;
@@ -222,7 +219,6 @@ MidiMappingDialog::MidiMappingDialog(MidiControlManager* manager, QWidget* paren
 
         auto* loadProfileBtn = new QPushButton("Load");
         loadProfileBtn->setStyleSheet(kBtnStyle);
-        loadProfileBtn->setFixedWidth(50);
         connect(loadProfileBtn, &QPushButton::clicked, this, [this] {
             QString name = m_profileCombo->currentText().trimmed();
             if (name.isEmpty()) return;

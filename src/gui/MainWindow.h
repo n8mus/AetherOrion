@@ -152,6 +152,13 @@ private:
     // GUI — right applet panel
     AppletPanel*     m_appletPanel{nullptr};
 
+    // Modeless dialogs
+    QPointer<QDialog> m_spotHubDialog;
+    QPointer<QDialog> m_radioSetupDialog;
+#ifdef HAVE_MIDI
+    QPointer<QDialog> m_midiDialog;
+#endif
+
     // Menus
     QMenu*           m_profilesMenu{nullptr};
 

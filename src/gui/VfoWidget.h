@@ -55,6 +55,9 @@ public:
     void setAfGain(int pct);
     void setEscLevel(float dbm);
     void syncFromSlice();
+    void setRecordOn(bool on);
+    void setPlayOn(bool on);
+    void setPlayEnabled(bool enabled);
     QLabel* freqLabel() const { return m_freqLabel; }
 
 #ifdef HAVE_RADE
@@ -74,6 +77,8 @@ Q_SIGNALS:
 #ifdef HAVE_RADE
     void radeActivated(bool on, int sliceId);
 #endif
+    void recordToggled(bool on);
+    void playToggled(bool on);
     void splitToggled();
     void swapRequested();
     void autotuneRequested(bool intermittent);  // CW auto-tune: false=once, true=loop
@@ -113,6 +118,9 @@ private:
     QLabel*      m_sliceBadge{nullptr};
     QPointer<QPushButton> m_lockVfoBtn;
     QPointer<QPushButton> m_closeSliceBtn;
+    QPointer<QPushButton> m_recordBtn;
+    QPointer<QPushButton> m_playBtn;
+    QTimer* m_recordPulse{nullptr};
 
     // Frequency / meter
     QLabel* m_freqLabel{nullptr};

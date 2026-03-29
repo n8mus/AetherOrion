@@ -328,6 +328,18 @@ void SliceModel::setActive(bool on)
         sendCommand(QString("slice set %1 active=1").arg(m_id));
 }
 
+// ─── Record/playback ────────────────────────────────────────────────────────
+
+void SliceModel::setRecordOn(bool on)
+{
+    sendCommand(QString("slice set %1 record=%2").arg(m_id).arg(on ? 1 : 0));
+}
+
+void SliceModel::setPlayOn(bool on)
+{
+    sendCommand(QString("slice set %1 play=%2").arg(m_id).arg(on ? 1 : 0));
+}
+
 // ─── FM duplex/repeater setters ──────────────────────────────────────────────
 
 void SliceModel::setFmToneMode(const QString& mode)
@@ -709,6 +721,23 @@ void SliceModel::applyStatus(const QMap<QString, QString>& kvs)
     if (kvs.contains("digu_offset")) {
         int v = kvs["digu_offset"].toInt();
         if (m_diguOffset != v) { m_diguOffset = v; emit diguOffsetChanged(v); }
+    }
+
+    // Record/playback status
+    if (kvs.contains("record")) {
+        bool on = kvs["record"] == "1";
+        if (m_recordOn != on) { m_recordOn = on; emit recordOnChanged(on); }
+    }
+    if (kvs.contains("play")) {
+        const QString& v = kvs["play"];
+        if (v == "disabled") {
+            if (m_playEnabled) { m_playEnabled = false; emit playEnabledChanged(false); }
+            if (m_playOn) { m_playOn = false; emit playOnChanged(false); }
+        } else {
+            if (!m_playEnabled) { m_playEnabled = true; emit playEnabledChanged(true); }
+            bool on = (v == "1");
+            if (m_playOn != on) { m_playOn = on; emit playOnChanged(on); }
+        }
     }
 
     // FM duplex/repeater status

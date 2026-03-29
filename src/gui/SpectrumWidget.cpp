@@ -1901,11 +1901,20 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
         const QString label = spot.callsign;
         const int tw = fm.horizontalAdvance(label) + 6;
 
-        // Start at configured position, nudge down to avoid overlap
+        // Start at configured position, nudge down to avoid overlap.
+        // Re-scan from the start after each nudge to handle cases where
+        // nudging past label A lands on top of label B.
         QRect labelRect(x - tw / 2, startY, tw, th);
-        for (const auto& r : placed) {
-            if (labelRect.intersects(r))
-                labelRect.moveTop(r.bottom() + 3);
+        bool collision = true;
+        while (collision) {
+            collision = false;
+            for (const auto& r : placed) {
+                if (labelRect.intersects(r)) {
+                    labelRect.moveTop(r.bottom() + 1);
+                    collision = true;
+                    break;
+                }
+            }
         }
         // Overflow — collect for cluster badge
         if (labelRect.bottom() > maxBottom) {

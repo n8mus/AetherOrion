@@ -8,6 +8,7 @@
 
 #include <QPainter>
 #include <QPushButton>
+#include <QTimer>
 #include <QLabel>
 #include <QSlider>
 #include <QLineEdit>
@@ -202,6 +203,8 @@ VfoWidget::~VfoWidget()
     // target is deleted, preventing double-free.
     delete m_closeSliceBtn.data();
     delete m_lockVfoBtn.data();
+    delete m_recordBtn.data();
+    delete m_playBtn.data();
 }
 
 void VfoWidget::buildUI()
@@ -329,6 +332,54 @@ void VfoWidget::buildUI()
     connect(m_lockVfoBtn, &QPushButton::toggled, this, [this](bool locked) {
         m_lockVfoBtn->setText(locked ? "\xF0\x9F\x94\x92" : "\xF0\x9F\x94\x93");
         emit lockToggled(locked);
+    });
+
+    // Record button
+    static const QString sliceBtnStyle =
+        "QPushButton { background: rgba(255,255,255,15); border: none; "
+        "border-radius: 10px; font-size: 11px; padding: 0; }"
+        "QPushButton:hover { background: rgba(255,255,255,40); }";
+
+    m_recordBtn = new QPushButton(QString::fromUtf8("\xe2\x8f\xba"), btnParent);  // ⏺
+    m_recordBtn->setFixedSize(20, 20);
+    m_recordBtn->setCheckable(true);
+    m_recordBtn->setToolTip("Record slice audio");
+    m_recordBtn->setStyleSheet(sliceBtnStyle +
+        "QPushButton { color: #804040; }"
+        "QPushButton:checked { color: #ff2020; background: rgba(255,50,50,60); }");
+    m_recordBtn->show();
+    connect(m_recordBtn, &QPushButton::clicked, this, [this](bool checked) {
+        emit recordToggled(checked);
+    });
+
+    // Record pulse animation
+    m_recordPulse = new QTimer(this);
+    m_recordPulse->setInterval(500);
+    connect(m_recordPulse, &QTimer::timeout, this, [this] {
+        if (!m_recordBtn) return;
+        static bool dim = false;
+        dim = !dim;
+        m_recordBtn->setStyleSheet(
+            "QPushButton { background: rgba(255,255,255,15); border: none; "
+            "border-radius: 10px; font-size: 11px; padding: 0; "
+            "color: " + QString(dim ? "#601010" : "#ff2020") + "; "
+            "background: rgba(255,50,50," + QString(dim ? "20" : "60") + "); }"
+            "QPushButton:hover { background: rgba(255,255,255,40); }");
+    });
+
+    // Play button
+    m_playBtn = new QPushButton(QString::fromUtf8("\xe2\x96\xb6"), btnParent);  // ▶
+    m_playBtn->setFixedSize(20, 20);
+    m_playBtn->setCheckable(true);
+    m_playBtn->setEnabled(false);
+    m_playBtn->setToolTip("Play recorded audio");
+    m_playBtn->setStyleSheet(sliceBtnStyle +
+        "QPushButton { color: #406040; }"
+        "QPushButton:checked { color: #30d050; background: rgba(50,200,80,60); }"
+        "QPushButton:disabled { color: #303030; background: rgba(255,255,255,5); }");
+    m_playBtn->show();
+    connect(m_playBtn, &QPushButton::clicked, this, [this](bool checked) {
+        emit playToggled(checked);
     });
 
     // ── Frequency row (right-aligned, double-click to edit) ────────────────
@@ -1438,7 +1489,7 @@ void VfoWidget::updatePosition(int vfoX, int specTop, FlagDir dir)
 
     move(x, specTop);
 
-    // Position close/lock buttons stacked vertically on the side opposite the marker
+    // Position close/lock/record/play buttons stacked vertically on the side opposite the marker
     if (m_closeSliceBtn && m_lockVfoBtn) {
         const int btnSize = 20;
         const int gap = 2;
@@ -1448,10 +1499,24 @@ void VfoWidget::updatePosition(int vfoX, int specTop, FlagDir dir)
         else
             btnX = x + w + gap;        // right of VFO widget
 
-        m_closeSliceBtn->move(btnX, specTop);
-        m_lockVfoBtn->move(btnX, specTop + btnSize + gap);
+        int btnY = specTop;
+        m_closeSliceBtn->move(btnX, btnY);
         m_closeSliceBtn->raise();
+        btnY += btnSize + gap;
+
+        m_lockVfoBtn->move(btnX, btnY);
         m_lockVfoBtn->raise();
+        btnY += btnSize + gap;
+
+        if (m_recordBtn) {
+            m_recordBtn->move(btnX, btnY);
+            m_recordBtn->raise();
+            btnY += btnSize + gap;
+        }
+        if (m_playBtn) {
+            m_playBtn->move(btnX, btnY);
+            m_playBtn->raise();
+        }
     }
 }
 
@@ -1945,6 +2010,40 @@ void VfoWidget::updateSplitBadge(bool isTxSlice, bool isRxSplit)
             "padding: 0px 3px; }"
             "QPushButton:hover { color: rgba(255,255,255,80); }");
     }
+}
+
+void VfoWidget::setRecordOn(bool on)
+{
+    if (m_recordBtn) {
+        QSignalBlocker sb(m_recordBtn);
+        m_recordBtn->setChecked(on);
+    }
+    if (on)
+        m_recordPulse->start();
+    else {
+        m_recordPulse->stop();
+        // Restore normal checked style
+        if (m_recordBtn)
+            m_recordBtn->setStyleSheet(
+                "QPushButton { background: rgba(255,255,255,15); border: none; "
+                "border-radius: 10px; font-size: 11px; padding: 0; color: #804040; }"
+                "QPushButton:checked { color: #ff2020; background: rgba(255,50,50,60); }"
+                "QPushButton:hover { background: rgba(255,255,255,40); }");
+    }
+}
+
+void VfoWidget::setPlayOn(bool on)
+{
+    if (m_playBtn) {
+        QSignalBlocker sb(m_playBtn);
+        m_playBtn->setChecked(on);
+    }
+}
+
+void VfoWidget::setPlayEnabled(bool enabled)
+{
+    if (m_playBtn)
+        m_playBtn->setEnabled(enabled);
 }
 
 void VfoWidget::syncFromSlice()

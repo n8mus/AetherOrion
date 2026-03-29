@@ -76,6 +76,11 @@ public:
     int     diglOffset()  const { return m_diglOffset; }
     int     diguOffset()  const { return m_diguOffset; }
 
+    // Record/playback state (radio-managed)
+    bool    recordOn()    const { return m_recordOn; }
+    bool    playOn()      const { return m_playOn; }
+    bool    playEnabled() const { return m_playEnabled; }
+
     // Getters — FM duplex/repeater
     QString fmToneMode()          const { return m_fmToneMode; }
     QString fmToneValue()         const { return m_fmToneValue; }
@@ -138,6 +143,8 @@ public:
     void setDiguOffset(int hz);
     void setTxSlice(bool on);
     void setActive(bool on);
+    void setRecordOn(bool on);
+    void setPlayOn(bool on);
 
     // Setters — FM duplex/repeater
     void setFmToneMode(const QString& mode);
@@ -211,6 +218,9 @@ signals:
     void fmDeviationChanged(int hz);
 
     void modeListChanged(const QStringList& modes);
+    void recordOnChanged(bool on);
+    void playOnChanged(bool on);
+    void playEnabledChanged(bool enabled);
     void commandReady(const QString& cmd);  // ready to send to radio
 
 private:
@@ -281,6 +291,11 @@ private:
     double  m_fmRepeaterOffsetFreq{0.0};
     double  m_txOffsetFreq{0.0};
     int     m_fmDeviation{5000};
+
+    // Record/playback
+    bool    m_recordOn{false};
+    bool    m_playOn{false};
+    bool    m_playEnabled{false};
 
     void sendCommand(const QString& cmd);
 

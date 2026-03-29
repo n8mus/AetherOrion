@@ -1528,11 +1528,17 @@ void MainWindow::buildMenuBar()
 
     auto* radioSetup = settingsMenu->addAction("Radio Setup...");
     connect(radioSetup, &QAction::triggered, this, [this] {
+        if (m_radioSetupDialog) {
+            m_radioSetupDialog->raise();
+            m_radioSetupDialog->activateWindow();
+            return;
+        }
         // Snapshot compression setting before dialog opens
         QString prevComp = m_radioModel.audioCompressionParam();
 
         auto* dlg = new RadioSetupDialog(&m_radioModel, &m_audio, this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
+        m_radioSetupDialog = dlg;
         connect(dlg, &QDialog::finished, this, [this, prevComp]() {
 #ifdef HAVE_SERIALPORT
             // Re-load serial port settings if changed
@@ -1608,18 +1614,33 @@ void MainWindow::buildMenuBar()
 #ifdef HAVE_MIDI
     auto* midiAction = settingsMenu->addAction("MIDI Mapping...");
     connect(midiAction, &QAction::triggered, this, [this] {
-        MidiMappingDialog dlg(&m_midiControl, this);
-        dlg.exec();
+        if (m_midiDialog) {
+            m_midiDialog->raise();
+            m_midiDialog->activateWindow();
+            return;
+        }
+        auto* dlg = new MidiMappingDialog(&m_midiControl, this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        m_midiDialog = dlg;
+        dlg->show();
     });
 #endif
     auto* spotsAction = settingsMenu->addAction("SpotHub...");
     connect(spotsAction, &QAction::triggered, this, [this] {
-        DxClusterDialog dlg(m_dxCluster, m_rbnClient, m_wsjtxClient, m_potaClient,
+        // Raise existing dialog if already open
+        if (m_spotHubDialog) {
+            m_spotHubDialog->raise();
+            m_spotHubDialog->activateWindow();
+            return;
+        }
+        auto* dlg = new DxClusterDialog(m_dxCluster, m_rbnClient, m_wsjtxClient, m_potaClient,
 #ifdef HAVE_WEBSOCKETS
                             m_freedvClient,
 #endif
                             &m_radioModel, this);
-        dlg.setTotalSpots(m_radioModel.spotModel()->spots().size());
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        m_spotHubDialog = dlg;
+        dlg->setTotalSpots(m_radioModel.spotModel()->spots().size());
         // Live preview: refresh spots on every display settings change
         auto refreshSpots = [this]() {
             auto& s = AppSettings::instance();
@@ -1643,46 +1664,46 @@ void MainWindow::buildMenuBar()
                 sw->setSpotBgOpacity(bgOpacity);
             }
         };
-        connect(&dlg, &DxClusterDialog::settingsChanged, this, refreshSpots);
-        connect(&dlg, &DxClusterDialog::connectRequested,
+        connect(dlg, &DxClusterDialog::settingsChanged, this, refreshSpots);
+        connect(dlg, &DxClusterDialog::connectRequested,
                 this, [this](const QString& host, quint16 port, const QString& call) {
             QMetaObject::invokeMethod(m_dxCluster, [=] { m_dxCluster->connectToCluster(host, port, call); });
         });
-        connect(&dlg, &DxClusterDialog::disconnectRequested,
+        connect(dlg, &DxClusterDialog::disconnectRequested,
                 this, [this] { QMetaObject::invokeMethod(m_dxCluster, [=] { m_dxCluster->disconnect(); }); });
-        connect(&dlg, &DxClusterDialog::rbnConnectRequested,
+        connect(dlg, &DxClusterDialog::rbnConnectRequested,
                 this, [this](const QString& host, quint16 port, const QString& call) {
             QMetaObject::invokeMethod(m_rbnClient, [=] { m_rbnClient->connectToCluster(host, port, call); });
         });
-        connect(&dlg, &DxClusterDialog::rbnDisconnectRequested,
+        connect(dlg, &DxClusterDialog::rbnDisconnectRequested,
                 this, [this] { QMetaObject::invokeMethod(m_rbnClient, [=] { m_rbnClient->disconnect(); }); });
-        connect(&dlg, &DxClusterDialog::wsjtxStartRequested,
+        connect(dlg, &DxClusterDialog::wsjtxStartRequested,
                 this, [this](const QString& addr, quint16 port) {
             QMetaObject::invokeMethod(m_wsjtxClient, [=] { m_wsjtxClient->startListening(addr, port); });
         });
-        connect(&dlg, &DxClusterDialog::wsjtxStopRequested,
+        connect(dlg, &DxClusterDialog::wsjtxStopRequested,
                 this, [this] { QMetaObject::invokeMethod(m_wsjtxClient, [=] { m_wsjtxClient->stopListening(); }); });
-        connect(&dlg, &DxClusterDialog::potaStartRequested,
+        connect(dlg, &DxClusterDialog::potaStartRequested,
                 this, [this](int interval) {
             QMetaObject::invokeMethod(m_potaClient, [=] { m_potaClient->startPolling(interval); });
         });
-        connect(&dlg, &DxClusterDialog::potaStopRequested,
+        connect(dlg, &DxClusterDialog::potaStopRequested,
                 this, [this] { QMetaObject::invokeMethod(m_potaClient, [=] { m_potaClient->stopPolling(); }); });
 #ifdef HAVE_WEBSOCKETS
-        connect(&dlg, &DxClusterDialog::freedvStartRequested,
+        connect(dlg, &DxClusterDialog::freedvStartRequested,
                 this, [this] { QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->startConnection(); }); });
-        connect(&dlg, &DxClusterDialog::freedvStopRequested,
+        connect(dlg, &DxClusterDialog::freedvStopRequested,
                 this, [this] { QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->stopConnection(); }); });
 #endif
-        connect(&dlg, &DxClusterDialog::spotsClearedAll,
+        connect(dlg, &DxClusterDialog::spotsClearedAll,
                 this, [this] { m_spotDedup.clear(); });
-        connect(&dlg, &DxClusterDialog::tuneRequested,
+        connect(dlg, &DxClusterDialog::tuneRequested,
                 this, [this](double freqMhz) {
             if (auto* sl = activeSlice())
                 sl->tuneAndRecenter(freqMhz);
         });
-        dlg.exec();
-        refreshSpots();  // final refresh on close
+        connect(dlg, &QDialog::finished, this, refreshSpots);  // refresh on close
+        dlg->show();
     });
     settingsMenu->addAction("multiFLEX...");
     auto* txBandAct = settingsMenu->addAction("TX Band Settings...");
@@ -3688,6 +3709,18 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
         if (auto* sl = m_radioModel.slice(sliceId))
             sl->setAudioGain(v);
     });
+    // Record/playback
+    connect(w, &VfoWidget::recordToggled, this, [this, sliceId](bool on) {
+        if (auto* sl = m_radioModel.slice(sliceId))
+            sl->setRecordOn(on);
+    });
+    connect(w, &VfoWidget::playToggled, this, [this, sliceId](bool on) {
+        if (auto* sl = m_radioModel.slice(sliceId))
+            sl->setPlayOn(on);
+    });
+    connect(s, &SliceModel::recordOnChanged, w, &VfoWidget::setRecordOn);
+    connect(s, &SliceModel::playOnChanged, w, &VfoWidget::setPlayOn);
+    connect(s, &SliceModel::playEnabledChanged, w, &VfoWidget::setPlayEnabled);
     connect(w, &VfoWidget::autotuneRequested, this, [this, sliceId](bool intermittent) {
         if (m_radioModel.slice(sliceId))
             m_radioModel.cwAutoTune(sliceId, intermittent);
