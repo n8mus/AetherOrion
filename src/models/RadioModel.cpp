@@ -975,12 +975,21 @@ void RadioModel::startNetworkMonitor()
     m_lastPingRtt = 0;
     m_pingMissCount = 0;
 
+    // Use RadioConnection's socket-level RTT measurement instead of our own
+    // stopwatch. The connection measures RTT at readyRead time (before event
+    // loop dispatch), avoiding inflated values from main thread UI processing.
+    connect(&m_connection, &RadioConnection::pingRttMeasured, this, [this](int ms) {
+        m_pingMissCount = 0;
+        m_lastPingRtt = ms;
+        evaluateNetworkQuality();
+        emit pingReceived();
+    });
+
     connect(&m_pingTimer, &QTimer::timeout, this, [this]() {
         if (!isConnected()) {
             stopNetworkMonitor();
             return;
         }
-        // Increment miss counter — reset on successful response
         ++m_pingMissCount;
         if (m_pingMissCount >= PING_MISS_DISCONNECT) {
             qDebug() << "RadioModel:" << PING_MISS_DISCONNECT
@@ -988,15 +997,7 @@ void RadioModel::startNetworkMonitor()
             forceDisconnect();
             return;
         }
-        // Send ping and measure RTT
-        m_pingStopwatch.restart();
-        sendCmd("ping", [this](int code, const QString&) {
-            if (code != 0) return;
-            m_pingMissCount = 0;  // reset on successful response
-            m_lastPingRtt = static_cast<int>(m_pingStopwatch.elapsed());
-            evaluateNetworkQuality();
-            emit pingReceived();
-        });
+        sendCmd("ping");  // RTT measured by RadioConnection::pingRttMeasured
     });
     m_pingTimer.start(1000);
 }

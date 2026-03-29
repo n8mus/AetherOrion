@@ -491,7 +491,7 @@ private:
     static constexpr int LAN_PING_POOR_MS = 100;
 
     QTimer        m_pingTimer;           // 1-second interval
-    QElapsedTimer m_pingStopwatch;       // measures RTT
+    // RTT now measured by RadioConnection::pingRttMeasured at socket-read time
     int           m_lastPingRtt{0};      // ms
     int           m_maxPingRtt{0};       // max RTT seen this session
     int           m_lastErrorCount{0};   // snapshot for delta

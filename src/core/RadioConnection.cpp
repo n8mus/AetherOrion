@@ -72,6 +72,7 @@ quint32 RadioConnection::sendCommand(const QString& command, ResponseCallback ca
     const QByteArray data = CommandParser::buildCommand(seq, command);
     if (command.startsWith("ping")) {
         m_lastPingSeq = seq;
+        m_pingStopwatch.restart();
     } else {
         qCDebug(lcConnection) << "TX:" << data.trimmed();
     }
@@ -137,6 +138,12 @@ void RadioConnection::processLine(const QString& line)
     if (m_lastPingSeq && line.startsWith("R")) {
         // Check if this response matches the last ping sequence number
         isPingReply = line.startsWith(QString("R%1|").arg(m_lastPingSeq));
+        if (isPingReply) {
+            // Measure RTT here at socket-read time, BEFORE event loop dispatch.
+            // This avoids inflated RTT from main thread UI processing delays.
+            emit pingRttMeasured(static_cast<int>(m_pingStopwatch.elapsed()));
+            m_lastPingSeq = 0;
+        }
     }
     if (!isGps && !isPingReply)
         qCDebug(lcConnection) << "RX:" << line;

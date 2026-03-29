@@ -8,6 +8,7 @@
 #include <QByteArray>
 #include <QString>
 #include <QHostAddress>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <functional>
 #include <atomic>
@@ -63,6 +64,8 @@ signals:
 
     // Emitted for every parsed incoming line
     void messageReceived(const ParsedMessage& msg);
+    // RTT measured at socket read time (before event loop), not callback dispatch
+    void pingRttMeasured(int ms);
 
     // Convenience signals for common message types
     void statusReceived(const QString& object, const QMap<QString, QString>& kvs);
@@ -87,6 +90,7 @@ private:
     quint32 m_handle{0};
     std::atomic<quint32> m_seqCounter{1};
     quint32 m_lastPingSeq{0};
+    QElapsedTimer m_pingStopwatch;  // RTT measured at socket read, not event loop
 
     QMap<quint32, ResponseCallback> m_pendingCallbacks;
 };
