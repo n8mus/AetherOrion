@@ -2566,6 +2566,19 @@ void MainWindow::onSliceAdded(SliceModel* s)
             else if (settings.value("ClientRn2Enabled", "False").toString() == "True")
                 m_audio.setRn2Enabled(true);
             // BNR not auto-restored — requires manual enable each session
+
+            // Deferred CW decoder restart after profile load (#305).
+            // Mode status arrives asynchronously — by the time setActiveSlice
+            // runs, the slice may still have its default mode (not CW).
+            // Re-check after status has settled.
+            auto* sl = activeSlice();
+            if (sl) {
+                bool isCw = (sl->mode() == "CW" || sl->mode() == "CWL");
+                bool decodeOn = settings.value("CwDecodeOverlay", "True").toString() == "True";
+                if (m_panApplet) m_panApplet->setCwPanelVisible(isCw && decodeOn);
+                if (isCw && !m_cwDecoder.isRunning())
+                    m_cwDecoder.start();
+            }
         });
     }
 
