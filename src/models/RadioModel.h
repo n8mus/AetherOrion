@@ -190,8 +190,8 @@ public:
     bool isWan() const { return m_wanConn != nullptr; }
     void setTransmit(bool tx);
     QString audioCompressionParam() const;        // "none" or "opus" based on settings
-    void sendCwKey(bool down);                    // straight key: cw key 0|1
-    void sendCwPaddle(bool dit, bool dah);        // iambic paddle: cw key <dit> <dah>
+    void sendCwKey(bool down);                    // straight key via netcw stream
+    void sendCwPaddle(bool dit, bool dah);        // iambic paddle via netcw stream
     void cwAutoTune(int sliceId, bool intermittent); // slice auto_tune
     void addSlice();           // Create a new slice on the active panadapter
     void addSliceOnPan(const QString& panId); // Create a new slice on a specific pan
@@ -324,6 +324,12 @@ private:
     CwxModel         m_cwxModel;
     DvkModel         m_dvkModel;
     UsbCableModel    m_usbCableModel;
+
+    // NetCW stream — VITA-49 UDP delivery for low-latency CW keying
+    quint32  m_netCwStreamId{0};
+    int      m_netCwIndex{1};           // sequential dedup index
+    void sendNetCwCommand(const QString& cmd);
+    QByteArray buildNetCwPacket(const QByteArray& payload);
 
     QString     m_name;
     QString     m_model;

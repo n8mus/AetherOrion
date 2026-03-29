@@ -4,6 +4,9 @@
 #include "core/LogManager.h"
 #include <QDebug>
 #include <QRegularExpression>
+#include <QDateTime>
+#include <QtEndian>
+#include <cmath>
 #include "core/AppSettings.h"
 
 namespace AetherSDR {
@@ -231,14 +234,91 @@ QString RadioModel::audioCompressionParam() const
 
 void RadioModel::sendCwKey(bool down)
 {
-    // "cw key immediate" bypasses the netcw VITA-49 stream and keys via TCP.
-    // The full netcw stream (UDP with timing/redundancy) is a future enhancement.
-    sendCmd(QString("cw key immediate %1").arg(down ? 1 : 0));
+    QString cmd = QString("cw key %1").arg(down ? 1 : 0);
+    sendNetCwCommand(cmd);
 }
 
 void RadioModel::sendCwPaddle(bool dit, bool dah)
 {
-    sendCmd(QString("cw key immediate %1 %2").arg(dit ? 1 : 0).arg(dah ? 1 : 0));
+    QString cmd = QString("cw key %1 %2").arg(dit ? 1 : 0).arg(dah ? 1 : 0);
+    sendNetCwCommand(cmd);
+}
+
+// ── NetCW stream — VITA-49 UDP delivery with redundant sends ────────────────
+
+QByteArray RadioModel::buildNetCwPacket(const QByteArray& payload)
+{
+    // VITA-49 header: 28 bytes + ASCII command payload
+    // Matches FlexLib NetCWStream.AddTXData() packet format
+    const int payloadBytes = payload.size();
+    const int packetWords = static_cast<int>(std::ceil(payloadBytes / 4.0) + 7); // 7 header words
+    const int packetBytes = packetWords * 4;
+
+    QByteArray pkt(packetBytes, '\0');
+    auto* w = reinterpret_cast<quint32*>(pkt.data());
+
+    // Word 0: ExtDataWithStream, C=1, T=0, TSI=3(Other), TSF=1(SampleCount)
+    static int pktCount = 0;
+    quint32 hdr = (0x3u << 28)     // pkt_type = ExtDataWithStream
+                | (1u << 27)       // C = 1 (class ID present)
+                | (0x3u << 22)     // TSI = 3 (Other)
+                | (0x1u << 20)     // TSF = 1 (SampleCount)
+                | ((pktCount & 0x0F) << 16)
+                | (packetWords & 0xFFFF);
+    pktCount = (pktCount + 1) & 0x0F;
+
+    w[0] = qToBigEndian(hdr);
+    w[1] = qToBigEndian(m_netCwStreamId);
+    w[2] = qToBigEndian<quint32>(0x00001C2D);      // OUI (FlexRadio)
+    w[3] = qToBigEndian<quint32>(0x534C03E3);       // ICC=0x534C, PCC=0x03E3
+    w[4] = 0; w[5] = 0; w[6] = 0;                  // timestamps
+
+    // Payload: ASCII command string
+    memcpy(pkt.data() + 28, payload.constData(), payloadBytes);
+
+    return pkt;
+}
+
+void RadioModel::sendNetCwCommand(const QString& baseCmd)
+{
+    if (m_netCwStreamId == 0) {
+        // No netcw stream — fall back to TCP immediate
+        sendCmd(baseCmd.contains("cw key") ?
+            QString(baseCmd).replace("cw key", "cw key immediate") : baseCmd);
+        return;
+    }
+
+    // Build the full command with timing metadata and dedup index
+    // FlexLib format: "cw key 1 time=0x<hex_ms> index=<N> client_handle=0x<handle>"
+    quint64 timeMs = static_cast<quint64>(
+        QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+    int index = m_netCwIndex++;
+
+    QString fullCmd = QString("%1 time=0x%2 index=%3 client_handle=0x%4")
+        .arg(baseCmd)
+        .arg(timeMs, 8, 16, QChar('0'))
+        .arg(index)
+        .arg(clientHandle(), 0, 16);
+
+    QByteArray payload = fullCmd.toLatin1();
+    QByteArray packet = buildNetCwPacket(payload);
+
+    // Redundant sends via UDP: 0ms, 5ms, 10ms, 15ms
+    // Radio deduplicates by index — processes first arrival, ignores repeats
+    m_panStream.sendToRadio(packet);
+
+    QTimer::singleShot(5, this, [this, packet]() {
+        m_panStream.sendToRadio(packet);
+    });
+    QTimer::singleShot(10, this, [this, packet]() {
+        m_panStream.sendToRadio(packet);
+    });
+    QTimer::singleShot(15, this, [this, packet]() {
+        m_panStream.sendToRadio(packet);
+    });
+
+    // TCP fallback — guarantees delivery if all UDP packets are lost
+    sendCmd(fullCmd);
 }
 
 void RadioModel::cwAutoTune(int sliceId, bool intermittent)
@@ -711,6 +791,20 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                         // Request remote audio TX stream (voice mode, VOX monitoring)
                         // This stream carries mic audio to the radio for voice TX and
                         // VOX detection. met_in_rx=1 tells the radio to monitor it during RX.
+                        // Create netcw stream for low-latency CW keying via UDP
+                        sendCmd("stream create netcw",
+                            [this](int code, const QString& body) {
+                                if (code == 0) {
+                                    m_netCwStreamId = body.trimmed().toUInt(nullptr, 16);
+                                    m_netCwIndex = 1;
+                                    qCDebug(lcProtocol) << "RadioModel: netcw stream created, id:"
+                                             << Qt::hex << m_netCwStreamId;
+                                } else {
+                                    qCDebug(lcProtocol) << "RadioModel: netcw stream not supported, code"
+                                             << Qt::hex << code << "— using cw key immediate fallback";
+                                }
+                            });
+
                         sendCmd(
                             "stream create type=remote_audio_tx",
                             [this](int code, const QString& body) {
@@ -825,6 +919,8 @@ void RadioModel::onDisconnected()
     m_callsign.clear();
     m_region.clear();
     m_rxAudioStreamId.clear();
+    m_netCwStreamId = 0;
+    m_netCwIndex = 1;
     m_lineoutGain = 50;
     m_headphoneGain = 50;
 
