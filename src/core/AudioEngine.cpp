@@ -154,7 +154,13 @@ void AudioEngine::feedAudioData(const QByteArray& pcm)
             m_audioDevice->write(data);
     };
 
-    if (m_rn2Enabled && m_rn2) {
+    // Bypass client-side DSP during TX (#367). NR2/RN2/BNR adapt their
+    // internal state (noise floor, RNN hidden state) to silence during TX,
+    // causing distorted audio for several seconds after returning to RX.
+    if (m_transmitting) {
+        writeAudio(pcm);
+        emit levelChanged(computeRMS(pcm));
+    } else if (m_rn2Enabled && m_rn2) {
         QByteArray processed = m_rn2->process(pcm);
         writeAudio(processed);
         emit levelChanged(computeRMS(processed));
