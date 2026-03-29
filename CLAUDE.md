@@ -33,7 +33,7 @@ cmake --build build -j$(nproc)
 
 Dependencies (Arch): `qt6-base qt6-multimedia cmake ninja pkgconf autoconf automake libtool`
 
-Current version: **0.7.10** (set in both `CMakeLists.txt` and `README.md`).
+Current version: **0.7.11** (set in both `CMakeLists.txt` and `README.md`).
 
 ---
 
@@ -81,6 +81,7 @@ src/
 │   ├── TunerModel          — 4o3a Tuner Genius XL state (relays, SWR, tuning)
 │   ├── TnfModel            — Tracking notch filter management (add/remove/drag)
 │   ├── UsbCableModel       — USB cable management (CAT/BCD/Bit/Passthrough)
+│   ├── DaxIqModel          — DAX IQ stream state (4 channels, worker thread, PulseAudio pipes)
 │   ├── BandSettings        — Per-band persistent settings
 │   └── AntennaGeniusModel  — 4o3a Antenna Genius switch state
 └── gui/
@@ -941,14 +942,44 @@ and panadapter. The radio assigns these to our `client_handle`.
   activity indicator, and named profiles. Bindings stored in dedicated
   ~/.config/AetherSDR/midi.settings XML file. Soft dependency (HAVE_MIDI).
   (#355)
+- **Panadapter click-to-spot**: right-click context menu to add spots
+  with callsign, comment, lifetime, and optional DX cluster forwarding.
+  Right-click existing spots for tune, copy, QRZ lookup, remove. Spot
+  frequency snaps to tuning step size. (#36)
+- **Per-slice record/play**: Record (⏺) and Play (▶) buttons on VFO
+  flag. Radio-managed recording with pulsing indicator. Play disabled
+  until recording exists. TX playback via MOX for voice keyer. (#164)
+- **DAX IQ streaming**: raw I/Q data from radio DDC to SDR apps (SDR#,
+  GQRX, GNU Radio) via PulseAudio virtual capture devices. 4 channels
+  at 24/48/96/192 kHz. DaxIqModel + dedicated worker thread for byte-swap
+  and pipe I/O. DIGI applet controls + overlay pan routing. (#124)
+- **Opus codec independent of RADE**: HAVE_OPUS separated from HAVE_RADE
+  so SmartLink compressed audio works without RADE. System libopus
+  fallback via pkg-config. Windows setup-opus.ps1 script. (#375)
+- **Applet panel collapse**: ☰ hamburger in status bar toggles panel
+  visibility. Custom painted +PAN spectrum icon. Persisted. (#178)
+- **Drag-reorderable applets**: drag ⋮⋮ grip title bars to reorder
+  applets in the panel. QDrag framework with persistent order. View →
+  Reset Applet Order. (#335)
+- **Modeless dialogs**: SpotHub, Radio Setup, and MIDI Mapping dialogs
+  no longer block the main window. Duplicate prevention via QPointer.
+- **AppSettings atomic save**: write to .tmp, validate XML, rename.
+  Backup recovery from .bak. Count guard prevents truncated saves.
+  Key validation skips invalid XML element names.
+- **BNR crash fix**: r8brain resampler buffer overflow — maxBlockSamples
+  increased to 16384 for BNR's variable-size output. (#376)
+- **RadioModel shutdown fix**: disconnect signals before member
+  destruction to prevent use-after-free (found via ASAN).
+- **Spot label deconfliction**: proper stacking across all levels
+  before overflow to cluster badges.
 
 ## What's NOT Yet Implemented
 
 - RADE status indicator in VFO widget (sync/SNR display, #88)
 - RADE on Windows (#87)
-- DAX IQ streaming for SDR apps (#124)
 - DAX on Windows (virtual audio devices, #87)
 - SmartLink NAT hole-punching (for radios without UPnP/port forwarding)
 - SmartLink WAN auto-reconnect
 - SmartLink jitter buffer for high-latency connections
 - Keyboard shortcuts and hotkeys
+- GPU-accelerated spectrum/waterfall via QRhi (#391)
