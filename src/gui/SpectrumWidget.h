@@ -6,6 +6,7 @@
 #include <QMap>
 #include <QImage>
 #include <QColor>
+#include <QDateTime>
 
 namespace AetherSDR {
 
@@ -180,6 +181,10 @@ public:
         double freqMhz;
         QString color;       // #AARRGGBB or empty for default
         QString mode;
+        QString source;
+        QString spotterCallsign;
+        QString comment;
+        QDateTime timestamp;
     };
     void setSpotMarkers(const QVector<SpotMarker>& markers);
 
@@ -386,7 +391,12 @@ private:
     QVector<TnfMarker> m_tnfMarkers;
     bool m_tnfGlobalEnabled{true};
     QVector<SpotMarker> m_spotMarkers;
-    QVector<QPair<QRect, double>> m_spotClickRects;  // rect → freqMhz for click-to-tune
+    struct SpotHitRect {
+        QRect rect;
+        double freqMhz;
+        int markerIndex;  // index into m_spotMarkers for tooltip data
+    };
+    QVector<SpotHitRect> m_spotClickRects;
 
     QVector<SpotCluster> m_spotClusters;
     bool m_showSpots{true};

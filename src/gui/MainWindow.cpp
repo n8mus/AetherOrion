@@ -932,7 +932,11 @@ MainWindow::MainWindow(QWidget* parent)
         else    m_radioModel.removeRxAudioStream();
     });
     connect(m_titleBar, &TitleBar::masterVolumeChanged, this, [this](int pct) {
-        m_audio.setRxVolume(pct / 100.0f);
+        bool pcAudio = AppSettings::instance().value("PcAudioEnabled", "True").toString() == "True";
+        if (pcAudio)
+            m_audio.setRxVolume(pct / 100.0f);
+        else
+            m_radioModel.setLineoutGain(pct);
         auto& s = AppSettings::instance();
         s.setValue("MasterVolume", QString::number(pct));
         s.save();
@@ -3152,8 +3156,13 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         if (!swGuard) return;  // widget destroyed (layout change)
         auto* s = m_radioModel.spotModel();
         QVector<SpectrumWidget::SpotMarker> markers;
-        for (const auto& spot : s->spots())
-            markers.append({spot.index, spot.callsign, spot.rxFreqMhz, spot.color, spot.mode});
+        for (const auto& spot : s->spots()) {
+            QDateTime ts = spot.timestamp;
+            if (!ts.isValid() || ts.toMSecsSinceEpoch() <= 0)
+                ts = QDateTime::fromMSecsSinceEpoch(spot.addedMs, Qt::UTC);
+            markers.append({spot.index, spot.callsign, spot.rxFreqMhz, spot.color, spot.mode,
+                            spot.source, spot.spotterCallsign, spot.comment, ts});
+        }
         swGuard->setSpotMarkers(markers);
     };
     connect(spots, &SpotModel::spotAdded,   this, rebuildSpots);

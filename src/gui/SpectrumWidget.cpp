@@ -575,9 +575,9 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
     // Click on a spot label → tune to that frequency
     if (m_showSpots && ev->button() == Qt::LeftButton) {
         const QPoint pos(static_cast<int>(ev->position().x()), y);
-        for (const auto& [rect, freq] : m_spotClickRects) {
-            if (rect.contains(pos)) {
-                emit frequencyClicked(freq);
+        for (const auto& hr : m_spotClickRects) {
+            if (hr.rect.contains(pos)) {
+                emit frequencyClicked(hr.freqMhz);
                 ev->accept();
                 return;
             }
@@ -955,13 +955,34 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
                     }
                 }
                 if (!foundCursor && m_showSpots) {
-                    for (const auto& [rect, freq] : m_spotClickRects) {
-                        if (rect.contains(pos)) {
+                    bool spotHover = false;
+                    for (const auto& hr : m_spotClickRects) {
+                        if (hr.rect.contains(pos)) {
                             setCursor(Qt::PointingHandCursor);
                             foundCursor = true;
+                            // Show spot tooltip
+                            if (hr.markerIndex >= 0 && hr.markerIndex < m_spotMarkers.size()) {
+                                const auto& sm = m_spotMarkers[hr.markerIndex];
+                                QString tip = QString("<b>%1</b>  %2 MHz")
+                                    .arg(sm.callsign)
+                                    .arg(sm.freqMhz, 0, 'f', 4);
+                                if (!sm.source.isEmpty())
+                                    tip += QString("<br>Source: %1").arg(sm.source);
+                                if (!sm.spotterCallsign.isEmpty())
+                                    tip += QString("<br>Spotter: %1").arg(sm.spotterCallsign);
+                                if (!sm.comment.isEmpty())
+                                    tip += QString("<br>%1").arg(sm.comment);
+                                if (sm.timestamp.isValid() && sm.timestamp.toMSecsSinceEpoch() > 0)
+                                    tip += QString("<br>Spotted: %1 UTC").arg(
+                                        sm.timestamp.toUTC().toString("yyyy-MM-dd HH:mm:ss"));
+                                QToolTip::showText(ev->globalPosition().toPoint(), tip, this);
+                            }
+                            spotHover = true;
                             break;
                         }
                     }
+                    if (!spotHover)
+                        QToolTip::hideText();
                     if (!foundCursor) {
                         for (const auto& cluster : m_spotClusters) {
                             if (cluster.rect.contains(pos)) {
@@ -1742,7 +1763,8 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
         }
 
         placed.append(labelRect);
-        m_spotClickRects.append({labelRect, spot.freqMhz});
+        int mIdx = static_cast<int>(&spot - &m_spotMarkers[0]);
+        m_spotClickRects.append({labelRect, spot.freqMhz, mIdx});
 
         // Background pill
         int bgAlpha = m_spotBgOpacity * 255 / 100;
