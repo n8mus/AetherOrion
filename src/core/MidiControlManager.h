@@ -21,6 +21,7 @@ enum class MidiParamType {
     Slider,    // continuous 0.0–1.0 (CC value / 127, Pitch Bend / 16383)
     Toggle,    // on/off (CC > 63 = on, NoteOn velocity > 0 = toggle)
     Trigger,   // momentary (NoteOn = fire once)
+    Gate,      // held on/off (NoteOn vel>0 = 1.0, NoteOff/vel=0 = 0.0) — for CW keying
 };
 
 struct MidiParam {

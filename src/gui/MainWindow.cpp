@@ -4433,6 +4433,12 @@ void MainWindow::registerMidiParams()
         [this](float v) { m_radioModel.transmitModel()->setCwSpeed(static_cast<int>(v)); },
         [this]() -> float { return m_radioModel.transmitModel()->cwSpeed(); });
 
+    reg("cw.key", "CW Key (straight)", "Phone/CW", P::Gate, 0, 1,
+        [this](float v) { m_radioModel.sendCwKey(v > 0.5f); });
+
+    reg("cw.ptt", "PTT (hold)", "Phone/CW", P::Gate, 0, 1,
+        [this](float v) { m_radioModel.setTransmit(v > 0.5f); });
+
     // ── EQ ──────────────────────────────────────────────────────────────
     reg("eq.txEnable", "TX EQ Enable", "EQ", P::Toggle, 0, 1,
         [this](float v) { m_radioModel.equalizerModel()->setTxEnabled(v > 0.5f); },

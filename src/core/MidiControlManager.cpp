@@ -260,6 +260,16 @@ void MidiControlManager::onMidiMessage(int status, int data1, int data2)
         it = m_bindingIndex.find(wildKey);
     }
 
+    // For Gate params (CW key): NoteOff must also match NoteOn bindings
+    if (it == m_bindingIndex.end() && msgType == MidiBinding::NoteOff) {
+        quint32 noteOnKey = MidiBinding{channel, MidiBinding::NoteOn, number, {}, false}.key();
+        it = m_bindingIndex.find(noteOnKey);
+        if (it == m_bindingIndex.end()) {
+            quint32 wildNoteOnKey = (0xFF << 16) | (MidiBinding::NoteOn << 8) | (number & 0x7F);
+            it = m_bindingIndex.find(wildNoteOnKey);
+        }
+    }
+
     if (it == m_bindingIndex.end()) return;
 
     const auto& binding = m_bindings[it.value()];
@@ -283,6 +293,10 @@ void MidiControlManager::onMidiMessage(int status, int data1, int data2)
         } else if (param->type == MidiParamType::Trigger) {
             if (value < 0.5f) return; // only fire on press, not release
             scaled = 1.0f;
+        } else if (param->type == MidiParamType::Gate) {
+            // Gate: NoteOn vel>0 = key down (1.0), NoteOff or vel=0 = key up (0.0)
+            // No toggling — direct follow of key state
+            scaled = normValue > 0.0f ? 1.0f : 0.0f;
         }
 
         if (param->setter)
