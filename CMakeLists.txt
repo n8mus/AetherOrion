@@ -123,8 +123,7 @@ elseif(WIN32)
         set(OPUS_FOUND TRUE)
         set(OPUS_INCLUDE_DIRS "${OPUS_ROOT}/include/opus")
         set(OPUS_LIBRARIES "${OPUS_ROOT}/lib/opus.lib")
-        set(OPUS_DLL "${OPUS_ROOT}/bin/opus.dll")
-        message(STATUS "Opus: using prebuilt Windows library")
+        message(STATUS "Opus: using prebuilt Windows library (static)")
     else()
         set(OPUS_FOUND FALSE)
         message(WARNING "Opus not found. Run setup-opus.ps1 to download it. "
@@ -473,13 +472,6 @@ elseif(OPUS_FOUND)
     target_compile_definitions(AetherSDR PRIVATE HAVE_OPUS)
     target_include_directories(AetherSDR PRIVATE ${OPUS_INCLUDE_DIRS})
     target_link_libraries(AetherSDR PRIVATE ${OPUS_LIBRARIES})
-    if(WIN32 AND OPUS_DLL)
-        add_custom_command(TARGET AetherSDR POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${OPUS_DLL}" "$<TARGET_FILE_DIR:AetherSDR>"
-            COMMENT "Copying opus.dll to build directory"
-        )
-    endif()
 endif()
 
 if(ENABLE_BNR)
