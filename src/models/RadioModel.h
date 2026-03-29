@@ -14,6 +14,7 @@
 #include "CwxModel.h"
 #include "DvkModel.h"
 #include "UsbCableModel.h"
+#include "DaxIqModel.h"
 
 #include <QObject>
 #include <QString>
@@ -80,6 +81,7 @@ public:
     CwxModel*         cwxModel()       { return &m_cwxModel; }
     DvkModel*         dvkModel()       { return &m_dvkModel; }
     UsbCableModel*    usbCableModel()  { return &m_usbCableModel; }
+    DaxIqModel*       daxIqModel()     { return &m_daxIqModel; }
     bool              hasAmplifier() const { return m_hasAmplifier; }
 
     // Getters
@@ -325,6 +327,7 @@ private:
     CwxModel         m_cwxModel;
     DvkModel         m_dvkModel;
     UsbCableModel    m_usbCableModel;
+    DaxIqModel       m_daxIqModel;
 
     // NetCW stream — VITA-49 UDP delivery for low-latency CW keying
     quint32  m_netCwStreamId{0};

@@ -73,11 +73,16 @@ public:
     void registerDaxStream(quint32 streamId, int channel);
     void unregisterDaxStream(quint32 streamId);
 
+    // DAX IQ stream routing
+    void registerIqStream(quint32 streamId, int channel);
+    void unregisterIqStream(quint32 streamId);
+
     // Send a raw UDP datagram to the radio (used for DAX TX VITA-49 packets)
     void sendToRadio(const QByteArray& packet);
 
 signals:
     void daxAudioReady(int channel, const QByteArray& pcm);
+    void iqDataReady(int channel, const QByteArray& rawPayload, int sampleRate);
     void spectrumReady(quint32 streamId, const QVector<float>& binsDbm);
     // One row of waterfall data (intensity values, Width bins).
     void waterfallRowReady(quint32 streamId, const QVector<float>& binsDbm,
@@ -185,6 +190,8 @@ private:
 
     // DAX stream routing: stream ID → DAX channel (1-4)
     QMap<quint32, int> m_daxStreamIds;
+    // DAX IQ stream routing: stream ID → IQ channel (1-4)
+    QMap<quint32, int> m_iqStreamIds;
     QHostAddress m_radioAddress;
     quint16      m_radioPort{0};
 

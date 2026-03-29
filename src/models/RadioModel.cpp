@@ -36,6 +36,11 @@ RadioModel::RadioModel(QObject* parent)
         sendCmd(cmd);
     });
 
+    // Forward DAX IQ commands to the radio
+    connect(&m_daxIqModel, &DaxIqModel::commandReady, this, [this](const QString& cmd){
+        sendCmd(cmd);
+    });
+
     // Forward transmit model commands to the radio
     connect(&m_transmitModel, &TransmitModel::commandReady, this, [this](const QString& cmd){
         // Keep txRequested in sync even when command comes directly from
@@ -1842,6 +1847,11 @@ void RadioModel::handleRadioStatus(const QMap<QString, QString>& kvs)
         m_frontSpeakerMute = kvs["front_speaker_mute"] == "1";
         audioChanged = true;
     }
+    if (kvs.contains("daxiq_capacity"))
+        m_daxIqModel.setCapacity(kvs["daxiq_capacity"].toInt());
+    if (kvs.contains("daxiq_available"))
+        m_daxIqModel.setAvailable(kvs["daxiq_available"].toInt());
+
     if (audioChanged) emit audioOutputChanged();
     if (changed) emit infoChanged();
 }

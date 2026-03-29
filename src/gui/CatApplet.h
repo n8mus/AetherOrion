@@ -39,11 +39,15 @@ public:
     void setDaxEnabled(bool on);
     void setDaxRxLevel(int channel, float rms);
     void setDaxTxLevel(float rms);
+    void setDaxIqLevel(int channel, float rms);
 
 signals:
     void daxToggled(bool on);
     void daxRxGainChanged(int channel, float gain);  // 1-4, 0.0–1.0
     void daxTxGainChanged(float gain);
+    void iqEnableRequested(int channel);
+    void iqDisableRequested(int channel);
+    void iqRateChanged(int channel, int rate);
 
 private:
     void buildUI();
@@ -74,6 +78,11 @@ private:
     QLabel*       m_daxRxStatus[kChannels]{};
     class MeterSlider* m_daxTxMeter{nullptr};
     QLabel*       m_daxTxStatus{nullptr};
+
+    // DAX IQ section
+    QPushButton*  m_iqEnable[kChannels]{};
+    QComboBox*    m_iqRateCombo[kChannels]{};
+    QProgressBar* m_iqMeter[kChannels]{};
 };
 
 } // namespace AetherSDR

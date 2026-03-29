@@ -61,6 +61,7 @@ protected:
 signals:
     void addRxClicked(const QString& panId);
     void addTnfClicked();
+    void daxIqChannelChanged(int channel);  // 0=Off, 1-4
     void addPanClicked();
     void daxClicked();
     void nr2Toggled(bool on);
@@ -141,6 +142,7 @@ private:
     QWidget*   m_daxPanel{nullptr};
     bool       m_daxPanelVisible{false};
     QComboBox* m_daxCmb{nullptr};
+    QComboBox* m_daxIqCmb{nullptr};
 
     // Display sub-panel
     QWidget*     m_displayPanel{nullptr};

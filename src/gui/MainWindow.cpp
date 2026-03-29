@@ -3260,6 +3260,22 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(menu, &SpectrumOverlayMenu::noiseFloorEnableChanged,
             sw, &SpectrumWidget::setNoiseFloorEnable);
 
+    // ── DAX IQ channel selector from overlay menu ────────────────────────
+    connect(menu, &SpectrumOverlayMenu::daxIqChannelChanged,
+            this, [this](int channel) {
+        auto* iqModel = m_radioModel.daxIqModel();
+        if (channel == 0) {
+            // "Off" — remove all IQ streams (simplistic; could track per-pan)
+            for (int ch = 1; ch <= 4; ++ch) {
+                if (iqModel->stream(ch).exists)
+                    iqModel->removeStream(ch);
+            }
+        } else {
+            if (!iqModel->stream(channel).exists)
+                iqModel->createStream(channel);
+        }
+    });
+
     // ── Per-pan display controls → radio commands ────────────────────────
     // Each pan's overlay sends commands with its own panId/wfId, not the
     // global active pan. This ensures display settings work independently.
@@ -4414,6 +4430,41 @@ void MainWindow::startDax()
     // Wire DAX RX: PanadapterStream routes registered DAX streams here
     connect(m_radioModel.panStream(), &PanadapterStream::daxAudioReady,
             m_daxBridge, &DaxBridge::feedDaxAudio);
+
+    // ── DAX IQ stream status + VITA routing ─────────────────────────────
+    connect(&m_radioModel, &RadioModel::statusReceived,
+            this, [this](const QString& obj, const QMap<QString,QString>& kvs) {
+        if (!obj.startsWith("stream ")) return;
+        QString type = kvs.value("type");
+        if (type == "dax_iq") {
+            quint32 streamId = obj.mid(7).toUInt(nullptr, 0);
+            if (kvs.contains("removed")) {
+                m_radioModel.panStream()->unregisterIqStream(streamId);
+                m_radioModel.daxIqModel()->handleStreamRemoved(streamId);
+            } else {
+                m_radioModel.daxIqModel()->applyStreamStatus(streamId, kvs);
+                int ch = kvs.value("daxiq_channel").toInt();
+                if (streamId && ch >= 1 && ch <= 4)
+                    m_radioModel.panStream()->registerIqStream(streamId, ch);
+            }
+        }
+    });
+
+    // Route IQ VITA-49 packets to DaxIqModel worker thread
+    connect(m_radioModel.panStream(), &PanadapterStream::iqDataReady,
+            m_radioModel.daxIqModel(), &DaxIqModel::feedRawIqPacket);
+
+    // Wire DAX IQ level meters to DIGI applet
+    connect(m_radioModel.daxIqModel(), &DaxIqModel::iqLevelReady,
+            m_appletPanel->catApplet(), &CatApplet::setDaxIqLevel);
+
+    // Wire DAX IQ enable/disable/rate from DIGI applet to DaxIqModel
+    connect(m_appletPanel->catApplet(), &CatApplet::iqEnableRequested,
+            m_radioModel.daxIqModel(), &DaxIqModel::createStream);
+    connect(m_appletPanel->catApplet(), &CatApplet::iqDisableRequested,
+            m_radioModel.daxIqModel(), &DaxIqModel::removeStream);
+    connect(m_appletPanel->catApplet(), &CatApplet::iqRateChanged,
+            m_radioModel.daxIqModel(), &DaxIqModel::setSampleRate);
 
     // Wire DAX level meters
     connect(m_daxBridge, &DaxBridge::daxRxLevel,

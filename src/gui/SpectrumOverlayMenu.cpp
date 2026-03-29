@@ -649,6 +649,23 @@ void SpectrumOverlayMenu::buildDaxPanel()
             m_slice->setDaxChannel(idx);
     });
 
+    auto* iqRow = new QHBoxLayout;
+    iqRow->setSpacing(4);
+    auto* iqLbl = new QLabel("DAX IQ");
+    iqLbl->setStyleSheet(kLabelStyle);
+    iqRow->addWidget(iqLbl);
+    m_daxIqCmb = new QComboBox;
+    m_daxIqCmb->addItems({"Off", "1", "2", "3", "4"});
+    AetherSDR::applyComboStyle(m_daxIqCmb);
+    iqRow->addWidget(m_daxIqCmb, 1);
+    vb->addLayout(iqRow);
+
+    connect(m_daxIqCmb, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int idx) {
+        if (!m_updatingFromModel)
+            emit daxIqChannelChanged(idx);
+    });
+
     m_daxPanel->setFixedWidth(140);
     m_daxPanel->adjustSize();
 }

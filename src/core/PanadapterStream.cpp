@@ -309,6 +309,29 @@ void PanadapterStream::processDatagram(const QByteArray& data)
         return;
     }
 
+    // Check if this stream ID is a DAX IQ stream — route to worker thread
+    if (m_iqStreamIds.contains(streamId)) {
+        static constexpr quint16 PCC_IQ_24K  = 0x02E3;
+        static constexpr quint16 PCC_IQ_48K  = 0x02E4;
+        static constexpr quint16 PCC_IQ_96K  = 0x02E5;
+        static constexpr quint16 PCC_IQ_192K = 0x02E6;
+        int rate = 0;
+        switch (pcc) {
+        case PCC_IQ_24K:  rate = 24000;  break;
+        case PCC_IQ_48K:  rate = 48000;  break;
+        case PCC_IQ_96K:  rate = 96000;  break;
+        case PCC_IQ_192K: rate = 192000; break;
+        default: return;
+        }
+        int channel = m_iqStreamIds[streamId];
+        const int payloadStart = VITA49_HEADER_BYTES;
+        const int payloadBytes = data.size() - payloadStart - (hasTrailer ? 4 : 0);
+        if (payloadBytes < 8) return;
+        QByteArray payload(reinterpret_cast<const char*>(raw + payloadStart), payloadBytes);
+        emit iqDataReady(channel, payload, rate);
+        return;
+    }
+
     // Route by PacketClassCode
     switch (pcc) {
     case PCC_IF_NARROW:
@@ -647,6 +670,18 @@ void PanadapterStream::unregisterDaxStream(quint32 streamId)
 {
     m_daxStreamIds.remove(streamId);
     qCDebug(lcVita49) << "PanadapterStream: unregistered DAX stream" << Qt::hex << streamId;
+}
+
+void PanadapterStream::registerIqStream(quint32 streamId, int channel)
+{
+    m_iqStreamIds[streamId] = channel;
+    qCDebug(lcVita49) << "PanadapterStream: registered IQ stream" << Qt::hex << streamId << "-> channel" << channel;
+}
+
+void PanadapterStream::unregisterIqStream(quint32 streamId)
+{
+    m_iqStreamIds.remove(streamId);
+    qCDebug(lcVita49) << "PanadapterStream: unregistered IQ stream" << Qt::hex << streamId;
 }
 
 void PanadapterStream::sendToRadio(const QByteArray& packet)
