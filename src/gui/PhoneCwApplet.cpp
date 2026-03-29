@@ -53,23 +53,7 @@ private:
     Dir m_dir;
 };
 
-// ── Shared gradient title bar (matches AppletPanel / TxApplet style) ─────────
 
-static QWidget* appletTitleBar(const QString& text)
-{
-    auto* bar = new QWidget;
-    bar->setFixedHeight(16);
-    bar->setStyleSheet(
-        "QWidget { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-        "stop:0 #3a4a5a, stop:0.5 #2a3a4a, stop:1 #1a2a38); "
-        "border-bottom: 1px solid #0a1a28; }");
-
-    auto* lbl = new QLabel(text, bar);
-    lbl->setStyleSheet("QLabel { background: transparent; color: #8aa8c0; "
-                       "font-size: 10px; font-weight: bold; }");
-    lbl->setGeometry(6, 1, 240, 14);
-    return bar;
-}
 
 // ── Style constants ──────────────────────────────────────────────────────────
 
@@ -118,9 +102,6 @@ PhoneCwApplet::PhoneCwApplet(QWidget* parent)
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
-
-    // Shared title bar
-    outer->addWidget(appletTitleBar("P/CW"));
 
     // Stacked widget holding Phone (index 0) and CW (index 1) panels
     m_stack = new QStackedWidget;

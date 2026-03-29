@@ -1998,6 +1998,11 @@ void MainWindow::buildMenuBar()
         });
     }
 
+    auto* resetOrderAct = viewMenu->addAction("Reset Applet Order");
+    connect(resetOrderAct, &QAction::triggered, this, [this] {
+        m_appletPanel->resetOrder();
+    });
+
     viewMenu->addSeparator();
     m_keyboardShortcutsEnabled = AppSettings::instance()
         .value("KeyboardShortcutsEnabled", "False").toString() == "True";

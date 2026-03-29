@@ -9,6 +9,7 @@
 #include <QUuid>
 #include <QDebug>
 #include <QCoreApplication>
+#include <QRegularExpression>
 
 namespace AetherSDR {
 
@@ -125,6 +126,7 @@ void AppSettings::load()
     }
 
     file.close();
+    m_loadedCount = m_settings.size();
     qDebug() << "AppSettings: loaded" << m_settings.size() << "settings +"
              << m_stationSettings.size() << "station settings from" << m_filePath;
 }
@@ -133,6 +135,15 @@ void AppSettings::load()
 
 void AppSettings::save()
 {
+    // Guard: refuse to save if we'd lose more than half the settings.
+    // This catches cases where the app crashes early or settings were
+    // cleared from memory before save() runs.
+    if (m_loadedCount > 20 && m_settings.size() < m_loadedCount / 2) {
+        qWarning() << "AppSettings: refusing to save — only" << m_settings.size()
+                   << "settings, loaded" << m_loadedCount << "(would lose data)";
+        return;
+    }
+
     // Atomic save: write to temp file, then rename over the original.
     // This prevents data loss if the app crashes or is killed mid-write.
     const QString tmpPath = m_filePath + ".tmp";
@@ -152,8 +163,13 @@ void AppSettings::save()
     // Write top-level settings (sorted for consistency)
     QList<QString> keys = m_settings.keys();
     std::sort(keys.begin(), keys.end());
+    static const QRegularExpression validKey("^[A-Za-z_][A-Za-z0-9_./]*$");
     for (const auto& key : keys) {
-        // Skip station name element here — it goes inline
+        // Skip keys that aren't valid XML element names
+        if (!validKey.match(key).hasMatch()) {
+            qWarning() << "AppSettings: skipping invalid key:" << key;
+            continue;
+        }
         xml.writeTextElement(key, m_settings.value(key));
     }
 
@@ -171,6 +187,23 @@ void AppSettings::save()
     xml.writeEndElement(); // Settings
     xml.writeEndDocument();
     file.close();
+
+    // Validate the temp file before committing — re-read and parse it.
+    // If parsing fails, the file is corrupt; don't overwrite the original.
+    {
+        QFile check(tmpPath);
+        if (check.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QXmlStreamReader validator(&check);
+            while (!validator.atEnd()) validator.readNext();
+            check.close();
+            if (validator.hasError()) {
+                qWarning() << "AppSettings: temp file failed validation:"
+                           << validator.errorString() << "— NOT saving";
+                QFile::remove(tmpPath);
+                return;
+            }
+        }
+    }
 
     // Atomic rename: on Linux/macOS this is a single inode swap.
     // On Windows, QFile::rename fails if the target exists, so remove first.

@@ -33,21 +33,7 @@ static constexpr const char* kSectionStyle =
     "  border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; color: #c8d8e8; }"
     "QPushButton:hover { background: #204060; }";
 
-static QWidget* appletTitleBar(const QString& text)
-{
-    auto* bar = new QWidget;
-    bar->setFixedHeight(16);
-    bar->setStyleSheet(
-        "QWidget { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-        "stop:0 #3a4a5a, stop:0.5 #2a3a4a, stop:1 #1a2a38); "
-        "border-bottom: 1px solid #0a1a28; }");
 
-    auto* lbl = new QLabel(text, bar);
-    lbl->setStyleSheet("QLabel { background: transparent; color: #8aa8c0; "
-                       "font-size: 10px; font-weight: bold; }");
-    lbl->setGeometry(6, 1, 240, 14);
-    return bar;
-}
 
 CatApplet::CatApplet(QWidget* parent) : QWidget(parent)
 {
@@ -63,7 +49,6 @@ void CatApplet::buildUI()
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
 
-    outer->addWidget(appletTitleBar("CAT Control"));
 
     auto* content = new QWidget;
     auto* root = new QVBoxLayout(content);
@@ -86,7 +71,15 @@ void CatApplet::buildUI()
         "QLineEdit { font-size: 10px; background: #0a0a18; border: 1px solid #1e2e3e;"
         " border-radius: 3px; padding: 0px 2px; color: #c8d8e8; }";
 
-    // ── Global enable row: [Enable TCP] [Enable TTY] Base port: [____] ───────
+    // ── CAT Control section header ────────────────────────────────────────
+    {
+        auto* lbl = new QLabel("CAT Control");
+        lbl->setStyleSheet("QLabel { color: #8aa8c0; font-size: 10px; font-weight: bold; "
+            "border-top: 1px solid #304050; padding: 3px 6px 1px 6px; }");
+        root->addWidget(lbl);
+    }
+
+    // ── Enable row (created here, added to layout after channel rows) ────────
     auto* enableRow = new QHBoxLayout;
     enableRow->setSpacing(4);
 
@@ -113,8 +106,6 @@ void CatApplet::buildUI()
     m_basePort->setFixedWidth(40);
     m_basePort->setAlignment(Qt::AlignCenter);
     enableRow->addWidget(m_basePort);
-
-    root->addLayout(enableRow);
 
     connect(m_basePort, &QLineEdit::editingFinished, this, [this]() {
         int port = m_basePort->text().toInt();
@@ -197,8 +188,15 @@ void CatApplet::buildUI()
         root->addLayout(row);
     }
 
+    root->addLayout(enableRow);
+
     // ── DAX Section ─────────────────────────────────────────────────────────
-    outer->addWidget(appletTitleBar("DAX Audio Channels"));
+    {
+        auto* lbl = new QLabel("DAX Audio Channels");
+        lbl->setStyleSheet("QLabel { color: #8aa8c0; font-size: 10px; font-weight: bold; "
+            "border-top: 1px solid #304050; padding: 3px 6px 1px 6px; }");
+        outer->addWidget(lbl);
+    }
 
     // DAX enable row
     auto* daxEnRow = new QHBoxLayout;
@@ -291,7 +289,12 @@ void CatApplet::buildUI()
     outer->addLayout(txRow);
 
     // ── DAX IQ section ──────────────────────────────────────────────────
-    outer->addWidget(appletTitleBar("DAX IQ"));
+    {
+        auto* lbl = new QLabel("DAX IQ");
+        lbl->setStyleSheet("QLabel { color: #8aa8c0; font-size: 10px; font-weight: bold; "
+            "border-top: 1px solid #304050; padding: 3px 6px 1px 6px; }");
+        outer->addWidget(lbl);
+    }
     outer->addSpacing(2);
 
     static const QString kIqBtnOn =

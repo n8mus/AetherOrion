@@ -59,6 +59,7 @@ private:
     QMap<QString, QString> m_settings;          // top-level key=value
     QMap<QString, QString> m_stationSettings;   // per-station key=value
     QString m_stationName{"AetherSDR"};
+    int m_loadedCount{0};  // settings count at load time (guard against truncated saves)
 };
 
 } // namespace AetherSDR

@@ -12,23 +12,7 @@
 
 namespace AetherSDR {
 
-// ── Shared gradient title bar (matches AppletPanel style) ───────────────────
 
-static QWidget* appletTitleBar(const QString& text)
-{
-    auto* bar = new QWidget;
-    bar->setFixedHeight(16);
-    bar->setStyleSheet(
-        "QWidget { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-        "stop:0 #3a4a5a, stop:0.5 #2a3a4a, stop:1 #1a2a38); "
-        "border-bottom: 1px solid #0a1a28; }");
-
-    auto* lbl = new QLabel(text, bar);
-    lbl->setStyleSheet("QLabel { background: transparent; color: #8aa8c0; "
-                       "font-size: 10px; font-weight: bold; }");
-    lbl->setGeometry(6, 1, 240, 14);
-    return bar;
-}
 
 // ── Styling constants ───────────────────────────────────────────────────────
 
@@ -72,7 +56,6 @@ void AntennaGeniusApplet::buildUI()
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
 
-    outer->addWidget(appletTitleBar("ANTENNA GENIUS"));
 
     // Body
     auto* body = new QWidget;

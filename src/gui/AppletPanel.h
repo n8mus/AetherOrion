@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QStringList>
+#include <QVector>
 
 class QComboBox;
 class QPushButton;
@@ -24,7 +25,8 @@ class AntennaGeniusApplet;
 
 // AppletPanel — right-side panel with a row of toggle buttons at the top,
 // an S-Meter gauge below them, and a scrollable stack of applets.
-// Multiple applets can be visible simultaneously.
+// Multiple applets can be visible simultaneously. Applets can be reordered
+// by dragging their title bars (QDrag with custom MIME type).
 class AppletPanel : public QWidget {
     Q_OBJECT
 
@@ -54,7 +56,24 @@ public:
     // Show/hide the AG button and applet based on Antenna Genius presence.
     void setAgVisible(bool visible);
 
+    // Reset applet order to default
+    void resetOrder();
+
+    // Ordered applet entry for drag-reorder support
+    struct AppletEntry {
+        QString id;
+        QWidget* widget{nullptr};
+        QWidget* titleBar{nullptr};
+        QPushButton* btn{nullptr};
+    };
+
+    friend class AppletDropArea;
+
 private:
+    void rebuildStackOrder();
+    void saveOrder();
+    int dropIndexFromY(int localY) const;
+
     QWidget*      m_sMeterSection{nullptr};
     SMeterWidget* m_sMeter{nullptr};
     QComboBox*    m_txSelect{nullptr};
@@ -69,9 +88,15 @@ private:
     EqApplet*      m_eqApplet{nullptr};
     CatApplet*     m_catApplet{nullptr};
     AntennaGeniusApplet* m_agApplet{nullptr};
-    QPushButton* m_tuneBtn{nullptr}; // TUNE toggle button (hidden until TGXL detected)
-    QPushButton* m_agBtn{nullptr};   // AG toggle button (hidden until AG discovered)
-    QVBoxLayout* m_stack{nullptr};   // layout inside the scroll area
+    QPushButton* m_tuneBtn{nullptr};
+    QPushButton* m_agBtn{nullptr};
+    QVBoxLayout* m_stack{nullptr};
+    QScrollArea* m_scrollArea{nullptr};
+    QWidget*     m_dropIndicator{nullptr};
+
+    // Ordered list of applets (drag-reorderable)
+    QVector<AppletEntry> m_appletOrder;
+    static const QStringList kDefaultOrder;
 };
 
 } // namespace AetherSDR
