@@ -3297,6 +3297,11 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         }
     });
 
+    // ── Spot trigger — notify the radio when a spot label is clicked (#341)
+    connect(sw, &SpectrumWidget::spotTriggered, this, [this](int spotIndex) {
+        m_radioModel.sendCommand(QString("spot trigger %1").arg(spotIndex));
+    });
+
     // ── +RX / +TNF buttons ───────────────────────────────────────────────
     connect(menu, &SpectrumOverlayMenu::addRxClicked,
             this, [this](const QString& panId) {

@@ -217,6 +217,7 @@ signals:
     void sliceClicked(int sliceId);
     // Emitted when the user clicks or scrolls in the panadapter area.
     void frequencyClicked(double mhz);
+    void spotTriggered(int spotIndex);
     // Emitted when the user drags the frequency scale bar to change bandwidth.
     void bandwidthChangeRequested(double newBandwidthMhz);
     // Band/segment zoom: radio handles center/bandwidth (SmartSDR pcap: "band_zoom=1" / "segment_zoom=1")

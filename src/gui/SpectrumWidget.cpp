@@ -578,6 +578,9 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         for (const auto& hr : m_spotClickRects) {
             if (hr.rect.contains(pos)) {
                 emit frequencyClicked(hr.freqMhz);
+                // Notify the radio that a spot was clicked (#341)
+                if (hr.markerIndex >= 0 && hr.markerIndex < m_spotMarkers.size())
+                    emit spotTriggered(m_spotMarkers[hr.markerIndex].index);
                 ev->accept();
                 return;
             }
