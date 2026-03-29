@@ -85,14 +85,14 @@ void FlexControlManager::processCommand(const QByteArray& cmd)
         int accel = 1;
         if (cmd.size() > 1)
             accel = std::max(1, cmd.mid(1).toInt());
-        emit tuneSteps(accel);
+        emit tuneSteps(m_invertDirection ? accel : -accel);
 
     } else if (cmd.startsWith('U')) {
         // Counter-clockwise rotation: U (1 step), U02–U06 (accelerated)
         int accel = 1;
         if (cmd.size() > 1)
             accel = std::max(1, cmd.mid(1).toInt());
-        emit tuneSteps(-accel);
+        emit tuneSteps(m_invertDirection ? -accel : accel);
 
     } else if (cmd.startsWith('X') && cmd.size() >= 3) {
         // Button press: X<button><action>

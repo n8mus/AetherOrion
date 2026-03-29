@@ -1100,6 +1100,8 @@ MainWindow::MainWindow(QWidget* parent)
     });
 
     // Auto-detect FlexControl on startup
+    m_flexControl.setInvertDirection(
+        AppSettings::instance().value("FlexControlInvertDir", "False").toString() == "True");
     if (AppSettings::instance().value("FlexControlAutoDetect", "True").toString() == "True") {
         QString fcPort = FlexControlManager::detectPort();
         if (!fcPort.isEmpty()) {
@@ -1525,6 +1527,8 @@ void MainWindow::buildMenuBar()
             } else {
                 if (m_flexControl.isOpen()) m_flexControl.close();
             }
+            m_flexControl.setInvertDirection(
+                fcs.value("FlexControlInvertDir", "False").toString() == "True");
 #endif
             // Re-evaluate CW decode overlay visibility
             bool decodeOn = AppSettings::instance().value("CwDecodeOverlay", "True").toString() == "True";

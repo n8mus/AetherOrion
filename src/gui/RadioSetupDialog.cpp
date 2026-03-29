@@ -2862,6 +2862,16 @@ QWidget* RadioSetupDialog::buildSerialTab()
         });
         grid->addWidget(autoDetect, 4, 0, 1, 3);
 
+        auto* invertDir = new QCheckBox("Invert tuning direction");
+        invertDir->setStyleSheet("QCheckBox { color: #c8d8e8; }");
+        invertDir->setChecked(settings.value("FlexControlInvertDir", "False").toString() == "True");
+        connect(invertDir, &QCheckBox::toggled, this, [](bool on) {
+            auto& s = AppSettings::instance();
+            s.setValue("FlexControlInvertDir", on ? "True" : "False");
+            s.save();
+        });
+        grid->addWidget(invertDir, 5, 0, 1, 3);
+
         vbox->addWidget(group);
     }
 

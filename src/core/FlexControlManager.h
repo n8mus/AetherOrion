@@ -34,6 +34,8 @@ public:
     // Scan QSerialPortInfo for VID 0x2192, PID 0x0010
     static QString detectPort();
 
+    void setInvertDirection(bool invert) { m_invertDirection = invert; }
+
     static constexpr quint16 VendorId  = 0x2192;
     static constexpr quint16 ProductId = 0x0010;
 
@@ -52,6 +54,7 @@ private:
 
     QSerialPort m_port;
     QByteArray  m_buffer;
+    bool        m_invertDirection{false};
 };
 
 } // namespace AetherSDR
