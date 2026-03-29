@@ -391,7 +391,7 @@ target_sources(AetherSDR PRIVATE
 target_include_directories(AetherSDR PRIVATE third_party/rtmidi)
 if(APPLE)
     target_compile_definitions(AetherSDR PRIVATE __MACOSX_CORE__)
-    target_link_libraries(AetherSDR PRIVATE "-framework CoreMIDI" "-framework CoreFoundation")
+    target_link_libraries(AetherSDR PRIVATE "-framework CoreMIDI" "-framework CoreAudio" "-framework CoreFoundation")
 elseif(WIN32)
     target_compile_definitions(AetherSDR PRIVATE __WINDOWS_MM__)
     target_link_libraries(AetherSDR PRIVATE winmm)
