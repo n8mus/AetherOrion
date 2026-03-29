@@ -2014,7 +2014,7 @@ QWidget* RadioSetupDialog::buildUsbCablesTab()
     }
 
     // Helper: create source combo (shared across CAT, BCD, Bit)
-    auto makeSourceCombo = [&kCombo]() {
+    auto makeSourceCombo = []() {
         auto* combo = new QComboBox;
         combo->addItems({"None", "TX Pan", "TX Slice", "Active Slice",
                          "TX Ant", "RX Ant", "Ordinal Slice"});
@@ -2042,7 +2042,7 @@ QWidget* RadioSetupDialog::buildUsbCablesTab()
     };
 
     // Helper: serial parameter group (shared by CAT and Passthrough)
-    auto makeSerialGroup = [&kCombo](const QString& title) {
+    auto makeSerialGroup = [](const QString& title) {
         auto* group = new QGroupBox(title);
         group->setStyleSheet(kGroupStyle);
         auto* grid = new QGridLayout(group);
