@@ -28,6 +28,12 @@ inline constexpr BandDef kBands[] = {
     {"12m",   24.890,   24.990,   24.950,   "USB"},
     {"10m",   28.000,   29.700,   28.400,   "USB"},
     {"6m",    50.000,   54.000,   50.150,   "USB"},
+    // VHF/UHF — for XVTR band stack matching (#346)
+    {"2m",   144.000,  148.000,  144.200,   "USB"},
+    {"1.25m",222.000,  225.000,  222.100,   "USB"},
+    {"440",  420.000,  450.000,  432.100,   "FM"},
+    {"33cm", 902.000,  928.000,  903.100,   "FM"},
+    {"23cm",1240.000, 1300.000, 1296.100,   "USB"},
 };
 
 inline constexpr int kBandCount = static_cast<int>(std::size(kBands));
