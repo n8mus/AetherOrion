@@ -141,8 +141,10 @@ public:
     void setFftFps(int fps);
     void setFftFillAlpha(float a);
     void setFftFillColor(const QColor& c);
+    void setFftHeatMap(bool on) { m_fftHeatMap = on; }
     float fftFillAlpha() const         { return m_fftFillAlpha; }
     QColor fftFillColor() const        { return m_fftFillColor; }
+    bool fftHeatMap() const            { return m_fftHeatMap; }
     int   fftAverage() const           { return m_fftAverage; }
     int   fftFps() const               { return m_fftFps; }
     bool  fftWeightedAvg() const       { return m_fftWeightedAvg; }
@@ -358,6 +360,7 @@ private:
     int   m_fftFps{25};
     float m_fftFillAlpha{0.70f};     // client-side fill opacity (0-1)
     QColor m_fftFillColor{0x00, 0xe5, 0xff};  // client-side fill color (default cyan)
+    bool m_fftHeatMap{true};        // true = intensity heat map, false = solid color
 
     // ── Waterfall display controls (radio-side via "display panafall set") ─
     int   m_wfColorGain{50};         // 0-100, maps intensity to color range
@@ -525,7 +528,17 @@ private:
 
     void initWaterfallPipeline();
     void initOverlayPipeline();
+    void initSpectrumPipeline();
     void renderGpuFrame(QRhiCommandBuffer* cb);
+
+    // FFT spectrum GPU resources — vertex color, no uniforms
+    QRhiGraphicsPipeline* m_fftLinePipeline{nullptr};
+    QRhiGraphicsPipeline* m_fftFillPipeline{nullptr};
+    QRhiShaderResourceBindings* m_fftSrb{nullptr};
+    QRhiBuffer* m_fftLineVbo{nullptr};    // dynamic, N × (vec2 pos + vec4 color)
+    QRhiBuffer* m_fftFillVbo{nullptr};    // dynamic, 2N × (vec2 pos + vec4 color)
+    static constexpr int kMaxFftBins = 8192;
+    static constexpr int kFftVertStride = 6; // x, y, r, g, b, a
 #endif
 
     // Mark the static overlay for repaint and schedule a frame update.
