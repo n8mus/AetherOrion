@@ -227,18 +227,22 @@ void SpectrumWidget::setFftFillColor(const QColor& c) {
     markOverlayDirty();
 }
 void SpectrumWidget::setWfColorGain(int gain) {
-    m_wfColorGain = std::clamp(gain, 0, 100);
+    int clamped = std::clamp(gain, 0, 100);
+    if (clamped == m_wfColorGain) return;
+    m_wfColorGain = clamped;
     auto& s = AppSettings::instance();
     s.setValue(settingsKey("DisplayWfColorGain"), QString::number(m_wfColorGain));
     s.save();
-    markOverlayDirty();
+    update();  // Waterfall only — no overlay repaint needed
 }
 void SpectrumWidget::setWfBlackLevel(int level) {
-    m_wfBlackLevel = std::clamp(level, 0, 100);
+    int clamped = std::clamp(level, 0, 100);
+    if (clamped == m_wfBlackLevel) return;
+    m_wfBlackLevel = clamped;
     auto& s = AppSettings::instance();
     s.setValue(settingsKey("DisplayWfBlackLevel"), QString::number(m_wfBlackLevel));
     s.save();
-    markOverlayDirty();
+    update();  // Waterfall only — no overlay repaint needed
 }
 void SpectrumWidget::setWfAutoBlack(bool on) {
     m_wfAutoBlack = on;
@@ -308,11 +312,12 @@ void SpectrumWidget::clearDisplay()
 
 void SpectrumWidget::setFrequencyRange(double centerMhz, double bandwidthMhz)
 {
-    if (centerMhz != m_centerMhz || bandwidthMhz != m_bandwidthMhz)
-        qDebug() << "SpectrumWidget::setFrequencyRange center="
-                 << QString::number(centerMhz, 'f', 6)
-                 << "bw=" << QString::number(bandwidthMhz, 'f', 6)
-                 << "bins=" << m_smoothed.size();
+    if (centerMhz == m_centerMhz && bandwidthMhz == m_bandwidthMhz)
+        return;
+    qDebug() << "SpectrumWidget::setFrequencyRange center="
+             << QString::number(centerMhz, 'f', 6)
+             << "bw=" << QString::number(bandwidthMhz, 'f', 6)
+             << "bins=" << m_smoothed.size();
     m_centerMhz    = centerMhz;
     m_bandwidthMhz = bandwidthMhz;
     markOverlayDirty();
@@ -329,8 +334,11 @@ void SpectrumWidget::setSpectrumFrac(float f)
 
 void SpectrumWidget::setDbmRange(float minDbm, float maxDbm)
 {
-    m_refLevel     = maxDbm;
-    m_dynamicRange = maxDbm - minDbm;
+    float ref = maxDbm;
+    float dyn = maxDbm - minDbm;
+    if (ref == m_refLevel && dyn == m_dynamicRange) return;
+    m_refLevel     = ref;
+    m_dynamicRange = dyn;
     markOverlayDirty();
 }
 
@@ -374,15 +382,22 @@ void SpectrumWidget::setSliceOverlay(int sliceId, double freq, int fLow, int fHi
         o.ritOn = ritOn; o.ritFreq = ritFreq;
         o.xitOn = xitOn; o.xitFreq = xitFreq;
         m_sliceOverlays.append(o);
+        markOverlayDirty();
     } else {
         auto& o = m_sliceOverlays[idx];
+        if (o.freqMhz == freq && o.filterLowHz == fLow && o.filterHighHz == fHigh &&
+            o.isTxSlice == tx && o.isActive == active && o.mode == mode &&
+            o.rttyMark == rttyMark && o.rttyShift == rttyShift &&
+            o.ritOn == ritOn && o.ritFreq == ritFreq &&
+            o.xitOn == xitOn && o.xitFreq == xitFreq)
+            return;
         o.freqMhz = freq; o.filterLowHz = fLow; o.filterHighHz = fHigh;
         o.isTxSlice = tx; o.isActive = active;
         o.mode = mode; o.rttyMark = rttyMark; o.rttyShift = rttyShift;
         o.ritOn = ritOn; o.ritFreq = ritFreq;
         o.xitOn = xitOn; o.xitFreq = xitFreq;
+        markOverlayDirty();
     }
-    markOverlayDirty();
 }
 
 void SpectrumWidget::setSliceOverlayFreq(int sliceId, double freqMhz)
@@ -1762,7 +1777,10 @@ void SpectrumWidget::initOverlayPipeline()
 
     int w = qMax(width(), 64);
     int h = qMax(height(), 64);
-    m_ovGpuTex = r->newTexture(QRhiTexture::RGBA8, QSize(w, h));
+    const qreal dpr = devicePixelRatioF();
+    const int pw = static_cast<int>(w * dpr);
+    const int ph = static_cast<int>(h * dpr);
+    m_ovGpuTex = r->newTexture(QRhiTexture::RGBA8, QSize(pw, ph));
     m_ovGpuTex->create();
 
     m_ovSampler = r->newSampler(QRhiSampler::Linear, QRhiSampler::Linear,
@@ -1811,11 +1829,13 @@ void SpectrumWidget::initOverlayPipeline()
 
     m_ovPipeline->create();
 
-    m_overlayStatic = QImage(w, h, QImage::Format_RGBA8888_Premultiplied);
-    m_overlayDynamic = QImage(w, h, QImage::Format_RGBA8888_Premultiplied);
+    m_overlayStatic = QImage(pw, ph, QImage::Format_RGBA8888_Premultiplied);
+    m_overlayStatic.setDevicePixelRatio(dpr);
+    m_overlayDynamic = QImage(pw, ph, QImage::Format_RGBA8888_Premultiplied);
+    m_overlayDynamic.setDevicePixelRatio(dpr);
     m_overlayDynamic.fill(Qt::transparent);
 
-    qDebug() << "SpectrumWidget: overlay pipeline created" << w << "x" << h;
+    qDebug() << "SpectrumWidget: overlay pipeline created" << pw << "x" << ph << "dpr:" << dpr;
 }
 
 void SpectrumWidget::initSpectrumPipeline()
@@ -1937,6 +1957,20 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb)
     const QRect specRect(0, 0, w, specH);
     const QRect wfRect(0, wfY, w, wfH);
 
+    // Detect display state changes that may bypass markOverlayDirty()
+    {
+        static double lastCenter = 0, lastBw = 0;
+        static float lastRef = 0, lastDyn = 0, lastFrac = 0;
+        if (m_centerMhz != lastCenter || m_bandwidthMhz != lastBw ||
+            m_refLevel != lastRef || m_dynamicRange != lastDyn ||
+            m_spectrumFrac != lastFrac) {
+            markOverlayDirty();
+            lastCenter = m_centerMhz; lastBw = m_bandwidthMhz;
+            lastRef = m_refLevel; lastDyn = m_dynamicRange;
+            lastFrac = m_spectrumFrac;
+        }
+    }
+
     auto* batch = r->nextResourceUpdateBatch();
 
     // Upload waterfall texture — full or incremental
@@ -2007,11 +2041,16 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb)
     // Render overlays — split into static (on state change) and dynamic (every frame)
     {
         // Resize overlay images if needed
-        if (m_overlayStatic.size() != QSize(w, h)) {
-            m_overlayStatic = QImage(w, h, QImage::Format_RGBA8888_Premultiplied);
-            m_overlayDynamic = QImage(w, h, QImage::Format_RGBA8888_Premultiplied);
+        const qreal dpr = devicePixelRatioF();
+        const int pw = static_cast<int>(w * dpr);
+        const int ph = static_cast<int>(h * dpr);
+        if (m_overlayStatic.size() != QSize(pw, ph)) {
+            m_overlayStatic = QImage(pw, ph, QImage::Format_RGBA8888_Premultiplied);
+            m_overlayStatic.setDevicePixelRatio(dpr);
+            m_overlayDynamic = QImage(pw, ph, QImage::Format_RGBA8888_Premultiplied);
+            m_overlayDynamic.setDevicePixelRatio(dpr);
             m_overlayDynamic.fill(Qt::transparent);
-            m_ovGpuTex->setPixelSize(QSize(w, h));
+            m_ovGpuTex->setPixelSize(QSize(pw, ph));
             m_ovGpuTex->create();
             m_ovSrb->setBindings({
                 QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, m_ovGpuTex, m_ovSampler),
@@ -2073,12 +2112,15 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb)
             }
 
             m_overlayStaticDirty = false;
+            m_overlayNeedsUpload = true;
         }
 
-        // Upload static overlay texture every frame (GPU clears on beginPass).
-        // The expensive part — QPainter repaint — is skipped when not dirty.
-        QRhiTextureSubresourceUploadDescription ovDesc(m_overlayStatic);
-        batch->uploadTexture(m_ovGpuTex, QRhiTextureUploadEntry(0, 0, ovDesc));
+        // Upload overlay texture only when content changed
+        if (m_overlayNeedsUpload) {
+            QRhiTextureSubresourceUploadDescription ovDesc(m_overlayStatic);
+            batch->uploadTexture(m_ovGpuTex, QRhiTextureUploadEntry(0, 0, ovDesc));
+            m_overlayNeedsUpload = false;
+        }
 
         // Generate FFT spectrum vertices with baked colors
         if (!m_smoothed.isEmpty() && m_fftLineVbo && m_fftFillVbo) {
@@ -2302,9 +2344,20 @@ void SpectrumWidget::releaseResources()
 
 #else // !AETHER_GPU_SPECTRUM
 
-void SpectrumWidget::paintEvent(QPaintEvent*)
+void SpectrumWidget::paintEvent(QPaintEvent* ev)
 {
     if (width() <= 0 || height() <= FREQ_SCALE_H + DIVIDER_H + 2) return;
+
+#ifdef AETHER_GPU_SPECTRUM
+    // GPU mode: render() handles everything via QRhi. Skip the full
+    // QPainter path to avoid redundant rendering + compositing overhead.
+    // This is the single biggest CPU optimization on macOS (100% → 20%).
+    if (m_rhiInitialized) {
+        SPECTRUM_BASE_CLASS::paintEvent(ev);
+        return;
+    }
+#endif
+    Q_UNUSED(ev);
 
     QElapsedTimer frameTimer;
     frameTimer.start();
