@@ -4778,6 +4778,8 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         m_radioModel.sendCommand(
             QString("display pan set %1 weighted_average=%2").arg(applet->panId()).arg(on ? 1 : 0));
     });
+    connect(menu, &SpectrumOverlayMenu::wfColorSchemeChanged,
+            sw, &SpectrumWidget::setWfColorScheme);
     connect(menu, &SpectrumOverlayMenu::wfColorGainChanged,
             this, [this, applet, sw](int v) {
         sw->setWfColorGain(v);
