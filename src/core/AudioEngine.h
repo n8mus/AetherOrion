@@ -22,6 +22,7 @@
 namespace AetherSDR {
 
 class SpectralNR;
+class SpecbleachFilter;
 class RNNoiseFilter;
 class NvidiaBnrFilter;
 class Resampler;
@@ -104,10 +105,25 @@ public:
     // Q_INVOKABLE: called from main thread, runs on audio worker thread (#502)
     Q_INVOKABLE void setNr2Enabled(bool on);
     bool nr2Enabled() const { return m_nr2Enabled.load(); }
+    // NR2 user-adjustable parameters (thread-safe via atomic in SpectralNR)
+    void setNr2GainMax(float v);
+    void setNr2Qspp(float v);
+    void setNr2GainSmooth(float v);
 
     // Client-side RN2 (RNNoise neural noise suppression)
     Q_INVOKABLE void setRn2Enabled(bool on);
     bool rn2Enabled() const { return m_rn2Enabled.load(); }
+
+    // Client-side NR4 (libspecbleach spectral noise reduction)
+    Q_INVOKABLE void setNr4Enabled(bool on);
+    bool nr4Enabled() const { return m_nr4Enabled.load(); }
+    void setNr4ReductionAmount(float dB);
+    void setNr4SmoothingFactor(float pct);
+    void setNr4WhiteningFactor(float pct);
+    void setNr4AdaptiveNoise(bool on);
+    void setNr4NoiseEstimationMethod(int method);
+    void setNr4MaskingDepth(float v);
+    void setNr4SuppressionStrength(float v);
 
     // Client-side BNR (NVIDIA NIM GPU noise removal)
     Q_INVOKABLE void setBnrEnabled(bool on);
@@ -139,6 +155,7 @@ signals:
     void rxStopped();
     void levelChanged(float rms);  // audio level for VU meter, 0.0–1.0
     void nr2EnabledChanged(bool on);
+    void nr4EnabledChanged(bool on);
     void rn2EnabledChanged(bool on);
     void bnrEnabledChanged(bool on);
     void bnrConnectionChanged(bool connected);
@@ -215,6 +232,12 @@ private:
     // Client-side NR2 (spectral)
     std::unique_ptr<SpectralNR> m_nr2;
     std::atomic<bool> m_nr2Enabled{false};
+
+    // Client-side NR4 (libspecbleach)
+#ifdef HAVE_SPECBLEACH
+    std::unique_ptr<SpecbleachFilter> m_nr4;
+#endif
+    std::atomic<bool> m_nr4Enabled{false};
 
     // Client-side RN2 (RNNoise)
     std::unique_ptr<RNNoiseFilter> m_rn2;

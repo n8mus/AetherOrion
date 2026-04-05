@@ -653,6 +653,15 @@ void VfoWidget::buildTabContent()
         panRow->addWidget(panR);
         vb->addLayout(panRow);
 
+        // Audio tab tooltips
+        m_muteBtn->setToolTip("Mutes this slice's audio output.");
+        m_afGainSlider->setToolTip("Audio output volume for this slice.");
+        m_sqlBtn->setToolTip("Squelch gate \u2014 silences audio when the signal drops below the threshold.");
+        m_sqlSlider->setToolTip("Squelch threshold. Increase to require a stronger signal before audio opens.");
+        m_agcCmb->setToolTip("AGC speed. Slow resists pumping on quiet bands; Fast tracks rapid signal changes.");
+        m_agcTSlider->setToolTip("AGC threshold. Higher values reduce the maximum gain applied to weak signals.");
+        m_panSlider->setToolTip("Pans audio between left and right channels.");
+
         // ESC (Enhanced Signal Clarity) panel — visible only when DIV is active
         m_escPanel = new QWidget;
         m_escPanel->setVisible(false);
@@ -837,9 +846,13 @@ void VfoWidget::buildTabContent()
         m_anflBtn = makeDsp("ANFL");
         m_anftBtn = makeDsp("ANFT");
         m_bnrBtn  = makeDsp("BNR");
+        m_nr4Btn  = makeDsp("NR4");
         m_apfBtn->hide();  // only visible in CW mode
 #ifndef HAVE_BNR
         m_bnrBtn->hide();
+#endif
+#ifndef HAVE_SPECBLEACH
+        m_nr4Btn->hide();
 #endif
 
         // Initial layout: 4-column grid (APF hidden, BNR only with HAVE_BNR)
@@ -855,7 +868,24 @@ void VfoWidget::buildTabContent()
         m_dspGrid->addWidget(m_anflBtn, 2, 1);
         m_dspGrid->addWidget(m_anftBtn, 2, 2);
         m_dspGrid->addWidget(m_bnrBtn,  2, 3);
+        m_dspGrid->addWidget(m_nr4Btn,  3, 0);
         dspVb->addLayout(m_dspGrid);
+
+        // DSP button tooltips
+        m_nrBtn->setToolTip("Radio-side noise reduction \u2014 attenuates uncorrelated background noise.");
+        m_nr2Btn->setToolTip("Client-side spectral noise reduction (Ephraim-Malah MMSE). Right-click for NR2 settings.");
+        m_nbBtn->setToolTip("Noise blanker \u2014 detects and removes fast impulse noise from sparks and switching sources.");
+        m_anfBtn->setToolTip("Auto notch filter \u2014 detects and cancels persistent unwanted tones.");
+        m_apfBtn->setToolTip("CW audio peaking filter \u2014 narrows the audio passband around the CW pitch frequency to improve S/N.");
+        m_nrlBtn->setToolTip("Leaky LMS adaptive filter \u2014 preserves correlated signals while removing uncorrelated noise. Best for daily SSB/CW.");
+        m_nrsBtn->setToolTip("Spectral subtraction with voice activity detection \u2014 cuts noise most aggressively between words.");
+        m_rnnBtn->setToolTip("Deep-learning recurrent neural network \u2014 separates speech from complex noise. Best at low SNR.");
+        m_rn2Btn->setToolTip("Client-side RNNoise neural noise suppression. Effective for broadband noise on voice modes.");
+        m_nrfBtn->setToolTip("Spectral subtraction filter \u2014 computes speech/noise probability per frequency bin to remove steady noise.");
+        m_anflBtn->setToolTip("Leaky LMS notch filter \u2014 removes steady tones such as power-line hum or carriers.");
+        m_anftBtn->setToolTip("FFT-based notch filter \u2014 removes up to five persistent tones from transformers or power supplies.");
+        m_bnrBtn->setToolTip("NVIDIA GPU-accelerated neural audio denoising. Requires NVIDIA RTX 4000+ with Docker.");
+        m_nr4Btn->setToolTip("Client-side spectral bleach noise reduction (libspecbleach). Right-click for NR4 settings.");
 
         // APF level slider (hidden unless CW mode)
         {
@@ -872,6 +902,7 @@ void VfoWidget::buildTabContent()
             m_apfSlider->setRange(0, 100);
             m_apfSlider->setValue(50);
             m_apfSlider->setStyleSheet(kSliderStyle);
+            m_apfSlider->setToolTip("Adjusts APF bandwidth. Higher values narrow the peak for better CW selectivity.");
             apfVb->addWidget(m_apfSlider, 1);
             m_apfValueLbl = new QLabel("50");
             m_apfValueLbl->setStyleSheet(kLabelStyle);
@@ -1168,6 +1199,10 @@ void VfoWidget::buildTabContent()
 
         connect(m_nrBtn,   &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNr(on); });
         connect(m_nr2Btn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel) emit nr2Toggled(on); });
+        m_nr2Btn->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(m_nr2Btn, &QPushButton::customContextMenuRequested, this, [this](const QPoint& pos) {
+            emit nr2RightClicked(m_nr2Btn->mapToGlobal(pos));
+        });
         connect(m_nbBtn,   &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNb(on); });
         connect(m_anfBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setAnf(on); });
         connect(m_nrlBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNrl(on); });
@@ -1175,6 +1210,11 @@ void VfoWidget::buildTabContent()
         connect(m_rnnBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setRnn(on); });
         connect(m_rn2Btn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel) emit rn2Toggled(on); });
         connect(m_bnrBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel) emit bnrToggled(on); });
+        connect(m_nr4Btn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel) emit nr4Toggled(on); });
+        m_nr4Btn->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(m_nr4Btn, &QPushButton::customContextMenuRequested, this, [this](const QPoint& pos) {
+            emit nr4RightClicked(m_nr4Btn->mapToGlobal(pos));
+        });
         connect(m_nrfBtn,  &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setNrf(on); });
         connect(m_anflBtn, &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setAnfl(on); });
         connect(m_anftBtn, &QPushButton::toggled, this, [this](bool on) { if (!m_updatingFromModel && m_slice) m_slice->setAnft(on); });
@@ -1332,6 +1372,7 @@ void VfoWidget::buildTabContent()
             m_ritBtn->setCheckable(true);
             m_ritBtn->setFixedHeight(22);
             m_ritBtn->setStyleSheet(kRitBtnStyle);
+            m_ritBtn->setToolTip("Receive Incremental Tuning \u2014 offsets the receive frequency without moving transmit.");
             row->addWidget(m_ritBtn);
 
             auto* zero = new QPushButton("0");
@@ -1382,6 +1423,7 @@ void VfoWidget::buildTabContent()
             m_xitBtn->setCheckable(true);
             m_xitBtn->setFixedHeight(22);
             m_xitBtn->setStyleSheet(kRitBtnStyle);
+            m_xitBtn->setToolTip("Transmit Incremental Tuning \u2014 offsets the transmit frequency without moving receive.");
             row->addWidget(m_xitBtn);
 
             auto* zero = new QPushButton("0");
@@ -1801,6 +1843,9 @@ void VfoWidget::setSlice(SliceModel* slice)
         m_nrsBtn->setVisible(!isFm);
 #ifdef HAVE_BNR
         m_bnrBtn->setVisible(!isFm);
+#endif
+#ifdef HAVE_SPECBLEACH
+        m_nr4Btn->setVisible(!isFm);
 #endif
         m_nrfBtn->setVisible(!isFm);
         relayoutDspGrid();
@@ -2239,6 +2284,9 @@ void VfoWidget::syncFromSlice()
 #ifdef HAVE_BNR
     m_bnrBtn->setVisible(!isFm);
 #endif
+#ifdef HAVE_SPECBLEACH
+    m_nr4Btn->setVisible(!isFm);
+#endif
     m_nrlBtn->setVisible(!isFm);
     m_nrsBtn->setVisible(!isFm);
     m_nrfBtn->setVisible(!isFm);
@@ -2311,7 +2359,7 @@ void VfoWidget::relayoutDspGrid()
 {
     // Remove all widgets from the grid (without deleting them)
     QPushButton* all[] = {m_nrBtn, m_nr2Btn, m_nbBtn, m_anfBtn, m_apfBtn, m_nrlBtn,
-                          m_nrsBtn, m_rnnBtn, m_rn2Btn, m_nrfBtn, m_anflBtn, m_anftBtn, m_bnrBtn};
+                          m_nrsBtn, m_rnnBtn, m_rn2Btn, m_nrfBtn, m_anflBtn, m_anftBtn, m_bnrBtn, m_nr4Btn};
     for (auto* btn : all)
         m_dspGrid->removeWidget(btn);
 
