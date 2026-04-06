@@ -575,6 +575,18 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::removeMemorySpot);
     connect(&m_radioModel, &RadioModel::memoriesCleared,
             this, &MainWindow::clearMemorySpotFeed);
+    connect(&m_radioModel, &RadioModel::panadapterLimitReached,
+            this, [this](int limit, const QString& model) {
+        statusBar()->showMessage(
+            QString("%1 supports a maximum of %2 panadapters")
+                .arg(model).arg(limit), 4000);
+    });
+    connect(&m_radioModel, &RadioModel::sliceCreateFailed,
+            this, [this](int limit, const QString& model) {
+        statusBar()->showMessage(
+            QString("%1 supports a maximum of %2 slices across all connected clients")
+                .arg(model).arg(limit), 4000);
+    });
     connect(&m_radioModel.spotModel(), &SpotModel::spotsCleared,
             this, &MainWindow::rebuildMemorySpotFeed);
 
@@ -2373,10 +2385,7 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
     }
     if (obj == m_addPanLabel && event->type() == QEvent::MouseButtonPress) {
         if (!m_radioModel.isConnected()) return true;
-        const QString& model = m_radioModel.model();
-        bool dualScu = model.contains("6600") || model.contains("6700")
-                    || model.contains("8600") || model.contains("AU-520");
-        int maxPans = dualScu ? 4 : 2;
+        int maxPans = m_radioModel.maxPanadapters();
         // Determine current layout from actual pan count, not saved setting
         int activePanCount = m_panStack ? m_panStack->count() : 1;
         QString currentLayout = "1";
@@ -5140,8 +5149,14 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     // ── +RX / +TNF buttons ───────────────────────────────────────────────
     connect(menu, &SpectrumOverlayMenu::addRxClicked,
             this, [this](const QString& panId) {
-        if (m_radioModel.slices().size() < m_radioModel.maxSlices())
+        int limit = m_radioModel.maxSlices();
+        if (m_radioModel.slices().size() < limit) {
             m_radioModel.addSliceOnPan(panId);
+        } else {
+            statusBar()->showMessage(
+                QString("%1 supports a maximum of %2 slices")
+                    .arg(m_radioModel.model()).arg(limit), 4000);
+        }
     });
     // Disconnect first to avoid duplicate sends on re-wire (#381)
     disconnect(menu, &SpectrumOverlayMenu::addTnfClicked, this, nullptr);

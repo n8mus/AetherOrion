@@ -130,6 +130,19 @@ public:
     // Max slices reported by radio
     int maxSlices() const { return m_maxSlices; }
 
+    // Max panadapters supported by this radio model.
+    // FLEX-6700: 8 (dual SCU, high-capacity)
+    // FLEX-6600 / FLEX-8600 / AU-520: 4 (dual SCU)
+    // All single-SCU models: 2
+    int maxPanadapters() const {
+        if (m_model.contains("6700"))
+            return 8;
+        if (m_model.contains("6600") || m_model.contains("8600")
+                || m_model.contains("AU-520"))
+            return 4;
+        return 2;
+    }
+
     // Oscillator / RX settings
     QString oscState()     const { return m_oscState; }
     QString oscSetting()   const { return m_oscSetting; }
@@ -256,6 +269,11 @@ signals:
     void panadapterLevelChanged(float minDbm, float maxDbm);
     void panadapterAdded(PanadapterModel* pan);
     void panadapterRemoved(const QString& panId);
+    // Emitted when createPanadapter() is blocked because the radio's pan limit is reached.
+    void panadapterLimitReached(int limit, const QString& model);
+    // Emitted when the radio rejects a slice create command (e.g. limit reached across
+    // all Multi-Flex clients — our local slice count may be below maxSlices()).
+    void sliceCreateFailed(int limit, const QString& model);
     // Emitted when a pan needs xpixels/ypixels pushed (after profile change, reconnect, etc.)
     void panDimensionsNeeded(const QString& panId);
     // Emitted when the radio reports its antenna list (e.g. "ANT1,ANT2,RX_A,RX_B").
