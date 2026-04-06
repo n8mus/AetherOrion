@@ -109,6 +109,9 @@ public:
     void setNr2GainMax(float v);
     void setNr2Qspp(float v);
     void setNr2GainSmooth(float v);
+    void setNr2GainMethod(int method);
+    void setNr2NpeMethod(int method);
+    void setNr2AeFilter(bool on);
 
     // Client-side RN2 (RNNoise neural noise suppression)
     Q_INVOKABLE void setRn2Enabled(bool on);

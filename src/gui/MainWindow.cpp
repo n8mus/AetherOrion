@@ -2946,6 +2946,15 @@ void MainWindow::buildMenuBar()
         connect(dlg, &AetherDspDialog::nr2QsppChanged, this, [this](float v) {
             QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setNr2Qspp(v); });
         });
+        connect(dlg, &AetherDspDialog::nr2GainMethodChanged, this, [this](int m) {
+            QMetaObject::invokeMethod(m_audio, [this, m]() { m_audio->setNr2GainMethod(m); });
+        });
+        connect(dlg, &AetherDspDialog::nr2NpeMethodChanged, this, [this](int m) {
+            QMetaObject::invokeMethod(m_audio, [this, m]() { m_audio->setNr2NpeMethod(m); });
+        });
+        connect(dlg, &AetherDspDialog::nr2AeFilterChanged, this, [this](bool on) {
+            QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setNr2AeFilter(on); });
+        });
         // Wire NR4 parameter signals to AudioEngine
         connect(dlg, &AetherDspDialog::nr4ReductionChanged, this, [this](float v) {
             QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setNr4ReductionAmount(v); });
@@ -6032,6 +6041,24 @@ void MainWindow::showNr2ParamPopup(const QPoint& globalPos)
     auto& s = AppSettings::instance();
     auto* popup = new DspParamPopup(this);
 
+    popup->addRadioGroup("Gain Method", {"Linear", "Log", "Gamma", "Trained"},
+        s.value("NR2GainMethod", "2").toInt(),
+        [this](int id) {
+            auto& s = AppSettings::instance();
+            s.setValue("NR2GainMethod", QString::number(id));
+            s.save();
+            QMetaObject::invokeMethod(m_audio, [this, id]() { m_audio->setNr2GainMethod(id); });
+        });
+
+    popup->addCheckbox("AE Filter",
+        s.value("NR2AeFilter", "True").toString() == "True",
+        [this](bool on) {
+            auto& s = AppSettings::instance();
+            s.setValue("NR2AeFilter", on ? "True" : "False");
+            s.save();
+            QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setNr2AeFilter(on); });
+        });
+
     popup->addSlider("Smoothing",  50, 98,
         static_cast<int>(s.value("NR2GainSmooth", "0.85").toFloat() * 100),
         [](int v) { return QString::number(v / 100.0f, 'f', 2); },
@@ -6061,6 +6088,15 @@ void MainWindow::showNr2ParamPopup(const QPoint& globalPos)
             });
             connect(dlg, &AetherDspDialog::nr2QsppChanged, this, [this](float v) {
                 QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setNr2Qspp(v); });
+            });
+            connect(dlg, &AetherDspDialog::nr2GainMethodChanged, this, [this](int m) {
+                QMetaObject::invokeMethod(m_audio, [this, m]() { m_audio->setNr2GainMethod(m); });
+            });
+            connect(dlg, &AetherDspDialog::nr2NpeMethodChanged, this, [this](int m) {
+                QMetaObject::invokeMethod(m_audio, [this, m]() { m_audio->setNr2NpeMethod(m); });
+            });
+            connect(dlg, &AetherDspDialog::nr2AeFilterChanged, this, [this](bool on) {
+                QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setNr2AeFilter(on); });
             });
             // Wire NR4 parameter signals
             connect(dlg, &AetherDspDialog::nr4ReductionChanged, this, [this](float v) {
@@ -6168,6 +6204,15 @@ void MainWindow::showNr4ParamPopup(const QPoint& globalPos)
             });
             connect(dlg, &AetherDspDialog::nr2QsppChanged, this, [this](float v) {
                 QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setNr2Qspp(v); });
+            });
+            connect(dlg, &AetherDspDialog::nr2GainMethodChanged, this, [this](int m) {
+                QMetaObject::invokeMethod(m_audio, [this, m]() { m_audio->setNr2GainMethod(m); });
+            });
+            connect(dlg, &AetherDspDialog::nr2NpeMethodChanged, this, [this](int m) {
+                QMetaObject::invokeMethod(m_audio, [this, m]() { m_audio->setNr2NpeMethod(m); });
+            });
+            connect(dlg, &AetherDspDialog::nr2AeFilterChanged, this, [this](bool on) {
+                QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setNr2AeFilter(on); });
             });
             connect(dlg, &AetherDspDialog::nr4ReductionChanged, this, [this](float v) {
                 QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setNr4ReductionAmount(v); });

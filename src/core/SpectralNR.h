@@ -46,6 +46,18 @@ public:
     float qspp() const         { return m_qSpp.load(); }
     float gainSmooth() const    { return m_gainSmooth.load(); }
 
+    // Gain method: 0=Linear, 1=Log, 2=Gamma (default, MMSE-LSA), 3=Trained
+    void setGainMethod(int m)   { m_gainMethod.store(m); }
+    int  gainMethod() const     { return m_gainMethod.load(); }
+
+    // NPE method: 0=OSMS (default), 1=MMSE, 2=NSTAT
+    void setNpeMethod(int m)    { m_npeMethod.store(m); }
+    int  npeMethod() const      { return m_npeMethod.load(); }
+
+    // AE filter: artifact elimination post-processing
+    void setAeFilter(bool on)   { m_aeFilter.store(on); }
+    bool aeFilter() const       { return m_aeFilter.load(); }
+
     int fftSize() const { return m_fftSize; }
 #ifdef HAVE_FFTW3
     bool hasPlanFailed() const { return m_planFailed; }
@@ -161,16 +173,32 @@ private:
     std::atomic<double> m_gainMax{1.5};     // cap gain — noise REDUCTION, not amplification
     std::atomic<double> m_qSpp{0.2};        // speech presence probability prior
     std::atomic<double> m_gainSmooth{0.85}; // temporal gain smoothing (anti-musical-noise)
+    std::atomic<int>    m_gainMethod{2};    // 0=Linear, 1=Log, 2=Gamma, 3=Trained
+    std::atomic<int>    m_npeMethod{0};     // 0=OSMS, 1=MMSE, 2=NSTAT
+    std::atomic<bool>   m_aeFilter{true};   // artifact elimination post-processing
+
+    // AE filter state (per-bin)
+    std::vector<double> m_aeMask;           // smoothed AE gain mask
 
     // ── Internal methods ───────────────────────────────────────────────
     void initWindow();
     void processFrame();
 
-    // OSMS noise estimation
+    // Noise estimation (dispatches on m_npeMethod)
     void estimateNoise();
+    void estimateNoiseOsms();   // method 0: Optimal Smoothing Minimum Statistics
+    void estimateNoiseMmse();   // method 1: MMSE noise estimator
+    void estimateNoiseNstat();  // method 2: Non-stationary noise estimator
 
-    // Ephraim-Malah MMSE-LSA gain
+    // Spectral gain computation (dispatches on m_gainMethod)
     void computeGain();
+    void computeGainLinear();   // method 0
+    void computeGainLog();      // method 1
+    void computeGainGamma();    // method 2 (Ephraim-Malah MMSE-LSA)
+    void computeGainTrained();  // method 3
+
+    // Artifact elimination post-processing
+    void applyAeFilter();
 
     // Modified Bessel functions of the first kind
     static double bessI0(double x);

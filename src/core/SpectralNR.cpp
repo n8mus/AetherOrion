@@ -92,6 +92,7 @@ SpectralNR::SpectralNR(int fftSize, int sampleRate)
     m_mask.resize(m_msize, 1.0);
     m_smoothMask.resize(m_msize, 1.0);
     m_lambdaY.resize(m_msize);
+    m_aeMask.resize(m_msize, 1.0);
 
     initWindow();
     reset();
@@ -146,6 +147,7 @@ void SpectralNR::reset()
     std::fill(m_prevGamma.begin(), m_prevGamma.end(), 1.0);
     std::fill(m_mask.begin(), m_mask.end(), 1.0);
     std::fill(m_smoothMask.begin(), m_smoothMask.end(), 1.0);
+    std::fill(m_aeMask.begin(), m_aeMask.end(), 1.0);
 
     m_alphaC = 1.0;
     m_subwc = 1;
@@ -341,8 +343,12 @@ void SpectralNR::processFrame()
     // Noise estimation (OSMS)
     estimateNoise();
 
-    // Compute spectral gain mask (Ephraim-Malah)
+    // Compute spectral gain mask
     computeGain();
+
+    // Artifact elimination post-processing (smooths gain mask to reduce musical noise)
+    if (m_aeFilter.load())
+        applyAeFilter();
 
     // Temporal gain smoothing — prevents rapid per-bin fluctuations
     // that cause "musical noise" clicks and glitches.
@@ -385,9 +391,20 @@ void SpectralNR::processFrame()
 #endif
 }
 
-// ─── OSMS Noise Estimation (from WDSP LambdaD) ────────────────────────────────
+// ─── Noise Estimation (dispatches on m_npeMethod) ─────────────────────────────
 
 void SpectralNR::estimateNoise()
+{
+    switch (m_npeMethod.load()) {
+    case 1:  estimateNoiseMmse();  return;
+    case 2:  estimateNoiseNstat(); return;
+    default: estimateNoiseOsms();  return;
+    }
+}
+
+// ─── OSMS Noise Estimation (from WDSP LambdaD) ────────────────────────────────
+
+void SpectralNR::estimateNoiseOsms()
 {
     // Smoothing time constant (matches WDSP)
     const double tau = -128.0 / 8000.0 / std::log(0.7);
@@ -508,9 +525,21 @@ void SpectralNR::estimateNoise()
         m_noisePsd[k] = m_pMin[k];
 }
 
-// ─── Ephraim-Malah MMSE-LSA Gain ──────────────────────────────────────────────
+// ─── Spectral Gain Computation (dispatches on m_gainMethod) ───────────────────
 
 void SpectralNR::computeGain()
+{
+    switch (m_gainMethod.load()) {
+    case 0:  computeGainLinear();  return;
+    case 1:  computeGainLog();     return;
+    case 3:  computeGainTrained(); return;
+    default: computeGainGamma();   return;
+    }
+}
+
+// ─── Ephraim-Malah MMSE-LSA Gain (Gamma method — default) ────────────────────
+
+void SpectralNR::computeGainGamma()
 {
     constexpr double gf1p5 = 0.8862269254527580;  // sqrt(pi) / 2
 
@@ -551,6 +580,214 @@ void SpectralNR::computeGain()
         m_mask[k] = gain;
         m_prevGamma[k] = gamma;
         m_prevMask[k] = gain;
+    }
+}
+
+// ─── Linear Gain Method ───────────────────────────────────────────────────────
+// Simple Wiener filter: G = xi / (1 + xi), operating on linear amplitude.
+// Reference: WDSP emnr.c gain_method == 0
+
+void SpectralNR::computeGainLinear()
+{
+    for (int k = 0; k < m_msize; ++k) {
+        double lambdaD = std::max(m_noisePsd[k], EpsFloor);
+
+        // A posteriori SNR
+        double gamma = std::min(m_lambdaY[k] / lambdaD, GammaMax);
+
+        // A priori SNR (decision-directed)
+        double epsHat = Alpha * m_prevMask[k] * m_prevMask[k] * m_prevGamma[k]
+                      + (1.0 - Alpha) * std::max(gamma - 1.0, 0.0);
+        epsHat = std::max(epsHat, XiMin);
+
+        // Wiener gain: xi / (1 + xi)
+        double gain = epsHat / (1.0 + epsHat);
+
+        // Clamp and NaN guard
+        const double gmax = m_gainMax.load();
+        if (gain > gmax) gain = gmax;
+        if (gain != gain) gain = 0.01;
+
+        m_mask[k] = gain;
+        m_prevGamma[k] = gamma;
+        m_prevMask[k] = gain;
+    }
+}
+
+// ─── Log-Spectral Amplitude Gain Method ───────────────────────────────────────
+// Ephraim-Malah log-spectral amplitude estimator.
+// Reference: WDSP emnr.c gain_method == 1
+
+void SpectralNR::computeGainLog()
+{
+    for (int k = 0; k < m_msize; ++k) {
+        double lambdaD = std::max(m_noisePsd[k], EpsFloor);
+
+        double gamma = std::min(m_lambdaY[k] / lambdaD, GammaMax);
+
+        double epsHat = Alpha * m_prevMask[k] * m_prevMask[k] * m_prevGamma[k]
+                      + (1.0 - Alpha) * std::max(gamma - 1.0, 0.0);
+        epsHat = std::max(epsHat, XiMin);
+
+        // Log-spectral amplitude: G = xi/(1+xi) * exp(0.5 * E1(v))
+        // where v = xi*gamma/(1+xi) and E1 is the exponential integral.
+        // Approximate E1(v) ≈ -log(v) - 0.5772 for small v,
+        // E1(v) ≈ exp(-v)/v for large v.
+        double v = epsHat * gamma / (1.0 + epsHat);
+        double expInt;
+        if (v < 0.001)
+            expInt = -std::log(std::max(v, EpsFloor)) - 0.5772156649;
+        else if (v > 20.0)
+            expInt = std::exp(-v) / v;
+        else {
+            // Series/continued fraction for intermediate values
+            // Use the relation E1(v) = -Ei(-v) with rational approximation
+            double sum = 0.0;
+            double term = 1.0;
+            for (int n = 1; n <= 50; ++n) {
+                term *= -v / n;
+                sum += term / n;
+            }
+            expInt = -0.5772156649 - std::log(std::max(v, EpsFloor)) - sum;
+        }
+
+        double gain = (epsHat / (1.0 + epsHat)) * std::exp(0.5 * expInt);
+
+        const double gmax = m_gainMax.load();
+        if (gain > gmax) gain = gmax;
+        if (gain != gain) gain = 0.01;
+
+        m_mask[k] = gain;
+        m_prevGamma[k] = gamma;
+        m_prevMask[k] = gain;
+    }
+}
+
+// ─── Trained Gain Method ──────────────────────────────────────────────────────
+// Uses a piecewise-linear lookup derived from speech/noise statistics.
+// The table approximates trained noise suppression curves from WDSP.
+// Reference: WDSP emnr.c gain_method == 3
+
+void SpectralNR::computeGainTrained()
+{
+    for (int k = 0; k < m_msize; ++k) {
+        double lambdaD = std::max(m_noisePsd[k], EpsFloor);
+
+        double gamma = std::min(m_lambdaY[k] / lambdaD, GammaMax);
+
+        double epsHat = Alpha * m_prevMask[k] * m_prevMask[k] * m_prevGamma[k]
+                      + (1.0 - Alpha) * std::max(gamma - 1.0, 0.0);
+        epsHat = std::max(epsHat, XiMin);
+
+        // Trained suppression curve: piecewise function of a-priori SNR (dB)
+        double xiDb = 10.0 * std::log10(std::max(epsHat, EpsFloor));
+
+        double gain;
+        if (xiDb < -20.0)
+            gain = 0.01;          // heavy suppression in deep noise
+        else if (xiDb < -10.0)
+            gain = 0.01 + 0.049 * (xiDb + 20.0) / 10.0;  // 0.01 → 0.06
+        else if (xiDb < 0.0)
+            gain = 0.06 + 0.34 * (xiDb + 10.0) / 10.0;   // 0.06 → 0.40
+        else if (xiDb < 10.0)
+            gain = 0.40 + 0.50 * xiDb / 10.0;             // 0.40 → 0.90
+        else
+            gain = 0.90 + 0.10 * std::min((xiDb - 10.0) / 10.0, 1.0); // → 1.0
+
+        const double gmax = m_gainMax.load();
+        if (gain > gmax) gain = gmax;
+        if (gain != gain) gain = 0.01;
+
+        m_mask[k] = gain;
+        m_prevGamma[k] = gamma;
+        m_prevMask[k] = gain;
+    }
+}
+
+// ─── MMSE Noise Estimator (NPE method 1) ─────────────────────────────────────
+// Simplified MMSE noise power estimation: uses decision-directed smoothing
+// of the periodogram weighted by speech absence probability.
+// Reference: WDSP emnr.c npest == 1
+
+void SpectralNR::estimateNoiseMmse()
+{
+    for (int k = 0; k < m_msize; ++k) {
+        double sigma = std::max(m_noisePsd[k], EpsFloor);
+
+        // A posteriori SNR
+        double gamma = m_lambdaY[k] / sigma;
+
+        // Speech absence probability (simple threshold-based)
+        double pSa;
+        if (gamma < 1.5)
+            pSa = 0.95;   // likely noise-only
+        else if (gamma < 3.0)
+            pSa = 0.5;
+        else
+            pSa = 0.05;   // likely speech present
+
+        // MMSE update: weight between current observation and previous estimate
+        // When speech is absent (pSa high), trust the observation more
+        double alpha = 0.98 * (1.0 - pSa) + 0.7 * pSa;
+        m_noisePsd[k] = alpha * m_noisePsd[k] + (1.0 - alpha) * m_lambdaY[k];
+    }
+}
+
+// ─── Non-Stationary Noise Estimator (NPE method 2) ───────────────────────────
+// Tracks noise in non-stationary environments using a two-pass approach:
+// fast adaptation when SNR is low, slow tracking otherwise.
+// Reference: WDSP emnr.c npest == 2
+
+void SpectralNR::estimateNoiseNstat()
+{
+    // Global SNR estimate for adaptation rate
+    double sumY = 0.0, sumN = 0.0;
+    for (int k = 0; k < m_msize; ++k) {
+        sumY += m_lambdaY[k];
+        sumN += m_noisePsd[k];
+    }
+    if (sumN < EpsFloor) sumN = EpsFloor;
+    double globalSnr = sumY / sumN;
+
+    // Adaptation rate: faster when global SNR is low (noise-dominated)
+    double alphaFast = 0.7;
+    double alphaSlow = 0.995;
+    double blend = std::min(std::max((globalSnr - 1.0) / 3.0, 0.0), 1.0);
+    double alpha = alphaFast + blend * (alphaSlow - alphaFast);
+
+    for (int k = 0; k < m_msize; ++k) {
+        double localGamma = m_lambdaY[k] / std::max(m_noisePsd[k], EpsFloor);
+
+        // Per-bin adaptation: if local SNR is low, use faster update
+        double alphaK = alpha;
+        if (localGamma < 1.5)
+            alphaK = std::min(alphaK, 0.85);
+
+        m_noisePsd[k] = alphaK * m_noisePsd[k] + (1.0 - alphaK) * m_lambdaY[k];
+    }
+}
+
+// ─── Artifact Elimination Filter ──────────────────────────────────────────────
+// Smooths the gain mask across frequency bins to reduce musical noise
+// artifacts (isolated spectral peaks in the gain). Uses a 3-bin weighted
+// average followed by a minimum constraint with neighboring bins.
+// Reference: WDSP emnr.c ae_run code path
+
+void SpectralNR::applyAeFilter()
+{
+    // Pass 1: 3-bin weighted smoothing of the gain mask
+    // Store smoothed result in m_aeMask to avoid modifying m_mask during iteration
+    m_aeMask[0] = 0.75 * m_mask[0] + 0.25 * m_mask[1];
+    for (int k = 1; k < m_msize - 1; ++k)
+        m_aeMask[k] = 0.25 * m_mask[k - 1] + 0.50 * m_mask[k] + 0.25 * m_mask[k + 1];
+    m_aeMask[m_msize - 1] = 0.25 * m_mask[m_msize - 2] + 0.75 * m_mask[m_msize - 1];
+
+    // Pass 2: constrain each bin's gain to be no more than 1.5× its
+    // smoothed neighbor average — eliminates isolated spectral peaks
+    for (int k = 0; k < m_msize; ++k) {
+        double limit = 1.5 * m_aeMask[k];
+        if (m_mask[k] > limit)
+            m_mask[k] = limit;
     }
 }
 

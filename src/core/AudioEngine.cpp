@@ -259,6 +259,9 @@ void AudioEngine::setNr2Enabled(bool on)
         m_nr2->setGainMax(s.value("NR2GainMax", "1.50").toFloat());
         m_nr2->setGainSmooth(s.value("NR2GainSmooth", "0.85").toFloat());
         m_nr2->setQspp(s.value("NR2Qspp", "0.20").toFloat());
+        m_nr2->setGainMethod(s.value("NR2GainMethod", "2").toInt());
+        m_nr2->setNpeMethod(s.value("NR2NpeMethod", "0").toInt());
+        m_nr2->setAeFilter(s.value("NR2AeFilter", "True").toString() == "True");
         m_nr2Enabled = true;
     } else {
         m_nr2Enabled = false;
@@ -271,6 +274,9 @@ void AudioEngine::setNr2Enabled(bool on)
 void AudioEngine::setNr2GainMax(float v)    { if (m_nr2) m_nr2->setGainMax(v); }
 void AudioEngine::setNr2Qspp(float v)      { if (m_nr2) m_nr2->setQspp(v); }
 void AudioEngine::setNr2GainSmooth(float v) { if (m_nr2) m_nr2->setGainSmooth(v); }
+void AudioEngine::setNr2GainMethod(int m)   { if (m_nr2) m_nr2->setGainMethod(m); }
+void AudioEngine::setNr2NpeMethod(int m)    { if (m_nr2) m_nr2->setNpeMethod(m); }
+void AudioEngine::setNr2AeFilter(bool on)   { if (m_nr2) m_nr2->setAeFilter(on); }
 
 #ifdef HAVE_SPECBLEACH
 
