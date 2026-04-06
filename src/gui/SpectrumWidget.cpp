@@ -662,24 +662,31 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
     // the black threshold to sit just above it. This replaces the radio's
     // auto_black which targets SmartSDR's different rendering engine.
     if (m_wfAutoBlack && !m_transmitting) {
-        // Estimate noise floor from incoming tiles.
+        // Estimate noise floor from incoming tiles using a two-pass trimmed mean.
         // Freeze during TX; threshold is restored to pre-TX value on TX→RX transition.
-        // Cheaper than full sort: sample every 8th bin.
+        // Pass 1: compute overall mean (sampled every 8th bin for speed).
         float sum = 0;
-        float minVal = 1e9f, maxVal = -1e9f;
         int count = 0;
         for (int i = 0; i < binsIntensity.size(); i += 8) {
-            float v = binsIntensity[i];
-            sum += v;
-            if (v < minVal) minVal = v;
-            if (v > maxVal) maxVal = v;
+            sum += binsIntensity[i];
             count++;
         }
         if (count > 0) {
-            float mean = sum / count;
-            // Use mean as noise floor estimate (most bins are noise)
-            // Set threshold below mean so noise shows as faint dark blue
-            float target = mean - 3.0f;
+            const float mean = sum / count;
+            // Pass 2: mean of bins at or below overall mean — filters out
+            // strong signals that would pull the noise floor estimate upward.
+            float noiseSum = 0;
+            int noiseCount = 0;
+            for (int i = 0; i < binsIntensity.size(); i += 8) {
+                if (binsIntensity[i] <= mean) {
+                    noiseSum += binsIntensity[i];
+                    noiseCount++;
+                }
+            }
+            const float noiseFloor = (noiseCount > 0) ? (noiseSum / noiseCount) : mean;
+            // Use noise floor directly as threshold — noise maps to black,
+            // signals above stand out with better contrast.
+            const float target = noiseFloor;
             // Smooth to prevent jitter
             m_autoBlackThresh = 0.95f * m_autoBlackThresh + 0.05f * target;
         }
