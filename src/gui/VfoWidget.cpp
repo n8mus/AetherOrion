@@ -1856,6 +1856,7 @@ void VfoWidget::setSlice(SliceModel* slice)
 #endif
         m_nrfBtn->setVisible(!isFm);
         relayoutDspGrid();
+        updateFilterLabel();
         if (m_tabStack->isVisible()) adjustSize();
     });
     // Filter
@@ -2355,7 +2356,14 @@ void VfoWidget::updateFreqLabel()
 void VfoWidget::updateFilterLabel()
 {
     if (!m_slice) return;
-    int w = m_slice->filterHigh() - m_slice->filterLow();
+    const QString& mode = m_slice->mode();
+    int w;
+    if (mode == "USB" || mode == "DIGU" || mode == "FDV")
+        w = m_slice->filterHigh();
+    else if (mode == "LSB" || mode == "DIGL")
+        w = std::abs(m_slice->filterLow());
+    else
+        w = m_slice->filterHigh() - m_slice->filterLow();
     if (w >= 1000)
         m_filterWidthLbl->setText(QString("%1K").arg(w / 1000.0, 0, 'f', 1));
     else

@@ -83,7 +83,7 @@ private:
     void updateOffsetDirButtons();
     void applyOffsetDir(const QString& dir);
     static QString formatHz(int hz);
-    static QString formatFilterWidth(int lo, int hi);
+    static QString formatFilterWidth(int lo, int hi, const QString& mode = QString());
     static QString formatStepLabel(int hz);
 
     SliceModel* m_slice{nullptr};

@@ -985,7 +985,7 @@ void RxApplet::connectSlice(SliceModel* s)
     });
 
     // Filter width label
-    m_filterWidthLbl->setText(formatFilterWidth(s->filterLow(), s->filterHigh()));
+    m_filterWidthLbl->setText(formatFilterWidth(s->filterLow(), s->filterHigh(), s->mode()));
 
     // QSK
     {
@@ -1073,11 +1073,13 @@ void RxApplet::connectSlice(SliceModel* s)
     m_filterPassband->setMode(s->mode());
     connect(s, &SliceModel::filterChanged, this, [this](int lo, int hi) {
         updateFilterButtons();
-        m_filterWidthLbl->setText(formatFilterWidth(lo, hi));
+        m_filterWidthLbl->setText(formatFilterWidth(lo, hi, m_slice ? m_slice->mode() : QString()));
         m_filterPassband->setFilter(lo, hi);
     });
     connect(s, &SliceModel::modeChanged, this, [this](const QString& mode) {
         m_filterPassband->setMode(mode);
+        if (m_slice)
+            m_filterWidthLbl->setText(formatFilterWidth(m_slice->filterLow(), m_slice->filterHigh(), mode));
     });
 
     // AGC mode
@@ -1246,9 +1248,15 @@ QString RxApplet::formatHz(int hz)
     return (hz >= 0 ? "+" : "") + QString::number(hz) + " Hz";
 }
 
-QString RxApplet::formatFilterWidth(int lo, int hi)
+QString RxApplet::formatFilterWidth(int lo, int hi, const QString& mode)
 {
-    const int w = hi - lo;
+    int w;
+    if (mode == "USB" || mode == "DIGU" || mode == "FDV")
+        w = hi;
+    else if (mode == "LSB" || mode == "DIGL")
+        w = std::abs(lo);
+    else
+        w = hi - lo;
     if (w <= 0) return "?";
     if (w >= 1000) return QString::number(w / 1000.0, 'f', 1) + "K";
     return QString::number(w);
