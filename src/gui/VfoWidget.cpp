@@ -427,11 +427,11 @@ void VfoWidget::buildUI()
         " border-radius: 3px; color: #00e5ff; font-size: 22px;"
         " font-weight: bold; padding: 0 2px 0 0; }");
     m_freqEdit->setAlignment(Qt::AlignRight);
-    // Size to fit "000.000.000" at the label font size
+    // Size to fit "0000.000.000" at the label font size (4-digit MHz for XVTR/SHF)
     QFont labelFont;
     labelFont.setPixelSize(26);
     labelFont.setBold(true);
-    const int stackW = QFontMetrics(labelFont).horizontalAdvance("000.000.000") + 8;
+    const int stackW = QFontMetrics(labelFont).horizontalAdvance("0000.000.000") + 8;
     m_freqStack->setFixedWidth(stackW);
     m_freqEdit->setPlaceholderText("MHz (e.g. 14.225)");
     m_freqStack->addWidget(m_freqEdit);
