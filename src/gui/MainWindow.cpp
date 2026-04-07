@@ -1004,8 +1004,8 @@ MainWindow::MainWindow(QWidget* parent)
 
     // ── CW decoder: feed audio ──────────────────────────────────────────
     // Audio feed is global (same audio for all pans).
-    // Text/stats output is wired to m_panApplet via setActivePanApplet()
-    // which re-wires on active pan change.
+    // Text/stats output is routed to the pan owning the active slice
+    // via routeCwDecoderOutput(), which re-wires on active slice change (#864).
     connect(m_radioModel.panStream(), &PanadapterStream::audioDataReady,
             &m_cwDecoder, &CwDecoder::feedAudio);
 
@@ -2538,7 +2538,7 @@ void MainWindow::buildMenuBar()
             auto* s = activeSlice();
             if (s) {
                 bool isCw = (s->mode() == "CW" || s->mode() == "CWL");
-                if (m_panApplet) m_panApplet->setCwPanelVisible(isCw && decodeOn);
+                if (m_cwDecoderApplet) m_cwDecoderApplet->setCwPanelVisible(isCw && decodeOn);
             }
 
             // If audio compression changed, recreate the RX audio stream
@@ -3499,7 +3499,7 @@ void MainWindow::buildUI()
             this, [this](const QString& panId) {
         m_radioModel.setActivePanId(panId);
 
-        // Update m_panApplet and CW decoder wiring for the new active pan
+        // Update m_panApplet for the new active pan
         if (auto* applet = m_panStack->panadapter(panId))
             setActivePanApplet(applet);
 
@@ -3508,7 +3508,8 @@ void MainWindow::buildUI()
             if (sl->panId() == panId) {
                 bool isCw = (sl->mode() == "CW" || sl->mode() == "CWL");
                 bool decodeOn = AppSettings::instance().value("CwDecodeOverlay", "True").toString() == "True";
-                if (m_panApplet) m_panApplet->setCwPanelVisible(isCw && decodeOn);
+                if (auto* applet = m_panStack->panadapter(panId))
+                    applet->setCwPanelVisible(isCw && decodeOn);
                 if (isCw && !m_cwDecoder.isRunning())
                     m_cwDecoder.start();
                 else if (!isCw && m_cwDecoder.isRunning())
@@ -4218,7 +4219,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
             if (sl) {
                 bool isCw = (sl->mode() == "CW" || sl->mode() == "CWL");
                 bool decodeOn = settings.value("CwDecodeOverlay", "True").toString() == "True";
-                if (m_panApplet) m_panApplet->setCwPanelVisible(isCw && decodeOn);
+                if (m_cwDecoderApplet) m_cwDecoderApplet->setCwPanelVisible(isCw && decodeOn);
                 if (isCw && !m_cwDecoder.isRunning())
                     m_cwDecoder.start();
             }
@@ -4352,7 +4353,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
         if (s->sliceId() == m_activeSliceId) {
             bool isCw = (mode == "CW" || mode == "CWL");
             bool decodeOn = AppSettings::instance().value("CwDecodeOverlay", "True").toString() == "True";
-            if (m_panApplet) m_panApplet->setCwPanelVisible(isCw && decodeOn);
+            if (m_cwDecoderApplet) m_cwDecoderApplet->setCwPanelVisible(isCw && decodeOn);
             if (isCw && !m_cwDecoder.isRunning())
                 m_cwDecoder.start();
             else if (!isCw && m_cwDecoder.isRunning())
@@ -4613,10 +4614,13 @@ void MainWindow::setActiveSlice(int sliceId)
     // Update filter limits for the active slice's mode
     updateFilterLimitsForMode(s->mode());
 
+    // Route CW decoder output to the pan owning this slice (#864)
+    routeCwDecoderOutput();
+
     // Show/hide CW decode panel for the active slice's current mode
     bool isCw = (s->mode() == "CW" || s->mode() == "CWL");
     bool decodeOn = AppSettings::instance().value("CwDecodeOverlay", "True").toString() == "True";
-    if (m_panApplet) m_panApplet->setCwPanelVisible(isCw && decodeOn);
+    if (m_cwDecoderApplet) m_cwDecoderApplet->setCwPanelVisible(isCw && decodeOn);
     if (isCw && !m_cwDecoder.isRunning())
         m_cwDecoder.start();
     else if (!isCw && m_cwDecoder.isRunning())
@@ -4714,36 +4718,55 @@ void MainWindow::updateSplitState()
 void MainWindow::setActivePanApplet(PanadapterApplet* applet)
 {
     if (applet == m_panApplet) return;
+    m_panApplet = applet;
 
-    // Disconnect CW decoder from old applet (QPointer guards against destroyed widget)
-    if (m_panApplet) {
+    // Re-route CW decoder output: the active slice may now belong to this pan
+    routeCwDecoderOutput();
+}
+
+// Route CW decoder text/stats output to the pan that owns the active slice,
+// so decoded text appears in the correct pan's CW widget (#864).
+void MainWindow::routeCwDecoderOutput()
+{
+    // Determine which applet should receive CW decoder output:
+    // the pan that owns the active audio slice (whose audio feeds the decoder).
+    PanadapterApplet* target = nullptr;
+    if (auto* s = activeSlice(); s && m_panStack && !s->panId().isEmpty())
+        target = m_panStack->panadapter(s->panId());
+    if (!target)
+        target = m_panApplet;  // fallback to active pan
+
+    if (target == m_cwDecoderApplet) return;
+
+    // Disconnect from old applet
+    if (m_cwDecoderApplet) {
         disconnect(&m_cwDecoder, &CwDecoder::textDecoded,
-                   m_panApplet, &PanadapterApplet::appendCwText);
+                   m_cwDecoderApplet, &PanadapterApplet::appendCwText);
         disconnect(&m_cwDecoder, &CwDecoder::statsUpdated,
-                   m_panApplet, &PanadapterApplet::setCwStats);
-        if (auto* pb = m_panApplet->lockPitchButton())
+                   m_cwDecoderApplet, &PanadapterApplet::setCwStats);
+        if (auto* pb = m_cwDecoderApplet->lockPitchButton())
             disconnect(pb, &QPushButton::toggled,
                        &m_cwDecoder, &CwDecoder::lockPitch);
-        if (auto* sb = m_panApplet->lockSpeedButton())
+        if (auto* sb = m_cwDecoderApplet->lockSpeedButton())
             disconnect(sb, &QPushButton::toggled,
                        &m_cwDecoder, &CwDecoder::lockSpeed);
-        disconnect(m_panApplet, &PanadapterApplet::pitchRangeChanged,
+        disconnect(m_cwDecoderApplet, &PanadapterApplet::pitchRangeChanged,
                    &m_cwDecoder, &CwDecoder::setPitchRange);
     }
 
-    m_panApplet = applet;
+    m_cwDecoderApplet = target;
 
-    // Reconnect CW decoder to new applet
-    if (m_panApplet) {
+    // Connect to new applet
+    if (m_cwDecoderApplet) {
         connect(&m_cwDecoder, &CwDecoder::textDecoded,
-                m_panApplet, &PanadapterApplet::appendCwText);
+                m_cwDecoderApplet, &PanadapterApplet::appendCwText);
         connect(&m_cwDecoder, &CwDecoder::statsUpdated,
-                m_panApplet, &PanadapterApplet::setCwStats);
-        connect(m_panApplet->lockPitchButton(), &QPushButton::toggled,
+                m_cwDecoderApplet, &PanadapterApplet::setCwStats);
+        connect(m_cwDecoderApplet->lockPitchButton(), &QPushButton::toggled,
                 &m_cwDecoder, &CwDecoder::lockPitch);
-        connect(m_panApplet->lockSpeedButton(), &QPushButton::toggled,
+        connect(m_cwDecoderApplet->lockSpeedButton(), &QPushButton::toggled,
                 &m_cwDecoder, &CwDecoder::lockSpeed);
-        connect(m_panApplet, &PanadapterApplet::pitchRangeChanged,
+        connect(m_cwDecoderApplet, &PanadapterApplet::pitchRangeChanged,
                 &m_cwDecoder, &CwDecoder::setPitchRange);
     }
 }
