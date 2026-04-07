@@ -672,14 +672,8 @@ MainWindow::MainWindow(QWidget* parent)
             m_daxBridge->setTransmitting(tx);
 #endif
 
-        // Update TX status bar indicator
-        if (tx) {
-            m_txIndicator->setText("TX");
-            m_txIndicator->setStyleSheet("QLabel { color: white; background: #c03030; font-weight: bold; font-size: 21px; border-radius: 4px; padding: 0px 1px; }");
-        } else {
-            m_txIndicator->setText("TX");
-            m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
-        }
+        // TX indicator is driven by radioTransmittingChanged (see below) so that
+        // it lights up for external PTT and Multi-Flex TX, not just local MOX.
         // On RX resume, native tiles will restart and m_hasNativeWaterfall
         // will be set again by the first arriving tile.
 #ifdef HAVE_RADE
@@ -709,11 +703,22 @@ MainWindow::MainWindow(QWidget* parent)
         }
     });
 
-    // Raw radio TX state for DAX passthrough — allows DAX TX audio to flow
-    // even when an external app (WSJT-X) triggers PTT (#752).
+    // Raw radio TX state: fired for every interlock state=TRANSMITTING regardless
+    // of TX ownership. Used for DAX passthrough (#752) and the TX status bar
+    // indicator — moxChanged is ownership-gated so it misses external PTT and
+    // Multi-Flex TX from other clients.
     connect(&m_radioModel, &RadioModel::radioTransmittingChanged,
             this, [this](bool tx) {
         m_audio->setRadioTransmitting(tx);
+        if (tx) {
+            m_txIndicator->setStyleSheet(
+                "QLabel { color: white; background: #c03030; font-weight: bold; "
+                "font-size: 21px; border-radius: 4px; padding: 0px 1px; }");
+        } else {
+            m_txIndicator->setStyleSheet(
+                "QLabel { color: rgba(255,255,255,128); font-weight: bold; "
+                "font-size: 21px; }");
+        }
     });
 
     // Sync show-TX-in-waterfall setting to all spectrum widgets
