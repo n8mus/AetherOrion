@@ -15,6 +15,7 @@
 #include "core/CwDecoder.h"
 #include "core/DxClusterClient.h"
 #include "core/WsjtxClient.h"
+#include "core/SpotCollectorClient.h"
 #include "core/PotaClient.h"
 #ifdef HAVE_WEBSOCKETS
 #include "core/FreeDvClient.h"
@@ -156,6 +157,7 @@ private:
     DxClusterClient*   m_dxCluster{nullptr};
     DxClusterClient*   m_rbnClient{nullptr};
     WsjtxClient*       m_wsjtxClient{nullptr};
+    SpotCollectorClient* m_spotCollectorClient{nullptr};
     PotaClient*        m_potaClient{nullptr};
 #ifdef HAVE_WEBSOCKETS
     FreeDvClient*      m_freedvClient{nullptr};
