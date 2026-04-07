@@ -15,6 +15,7 @@
 #include <QClipboard>
 #include <QApplication>
 #include <QTimer>
+#include <QMenu>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QJsonDocument>
@@ -60,6 +61,32 @@ TitleBar::TitleBar(QWidget* parent)
         m_heartbeat->setStyleSheet(m_alarmRed
             ? "QLabel { background: #cc2020; border-radius: 5px; }"
             : "QLabel { background: #404858; border-radius: 5px; }");
+    });
+
+    // Load persisted blink preference (default: enabled)
+    m_blinkEnabled = AppSettings::instance()
+        .value("HeartbeatBlinkEnabled", "True").toString() == "True";
+
+    // Right-click on the indicator to toggle blink on/off without opening a menu
+    m_heartbeat->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_heartbeat, &QWidget::customContextMenuRequested,
+            this, [this](const QPoint& pos) {
+        // Heap-allocate with WA_DeleteOnClose so the menu outlives this lambda.
+        // Use popup() not exec() — exec() creates a nested event loop which can
+        // allow network/connection events to be processed out of order while the
+        // menu is open. popup() is non-blocking and safe during connection setup.
+        QMenu* menu = new QMenu(this);
+        menu->setAttribute(Qt::WA_DeleteOnClose);
+        QAction* blinkAction = menu->addAction("Blink status indicator");
+        blinkAction->setCheckable(true);
+        blinkAction->setChecked(m_blinkEnabled);
+        connect(blinkAction, &QAction::triggered, this, [this](bool checked) {
+            setBlinkEnabled(checked);
+            AppSettings::instance().setValue("HeartbeatBlinkEnabled", checked ? "True" : "False");
+            AppSettings::instance().save();
+            emit blinkEnabledChanged(checked);
+        });
+        menu->popup(m_heartbeat->mapToGlobal(pos));
     });
 
     // On Linux/Windows the menu bar occupies the left side, so add a stretch
@@ -498,7 +525,10 @@ void TitleBar::onHeartbeat()
     m_alarmRed = false;
     m_heartbeat->setStyleSheet(
         "QLabel { background: #20c060; border-radius: 5px; }");
-    m_heartbeatOffTimer->start();
+    if (m_blinkEnabled) {
+        m_heartbeatOffTimer->start();  // flash green → gray after 100ms
+    }
+    // When blink is off: stays static green — no timer, no animation
 }
 
 void TitleBar::onHeartbeatLost()
@@ -506,7 +536,47 @@ void TitleBar::onHeartbeatLost()
     m_missedBeats++;
     if (m_missedBeats >= 3 && !m_heartbeatAlarmTimer->isActive()) {
         m_heartbeatOffTimer->stop();
-        m_heartbeatAlarmTimer->start();
+        if (m_blinkEnabled) {
+            m_heartbeatAlarmTimer->start();  // blinking red ↔ gray every 500ms
+        } else {
+            // Static red — alarm timer is NEVER started.
+            // Indicator stays red until the next successful ping restores connection.
+            // This is intentional and safety-critical: contest operators must see
+            // connection loss clearly, even with blink disabled.
+            m_alarmRed = true;
+            m_heartbeat->setStyleSheet(
+                "QLabel { background: #cc2020; border-radius: 5px; }");
+        }
+    }
+}
+
+void TitleBar::setBlinkEnabled(bool enabled)
+{
+    if (m_blinkEnabled == enabled) return;
+    m_blinkEnabled = enabled;
+
+    if (enabled) {
+        // Resume alarm blink immediately if currently in alarm state (m_missedBeats >= 3).
+        // Without this, re-enabling blink while connection is lost leaves the indicator
+        // static red until the next onHeartbeatLost() call increments the counter again.
+        if (m_missedBeats >= 3 && !m_heartbeatAlarmTimer->isActive()) {
+            m_heartbeatAlarmTimer->start();
+        }
+        return;
+    }
+
+    // Immediately reconcile mid-session: stop any active animation and freeze state
+    if (m_heartbeatAlarmTimer->isActive()) {
+        // Was blinking red — freeze to solid red (connection lost)
+        m_heartbeatAlarmTimer->stop();
+        m_alarmRed = true;
+        m_heartbeat->setStyleSheet(
+            "QLabel { background: #cc2020; border-radius: 5px; }");
+    } else if (m_heartbeatOffTimer->isActive()) {
+        // Was mid green-flash — freeze to solid green (connected)
+        m_heartbeatOffTimer->stop();
+        m_heartbeat->setStyleSheet(
+            "QLabel { background: #20c060; border-radius: 5px; }");
     }
 }
 
