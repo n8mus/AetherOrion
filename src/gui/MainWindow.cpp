@@ -41,6 +41,7 @@
 #include "WhatsNewDialog.h"
 #include "models/SliceModel.h"
 #include "models/MeterModel.h"
+#include "models/BandDefs.h"
 #include "models/BandPlanManager.h"
 #include "models/TunerModel.h"
 #include "models/TransmitModel.h"
@@ -6584,9 +6585,17 @@ void MainWindow::activateRADE(int sliceId)
     if (!s->isTxSlice())
         s->setTxSlice(true);
 
-    // Set radio mode to DIGU/DIGL (passthrough for OFDM modem)
+    // Set radio mode to DIGU/DIGL (passthrough for OFDM modem).
+    // Use band convention from BandDefs to pick sideband — 60m is USB
+    // despite being below 10 MHz (#875).
     double freqMhz = s->frequency();
-    QString mode = (freqMhz < 10.0) ? "DIGL" : "DIGU";
+    QString mode = "DIGU";
+    for (const auto& band : AetherSDR::kBands) {
+        if (freqMhz >= band.lowMhz && freqMhz <= band.highMhz) {
+            mode = (QString(band.defaultMode) == "LSB") ? "DIGL" : "DIGU";
+            break;
+        }
+    }
     s->setMode(mode);
     if (mode == "DIGL")
         s->setFilterWidth(-3500, 0);
