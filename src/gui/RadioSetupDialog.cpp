@@ -807,11 +807,25 @@ QWidget* RadioSetupDialog::buildTxTab()
             return edit;
         };
 
-        addTimingField(0, 0, "ACC TX:",  tx.accTxDelay());
-        addTimingField(0, 1, "TX Delay:", tx.txDelay());
-        addTimingField(1, 0, "RCA TX1:", tx.tx1Delay());
-        addTimingField(1, 1, "Timeout(min):", tx.interlockTimeout());
-        addTimingField(2, 0, "RCA TX2:", tx.tx2Delay());
+        auto connectTimingField = [&](QLineEdit* edit, const QString& key) {
+            connect(edit, &QLineEdit::editingFinished, this, [this, edit, key] {
+                int val = qMax(0, edit->text().toInt());
+                edit->setText(QString::number(val));
+                m_model->sendCommand(QString("interlock set %1=%2").arg(key).arg(val));
+            });
+        };
+
+        auto* accTxEdit   = addTimingField(0, 0, "ACC TX:",       tx.accTxDelay());
+        auto* txDelayEdit = addTimingField(0, 1, "TX Delay:",      tx.txDelay());
+        auto* tx1Edit     = addTimingField(1, 0, "RCA TX1:",       tx.tx1Delay());
+        auto* timeoutEdit = addTimingField(1, 1, "Timeout(min):",  tx.interlockTimeout());
+        auto* tx2Edit     = addTimingField(2, 0, "RCA TX2:",       tx.tx2Delay());
+
+        connectTimingField(accTxEdit,   "acc_tx_delay");
+        connectTimingField(txDelayEdit, "tx_delay");
+        connectTimingField(tx1Edit,     "tx1_delay");
+        connectTimingField(timeoutEdit, "timeout");
+        connectTimingField(tx2Edit,     "tx2_delay");
 
         // TX Profile dropdown (below Timeout, right column)
         auto* profCmb = new QComboBox;
@@ -823,7 +837,8 @@ QWidget* RadioSetupDialog::buildTxTab()
             m_model->transmitModel().loadProfile(name);
         });
 
-        addTimingField(3, 0, "RCA TX3:", tx.tx3Delay());
+        auto* tx3Edit = addTimingField(3, 0, "RCA TX3:", tx.tx3Delay());
+        connectTimingField(tx3Edit, "tx3_delay");
 
         // TX Band Settings button
         auto* bandSetBtn = new QPushButton("TX Band Settings");
