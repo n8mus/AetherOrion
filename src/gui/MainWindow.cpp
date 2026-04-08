@@ -623,8 +623,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&m_radioModel, &RadioModel::remoteTxStreamReady,
             this, [this](quint32 streamId) {
         m_audio->setRemoteTxStreamId(streamId);
-        // Enable Opus TX encoding when compression is active (SmartLink/WAN)
-        m_audio->setOpusTxEnabled(m_radioModel.audioCompressionParam() == "opus");
+        // Radio always forces Opus for remote_audio_tx (confirmed v1.4.0.0)
+        m_audio->setOpusTxEnabled(true);
         // Restore PC mic gain from client-side settings (radio has no
         // hardware gain stage for PC input — client-authoritative)
         if (m_radioModel.transmitModel().micSelection() == "PC") {

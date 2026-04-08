@@ -984,8 +984,10 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                                 }
                             });
 
+                        // Radio always forces Opus for remote_audio_tx regardless of
+                        // what we request (confirmed by protocol testing, v1.4.0.0).
                         sendCmd(
-                            QString("stream create type=remote_audio_tx compression=%1").arg(audioCompressionParam()),
+                            "stream create type=remote_audio_tx compression=opus",
                             [this](int code, const QString& body) {
                                 if (code == 0) {
                                     quint32 id = body.trimmed().toUInt(nullptr, 16);
