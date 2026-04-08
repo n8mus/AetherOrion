@@ -166,26 +166,11 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # Sign inside-out: dylibs first, then frameworks, then the app bundle.
-          # Use -depth to process nested items before their containers.
-          find build/AetherSDR.app/Contents/Frameworks -depth \
-            \( -name "*.dylib" -o -name "*.so" \) -type f | while read item; do
+          find build/AetherSDR.app -name "*.dylib" -o -name "*.framework" -type d | while read item; do
             codesign --force --options runtime --timestamp \
-              --sign "Developer ID Application" "$item"
+              --sign "Developer ID Application" "$item" 2>/dev/null || true
           done
-          find build/AetherSDR.app/Contents/Frameworks -depth \
-            -name "*.framework" -type d | while read item; do
-            codesign --force --options runtime --timestamp \
-              --sign "Developer ID Application" "$item"
-          done
-          # Sign any PlugIns
-          find build/AetherSDR.app/Contents/PlugIns -type f \
-            \( -name "*.dylib" -o -name "*.so" \) 2>/dev/null | while read item; do
-            codesign --force --options runtime --timestamp \
-              --sign "Developer ID Application" "$item"
-          done
-          # Sign the main binary and bundle
-          codesign --force --options runtime --timestamp \
+          codesign --force --deep --options runtime --timestamp \
             --entitlements macos/AetherSDR.entitlements \
             --sign "Developer ID Application" \
             build/AetherSDR.app
