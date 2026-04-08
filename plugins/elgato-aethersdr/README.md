@@ -4,68 +4,33 @@ Controls FlexRadio via AetherSDR's TCI WebSocket server. 43 actions for TX, band
 
 Works with the **official Elgato Stream Deck app** on macOS and Windows.
 
-## Prerequisites
+## Installation
 
-- AetherSDR v0.8.6+ with TCI server enabled
-- Elgato Stream Deck app v6.6+
-- Node.js 20+ (bundled by Elgato SDK)
+1. Enable TCI in AetherSDR: **Settings > Autostart TCI with AetherSDR**
+2. Download `com.aethersdr.radio.streamDeckPlugin` from the [latest release](https://github.com/ten9876/AetherSDR/releases/latest)
+3. Double-click the file — the Elgato app installs it automatically
+4. Drag AetherSDR actions onto your Stream Deck buttons
 
-## Building
+No build step, no npm, no command line required.
+
+## Building from Source
+
+If you want to rebuild the distributable:
 
 ```bash
-cd plugins/elgato-aethersdr
+cd plugins/elgato-aethersdr/com.aethersdr.radio.sdPlugin
 npm install
-npm run build
+cd ..
+zip -r com.aethersdr.radio.streamDeckPlugin com.aethersdr.radio.sdPlugin/
 ```
 
-The built plugin is output to `com.aethersdr.radio.sdPlugin/`.
+## 43 Available Actions
 
-## Installing
-
-```bash
-npm run package
-```
-
-This creates `aethersdr.streamDeckPlugin`. Double-click it to install in the Stream Deck app.
-
-## Development
-
-```bash
-npm run watch
-```
-
-This rebuilds on file changes and hot-reloads in the Stream Deck app.
-
-## Configuration
-
-The plugin connects to AetherSDR's TCI server at `ws://localhost:40001` by default.
-Ensure TCI is enabled: **Settings > Autostart TCI with AetherSDR**.
-
-## Actions
-
-### TX Control
-- **PTT** — Hold to transmit
-- **MOX Toggle** — Toggle transmit
-- **TUNE Toggle** — Toggle tune carrier
-- **RF Power** — Cycle power levels
-- **Tune Power** — Cycle tune power
-
-### Frequency / Band
-- **Band 160m–6m** — Direct band select (11 bands)
-- **Band Up / Down** — Step through bands
-- **Tune Up / Down** — Nudge frequency
-
-### Mode
-- USB, LSB, CW, AM, FM, DIGU, DIGL, FT8
-
-### Audio
-- **Mute Toggle**, **Volume Up**, **Volume Down**
-
-### DSP
-- **NB**, **NR**, **ANF**, **APF**, **SQL** toggles
-
-### Slice
-- **Split**, **Lock**, **RIT**, **XIT** toggles
-
-### DVK
-- **Play**, **Record**
+**TX:** PTT, MOX Toggle, TUNE Toggle, RF Power, Tune Power
+**Bands:** 160m, 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, 10m, 6m, Band Up, Band Down
+**Frequency:** Tune Up, Tune Down
+**Modes:** USB, LSB, CW, AM, FM, DIGU, DIGL, FT8
+**Audio:** Mute Toggle, Volume Up, Volume Down
+**DSP:** NB, NR, ANF, APF, SQL toggles
+**Slice:** Split, Lock, RIT, XIT toggles
+**DVK:** Play, Record
