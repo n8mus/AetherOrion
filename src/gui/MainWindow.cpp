@@ -2280,16 +2280,18 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
     if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
         auto* ke = static_cast<QKeyEvent*>(event);
         if (ke->key() == Qt::Key_Space && !ke->isAutoRepeat()
-            && m_keyboardShortcutsEnabled && !isTextInputFocused()
+            && !isTextInputFocused()
             && m_radioModel.isConnected()) {
-            if (event->type() == QEvent::KeyPress && !m_spacePttActive) {
-                m_spacePttActive = true;
-                m_radioModel.setTransmit(true);
-            } else if (event->type() == QEvent::KeyRelease && m_spacePttActive) {
-                m_spacePttActive = false;
-                m_radioModel.setTransmit(false);
+            if (m_keyboardShortcutsEnabled) {
+                if (event->type() == QEvent::KeyPress && !m_spacePttActive) {
+                    m_spacePttActive = true;
+                    m_radioModel.setTransmit(true);
+                } else if (event->type() == QEvent::KeyRelease && m_spacePttActive) {
+                    m_spacePttActive = false;
+                    m_radioModel.setTransmit(false);
+                }
             }
-            return true;  // consume — don't let buttons activate
+            return true;  // always consume Space to prevent button activation
         }
     }
 
