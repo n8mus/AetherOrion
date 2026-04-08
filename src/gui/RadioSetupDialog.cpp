@@ -2946,24 +2946,37 @@ QWidget* RadioSetupDialog::buildPeripheralsTab()
     // Helper to build one peripheral row
     auto buildRow = [&](int row, const QString& label, const QString& ipKey,
                         const QString& portKey, int defaultPort,
-                        auto connectFn, auto disconnectFn, auto isConnectedFn) {
+                        auto connectFn, auto disconnectFn, auto isConnectedFn,
+                        auto peerAddressFn, auto peerPortFn) {
         // Device label
         auto* devLbl = new QLabel(label);
         devLbl->setStyleSheet(kLabelStyle);
         grid->addWidget(devLbl, row, 0);
 
-        // IP field
+        // IP field — pre-fill from settings, or from live connection if discovered
         auto* ipEdit = new QLineEdit;
         ipEdit->setPlaceholderText("e.g. 192.168.1.100");
         ipEdit->setStyleSheet(kEditStyle);
         ipEdit->setMinimumWidth(140);
-        ipEdit->setText(settings.value(ipKey, "").toString());
+        QString savedIp = settings.value(ipKey, "").toString();
+        if (!savedIp.isEmpty()) {
+            ipEdit->setText(savedIp);
+        } else if (isConnectedFn()) {
+            ipEdit->setText(peerAddressFn());
+        }
         grid->addWidget(ipEdit, row, 1);
 
-        // Port field
+        // Port field — pre-fill from settings, or from live connection
         auto* portSpin = new QSpinBox;
         portSpin->setRange(1, 65535);
-        portSpin->setValue(settings.value(portKey, QString::number(defaultPort)).toInt());
+        int savedPort = settings.value(portKey, "0").toInt();
+        if (savedPort > 0) {
+            portSpin->setValue(savedPort);
+        } else if (isConnectedFn() && peerPortFn() > 0) {
+            portSpin->setValue(peerPortFn());
+        } else {
+            portSpin->setValue(defaultPort);
+        }
         portSpin->setStyleSheet(
             "QSpinBox { background: #1a2a3a; border: 1px solid #304050; "
             "border-radius: 3px; color: #c8d8e8; font-size: 12px; padding: 2px; }");
@@ -3015,7 +3028,9 @@ QWidget* RadioSetupDialog::buildPeripheralsTab()
         auto updateTgxl = buildRow(1, "Tuner Genius XL (TGXL)", "TGXL_ManualIp", "TGXL_ManualPort", 9010,
             [this](const QString& ip, quint16 port) { m_tgxl->connectToTgxl(ip, port); },
             [this]() { m_tgxl->disconnect(); },
-            [this]() { return m_tgxl->isConnected(); });
+            [this]() { return m_tgxl->isConnected(); },
+            [this]() { return m_tgxl->peerAddress(); },
+            [this]() { return m_tgxl->peerPort(); });
         connect(m_tgxl, &TgxlConnection::connected, this, updateTgxl);
         connect(m_tgxl, &TgxlConnection::disconnected, this, updateTgxl);
     }
@@ -3025,7 +3040,9 @@ QWidget* RadioSetupDialog::buildPeripheralsTab()
         auto updatePgxl = buildRow(2, "Power Genius XL (PGXL)", "PGXL_ManualIp", "PGXL_ManualPort", 9008,
             [this](const QString& ip, quint16 port) { m_pgxl->connectToPgxl(ip, port); },
             [this]() { m_pgxl->disconnect(); },
-            [this]() { return m_pgxl->isConnected(); });
+            [this]() { return m_pgxl->isConnected(); },
+            [this]() { return m_pgxl->peerAddress(); },
+            [this]() { return m_pgxl->peerPort(); });
         connect(m_pgxl, &PgxlConnection::connected, this, updatePgxl);
         connect(m_pgxl, &PgxlConnection::disconnected, this, updatePgxl);
     }
@@ -3037,7 +3054,9 @@ QWidget* RadioSetupDialog::buildPeripheralsTab()
                 m_ag->connectToAddress(QHostAddress(ip), port);
             },
             [this]() { m_ag->disconnectFromDevice(); },
-            [this]() { return m_ag->isConnected(); });
+            [this]() { return m_ag->isConnected(); },
+            [this]() { return m_ag->peerAddress(); },
+            [this]() { return m_ag->peerPort(); });
         connect(m_ag, &AntennaGeniusModel::connected, this, updateAg);
         connect(m_ag, &AntennaGeniusModel::disconnected, this, updateAg);
     }
