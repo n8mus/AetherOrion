@@ -2522,7 +2522,7 @@ void MainWindow::buildMenuBar()
         // Snapshot compression setting before dialog opens
         QString prevComp = m_radioModel.audioCompressionParam();
 
-        auto* dlg = new RadioSetupDialog(&m_radioModel, m_audio, this);
+        auto* dlg = new RadioSetupDialog(&m_radioModel, m_audio, &m_tgxlConn, &m_pgxlConn, &m_antennaGenius, this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         m_radioSetupDialog = dlg;
         connect(dlg, &RadioSetupDialog::txBandSettingsRequested,
@@ -2585,7 +2585,7 @@ void MainWindow::buildMenuBar()
 #ifdef HAVE_SERIALPORT
     auto* flexControlAction = settingsMenu->addAction("FlexControl...");
     connect(flexControlAction, &QAction::triggered, this, [this] {
-        auto* dlg = new RadioSetupDialog(&m_radioModel, m_audio, this);
+        auto* dlg = new RadioSetupDialog(&m_radioModel, m_audio, &m_tgxlConn, &m_pgxlConn, &m_antennaGenius, this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         connect(dlg, &RadioSetupDialog::txBandSettingsRequested,
                 m_txBandAction, &QAction::trigger);
@@ -2619,7 +2619,7 @@ void MainWindow::buildMenuBar()
     });
     auto* usbCablesAction = settingsMenu->addAction("USB Cables...");
     connect(usbCablesAction, &QAction::triggered, this, [this] {
-        auto* dlg = new RadioSetupDialog(&m_radioModel, m_audio, this);
+        auto* dlg = new RadioSetupDialog(&m_radioModel, m_audio, &m_tgxlConn, &m_pgxlConn, &m_antennaGenius, this);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         connect(dlg, &RadioSetupDialog::txBandSettingsRequested,
                 m_txBandAction, &QAction::trigger);
@@ -4093,6 +4093,22 @@ void MainWindow::onConnectionStateChanged(bool connected)
                     QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->startConnection(); });
             }
 #endif
+            // Auto-connect peripherals with manual IPs (#914)
+            QString tgxlIp = cs.value("TGXL_ManualIp", "").toString();
+            if (!tgxlIp.isEmpty() && !m_tgxlConn.isConnected()) {
+                quint16 tgxlPort = static_cast<quint16>(cs.value("TGXL_ManualPort", "9010").toInt());
+                m_tgxlConn.connectToTgxl(tgxlIp, tgxlPort);
+            }
+            QString pgxlIp = cs.value("PGXL_ManualIp", "").toString();
+            if (!pgxlIp.isEmpty() && !m_pgxlConn.isConnected()) {
+                quint16 pgxlPort = static_cast<quint16>(cs.value("PGXL_ManualPort", "9008").toInt());
+                m_pgxlConn.connectToPgxl(pgxlIp, pgxlPort);
+            }
+            QString agIp = cs.value("AG_ManualIp", "").toString();
+            if (!agIp.isEmpty() && !m_antennaGenius.isConnected()) {
+                quint16 agPort = static_cast<quint16>(cs.value("AG_ManualPort", "9007").toInt());
+                m_antennaGenius.connectToAddress(QHostAddress(agIp), agPort);
+            }
         }
     } else {
         QMetaObject::invokeMethod(m_dxCluster, [=] { m_dxCluster->disconnect(); });
@@ -5600,7 +5616,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     disconnect(menu, &SpectrumOverlayMenu::xvtrSetupRequested, this, nullptr);
     connect(menu, &SpectrumOverlayMenu::xvtrSetupRequested,
             this, [this]() {
-        auto* dlg = new RadioSetupDialog(&m_radioModel, m_audio, this);
+        auto* dlg = new RadioSetupDialog(&m_radioModel, m_audio, &m_tgxlConn, &m_pgxlConn, &m_antennaGenius, this);
         connect(dlg, &RadioSetupDialog::txBandSettingsRequested,
                 m_txBandAction, &QAction::trigger);
         dlg->selectTab("XVTR");

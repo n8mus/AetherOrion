@@ -11,6 +11,9 @@
 #endif
 #include "core/FirmwareUploader.h"
 #include "core/FirmwareStager.h"
+#include "core/TgxlConnection.h"
+#include "core/PgxlConnection.h"
+#include "models/AntennaGeniusModel.h"
 
 #include <QCloseEvent>
 #include <QTabWidget>
@@ -38,6 +41,7 @@
 #include <QStackedWidget>
 #include <QPlainTextEdit>
 #include <QSplitter>
+#include <QHostAddress>
 
 namespace AetherSDR {
 
@@ -57,8 +61,11 @@ static const QString kEditStyle =
     "QLineEdit { background: #1a2a3a; border: 1px solid #304050; "
     "border-radius: 3px; color: #c8d8e8; font-size: 12px; padding: 2px 4px; }";
 
-RadioSetupDialog::RadioSetupDialog(RadioModel* model, AudioEngine* audio, QWidget* parent)
-    : QDialog(parent), m_model(model), m_audio(audio)
+RadioSetupDialog::RadioSetupDialog(RadioModel* model, AudioEngine* audio,
+                                   TgxlConnection* tgxl, PgxlConnection* pgxl,
+                                   AntennaGeniusModel* ag, QWidget* parent)
+    : QDialog(parent), m_model(model), m_audio(audio),
+      m_tgxl(tgxl), m_pgxl(pgxl), m_ag(ag)
 {
     setWindowTitle("Radio Setup");
     setMinimumSize(820, 620);
@@ -85,6 +92,7 @@ RadioSetupDialog::RadioSetupDialog(RadioModel* model, AudioEngine* audio, QWidge
     tabs->addTab(buildFiltersTab(), "Filters");
     tabs->addTab(buildXvtrTab(), "XVTR");
     tabs->addTab(buildUsbCablesTab(), "USB Cables");
+    tabs->addTab(buildPeripheralsTab(), "Peripherals");
 #ifdef HAVE_SERIALPORT
     tabs->addTab(buildSerialTab(), "Serial");
 #endif
@@ -2901,6 +2909,156 @@ QWidget* RadioSetupDialog::buildSerialTab()
     return page;
 }
 #endif
+
+// ─── Peripherals tab — manual IP connect for TGXL, PGXL, AG (#914) ───────────
+
+QWidget* RadioSetupDialog::buildPeripheralsTab()
+{
+    auto* page = new QWidget;
+    auto* vbox = new QVBoxLayout(page);
+    vbox->setSpacing(8);
+
+    auto* group = new QGroupBox("External Devices — Manual IP Connection");
+    group->setStyleSheet(kGroupStyle);
+    auto* grid = new QGridLayout(group);
+    grid->setSpacing(6);
+
+    // Column headers
+    auto addHeader = [&](int col, const QString& text) {
+        auto* lbl = new QLabel(text);
+        lbl->setStyleSheet("QLabel { color: #8aa8c0; font-size: 11px; font-weight: bold; }");
+        grid->addWidget(lbl, 0, col);
+    };
+    addHeader(0, "Device");
+    addHeader(1, "IP Address");
+    addHeader(2, "Port");
+    addHeader(3, "");
+    addHeader(4, "Status");
+
+    auto& settings = AppSettings::instance();
+
+    static const QString kBtnStyle =
+        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+        "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+        "padding: 3px 10px; }"
+        "QPushButton:hover { background: #203040; }";
+
+    // Helper to build one peripheral row
+    auto buildRow = [&](int row, const QString& label, const QString& ipKey,
+                        const QString& portKey, int defaultPort,
+                        auto connectFn, auto disconnectFn, auto isConnectedFn) {
+        // Device label
+        auto* devLbl = new QLabel(label);
+        devLbl->setStyleSheet(kLabelStyle);
+        grid->addWidget(devLbl, row, 0);
+
+        // IP field
+        auto* ipEdit = new QLineEdit;
+        ipEdit->setPlaceholderText("e.g. 192.168.1.100");
+        ipEdit->setStyleSheet(kEditStyle);
+        ipEdit->setMinimumWidth(140);
+        ipEdit->setText(settings.value(ipKey, "").toString());
+        grid->addWidget(ipEdit, row, 1);
+
+        // Port field
+        auto* portSpin = new QSpinBox;
+        portSpin->setRange(1, 65535);
+        portSpin->setValue(settings.value(portKey, QString::number(defaultPort)).toInt());
+        portSpin->setStyleSheet(
+            "QSpinBox { background: #1a2a3a; border: 1px solid #304050; "
+            "border-radius: 3px; color: #c8d8e8; font-size: 12px; padding: 2px; }");
+        grid->addWidget(portSpin, row, 2);
+
+        // Status label
+        auto* statusLbl = new QLabel(isConnectedFn() ? "Connected" : "Not connected");
+        statusLbl->setStyleSheet(isConnectedFn()
+            ? "QLabel { color: #00e060; font-size: 11px; }"
+            : "QLabel { color: #8aa8c0; font-size: 11px; }");
+        grid->addWidget(statusLbl, row, 4);
+
+        // Connect/Disconnect button
+        auto* btn = new QPushButton(isConnectedFn() ? "Disconnect" : "Connect");
+        btn->setStyleSheet(kBtnStyle);
+        grid->addWidget(btn, row, 3);
+
+        connect(btn, &QPushButton::clicked, this,
+                [=, &settings]() {
+            if (isConnectedFn()) {
+                disconnectFn();
+            } else {
+                QString ip = ipEdit->text().trimmed();
+                if (ip.isEmpty()) return;
+                int port = portSpin->value();
+                // Save to settings
+                settings.setValue(ipKey, ip);
+                settings.setValue(portKey, QString::number(port));
+                settings.save();
+                connectFn(ip, static_cast<quint16>(port));
+            }
+        });
+
+        // Update UI on connection state changes
+        auto updateState = [btn, statusLbl, isConnectedFn]() {
+            bool conn = isConnectedFn();
+            btn->setText(conn ? "Disconnect" : "Connect");
+            statusLbl->setText(conn ? "Connected" : "Not connected");
+            statusLbl->setStyleSheet(conn
+                ? "QLabel { color: #00e060; font-size: 11px; }"
+                : "QLabel { color: #8aa8c0; font-size: 11px; }");
+        };
+
+        return updateState;
+    };
+
+    // Row 1: Tuner Genius XL (TGXL)
+    if (m_tgxl) {
+        auto updateTgxl = buildRow(1, "Tuner Genius XL (TGXL)", "TGXL_ManualIp", "TGXL_ManualPort", 9010,
+            [this](const QString& ip, quint16 port) { m_tgxl->connectToTgxl(ip, port); },
+            [this]() { m_tgxl->disconnect(); },
+            [this]() { return m_tgxl->isConnected(); });
+        connect(m_tgxl, &TgxlConnection::connected, this, updateTgxl);
+        connect(m_tgxl, &TgxlConnection::disconnected, this, updateTgxl);
+    }
+
+    // Row 2: Power Genius XL (PGXL)
+    if (m_pgxl) {
+        auto updatePgxl = buildRow(2, "Power Genius XL (PGXL)", "PGXL_ManualIp", "PGXL_ManualPort", 9008,
+            [this](const QString& ip, quint16 port) { m_pgxl->connectToPgxl(ip, port); },
+            [this]() { m_pgxl->disconnect(); },
+            [this]() { return m_pgxl->isConnected(); });
+        connect(m_pgxl, &PgxlConnection::connected, this, updatePgxl);
+        connect(m_pgxl, &PgxlConnection::disconnected, this, updatePgxl);
+    }
+
+    // Row 3: Antenna Genius (AG)
+    if (m_ag) {
+        auto updateAg = buildRow(3, "Antenna Genius (AG)", "AG_ManualIp", "AG_ManualPort", 9007,
+            [this](const QString& ip, quint16 port) {
+                m_ag->connectToAddress(QHostAddress(ip), port);
+            },
+            [this]() { m_ag->disconnectFromDevice(); },
+            [this]() { return m_ag->isConnected(); });
+        connect(m_ag, &AntennaGeniusModel::connected, this, updateAg);
+        connect(m_ag, &AntennaGeniusModel::disconnected, this, updateAg);
+    }
+
+    for (auto* lbl : group->findChildren<QLabel*>())
+        if (lbl->styleSheet().isEmpty()) lbl->setStyleSheet(kLabelStyle);
+
+    vbox->addWidget(group);
+
+    // Info note
+    auto* note = new QLabel(
+        "Configure manual IP addresses for peripherals that cannot be discovered via UDP broadcast.\n"
+        "This is needed for remote, VPN, and SmartLink connections. "
+        "Configured devices auto-connect when the radio connects.");
+    note->setWordWrap(true);
+    note->setStyleSheet("QLabel { color: #607080; font-size: 11px; padding: 8px; }");
+    vbox->addWidget(note);
+
+    vbox->addStretch();
+    return page;
+}
 
 void RadioSetupDialog::selectTab(const QString& tabName)
 {
