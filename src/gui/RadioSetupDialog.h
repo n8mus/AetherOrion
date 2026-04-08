@@ -29,6 +29,9 @@ public:
 signals:
     void txBandSettingsRequested();
 
+protected:
+    void closeEvent(QCloseEvent* event) override;
+
 private:
     QWidget* buildRadioTab();
     QWidget* buildNetworkTab();
@@ -59,6 +62,12 @@ private:
     QLineEdit* m_nicknameEdit{nullptr};
     QLineEdit* m_callsignEdit{nullptr};
     QPushButton* m_remoteOnBtn{nullptr};
+
+    // License Info
+    QLabel* m_licSubscriptionLabel{nullptr};
+    QLabel* m_licExpirationLabel{nullptr};
+    QLabel* m_licRadioIdLabel{nullptr};
+    QLabel* m_licMaxVersionLabel{nullptr};
 
     // Firmware update
     QLabel*       m_fwStatusLabel{nullptr};
