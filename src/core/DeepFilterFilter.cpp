@@ -14,11 +14,16 @@ namespace AetherSDR {
 
 static QByteArray findModelPath()
 {
-    // Look for model adjacent to the executable first
+    // Look for model adjacent to the executable first (Linux/Windows)
     QString exeDir = QCoreApplication::applicationDirPath();
     QString path = exeDir + "/DeepFilterNet3_onnx.tar.gz";
     if (QFile::exists(path)) {
         return path.toUtf8();
+    }
+    // macOS app bundle: Contents/Resources/
+    path = exeDir + "/../Resources/DeepFilterNet3_onnx.tar.gz";
+    if (QFile::exists(path)) {
+        return QDir(path).canonicalPath().toUtf8();
     }
     // Fallback: third_party dir relative to exe (dev builds)
     path = exeDir + "/../third_party/deepfilter/models/DeepFilterNet3_onnx.tar.gz";

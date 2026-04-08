@@ -784,10 +784,21 @@ if(ENABLE_DFNR)
     endif()
     set(DFNR_MODEL "${DEEPFILTER_DIR}/models/DeepFilterNet3_onnx.tar.gz")
     if(EXISTS ${DFNR_MODEL})
-        add_custom_command(TARGET AetherSDR POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${DFNR_MODEL}" "$<TARGET_FILE_DIR:AetherSDR>"
-            COMMENT "Copying DeepFilterNet3 model to build directory")
+        if(APPLE)
+            # macOS: place in Resources/ so notarization doesn't reject a
+            # non-Mach-O file inside Contents/MacOS/
+            add_custom_command(TARGET AetherSDR POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "$<TARGET_BUNDLE_DIR:AetherSDR>/Contents/Resources"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${DFNR_MODEL}" "$<TARGET_BUNDLE_DIR:AetherSDR>/Contents/Resources/"
+                COMMENT "Copying DeepFilterNet3 model to app bundle Resources")
+        else()
+            add_custom_command(TARGET AetherSDR POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${DFNR_MODEL}" "$<TARGET_FILE_DIR:AetherSDR>"
+                COMMENT "Copying DeepFilterNet3 model to build directory")
+        endif()
     endif()
 endif()
 

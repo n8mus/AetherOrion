@@ -98,8 +98,9 @@ jobs:
       - name: Bundle DFNR model
         run: |
           if [ -f third_party/deepfilter/models/DeepFilterNet3_onnx.tar.gz ]; then
+            mkdir -p build/AetherSDR.app/Contents/Resources
             cp third_party/deepfilter/models/DeepFilterNet3_onnx.tar.gz \
-              build/AetherSDR.app/Contents/MacOS/
+              build/AetherSDR.app/Contents/Resources/
           fi
 
       - name: Build DAX audio driver
