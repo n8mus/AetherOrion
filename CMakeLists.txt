@@ -639,11 +639,7 @@ if(HIDAPI_FOUND)
     target_compile_definitions(AetherSDR PRIVATE HAVE_HIDAPI)
     target_sources(AetherSDR PRIVATE
         src/core/HidEncoderManager.cpp
-        src/core/HidDeviceParser.cpp
-        src/core/StreamDeckDevice.cpp
-        src/core/StreamDeckManager.cpp
-        src/core/StreamDeckKeyRenderer.cpp
-        src/gui/StreamDeckDialog.cpp)
+        src/core/HidDeviceParser.cpp)
     set(HIDAPI_NORMALIZED_INCLUDE_DIRS ${HIDAPI_INCLUDE_DIRS})
     foreach(hidapi_dir IN LISTS HIDAPI_INCLUDE_DIRS)
         if(EXISTS "${hidapi_dir}/hidapi.h")

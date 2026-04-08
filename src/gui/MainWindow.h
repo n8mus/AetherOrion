@@ -31,8 +31,6 @@
 #endif
 #ifdef HAVE_HIDAPI
 #include "core/HidEncoderManager.h"
-#include "core/StreamDeckManager.h"
-#include "gui/StreamDeckDialog.h"
 #endif
 #include "core/ShortcutManager.h"
 #include "core/TgxlConnection.h"
@@ -191,14 +189,6 @@ private:
     HidEncoderManager*   m_hidEncoder{nullptr};
     QTimer               m_hidCoalesceTimer;
     int                  m_hidPendingSteps{0};
-    StreamDeckManager*   m_streamDeck{nullptr};
-    QPointer<QDialog>    m_streamDeckDialog;
-    QTimer               m_sdRenderTimer;
-    QHash<int, QByteArray> m_sdKeyCache;  // key index → last sent image bytes
-    QByteArray           m_sdTouchCache;  // last sent touchscreen image
-    void updateStreamDeckLiveKeys();
-    void sdSendKey(const QString& serial, int key, const QByteArray& img);
-    void sdSendTouch(const QString& serial, const StreamDeckDeviceInfo* info, const QByteArray& img);
 #endif
 #ifdef HAVE_MIDI
     MidiControlManager*  m_midiControl{nullptr};
