@@ -2460,69 +2460,109 @@ QWidget* RadioSetupDialog::buildSerialTab()
         auto* grid = new QGridLayout(group);
         grid->setSpacing(4);
 
-        // Port selector
+        // Port selector + manual entry for non-standard TTYs (#897)
         grid->addWidget(new QLabel("Port:"), 0, 0);
         auto* portCombo = new QComboBox;
         portCombo->setMinimumWidth(200);
         for (const auto& info : QSerialPortInfo::availablePorts())
             portCombo->addItem(QString("%1 — %2").arg(info.portName(), info.description()),
                                info.portName());
+        // "Custom..." sentinel triggers manual entry field
+        portCombo->addItem("Custom...", QStringLiteral("__custom__"));
         QString savedPort = settings.value("SerialPortName", "").toString();
-        for (int i = 0; i < portCombo->count(); ++i) {
+        bool isCustom = false;
+        for (int i = 0; i < portCombo->count() - 1; ++i) {
             if (portCombo->itemData(i).toString() == savedPort) {
                 portCombo->setCurrentIndex(i);
                 break;
             }
+            if (i == portCombo->count() - 2) {
+                isCustom = !savedPort.isEmpty();
+            }
         }
-        grid->addWidget(portCombo, 0, 1, 1, 2);
+        grid->addWidget(portCombo, 0, 1);
 
         auto* refreshBtn = new QPushButton("Refresh");
         refreshBtn->setFixedHeight(24);
-        connect(refreshBtn, &QPushButton::clicked, this, [portCombo]() {
-            portCombo->clear();
-            for (const auto& info : QSerialPortInfo::availablePorts())
-                portCombo->addItem(QString("%1 — %2").arg(info.portName(), info.description()),
-                                   info.portName());
-        });
         grid->addWidget(refreshBtn, 0, 3);
 
+        // Custom port row — hidden unless "Custom..." selected or saved port is custom
+        auto* customLabel = new QLabel("Path:");
+        auto* customEdit = new QLineEdit;
+        customEdit->setPlaceholderText("/dev/ttyr0");
+        customLabel->setVisible(isCustom);
+        customEdit->setVisible(isCustom);
+        if (isCustom) {
+            customEdit->setText(savedPort);
+            portCombo->setCurrentIndex(portCombo->count() - 1);  // select "Custom..."
+        }
+        grid->addWidget(customLabel, 1, 0);
+        grid->addWidget(customEdit, 1, 1, 1, 3);
+
+        connect(portCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [portCombo, customLabel, customEdit](int idx) {
+            bool custom = (portCombo->itemData(idx).toString() == "__custom__");
+            customLabel->setVisible(custom);
+            customEdit->setVisible(custom);
+        });
+
+        connect(refreshBtn, &QPushButton::clicked, this, [portCombo, customEdit]() {
+            QString customText = customEdit->text();
+            int customIdx = portCombo->count() - 1;  // "Custom..." is last
+            bool wasCustom = (portCombo->currentIndex() == customIdx);
+            // Remove all but "Custom..."
+            while (portCombo->count() > 1)
+                portCombo->removeItem(0);
+            for (const auto& info : QSerialPortInfo::availablePorts())
+                portCombo->insertItem(portCombo->count() - 1,
+                    QString("%1 — %2").arg(info.portName(), info.description()),
+                    info.portName());
+            if (wasCustom) {
+                portCombo->setCurrentIndex(portCombo->count() - 1);
+            }
+        });
+
         // Baud rate
-        grid->addWidget(new QLabel("Baud:"), 1, 0);
+        grid->addWidget(new QLabel("Baud:"), 2, 0);
         auto* baudCombo = new QComboBox;
         for (int b : {9600, 19200, 38400, 57600, 115200})
             baudCombo->addItem(QString::number(b), b);
         int savedBaud = settings.value("SerialBaudRate", "9600").toInt();
         baudCombo->setCurrentIndex(baudCombo->findData(savedBaud));
-        grid->addWidget(baudCombo, 1, 1);
+        grid->addWidget(baudCombo, 2, 1);
 
         // Data bits
-        grid->addWidget(new QLabel("Data:"), 1, 2);
+        grid->addWidget(new QLabel("Data:"), 2, 2);
         auto* dataCombo = new QComboBox;
         dataCombo->addItem("8", 8);
         dataCombo->addItem("7", 7);
-        grid->addWidget(dataCombo, 1, 3);
+        grid->addWidget(dataCombo, 2, 3);
 
         // Parity
-        grid->addWidget(new QLabel("Parity:"), 2, 0);
+        grid->addWidget(new QLabel("Parity:"), 3, 0);
         auto* parityCombo = new QComboBox;
         parityCombo->addItem("None", 0);
         parityCombo->addItem("Even", 2);
         parityCombo->addItem("Odd", 3);
-        grid->addWidget(parityCombo, 2, 1);
+        grid->addWidget(parityCombo, 3, 1);
 
         // Stop bits
-        grid->addWidget(new QLabel("Stop:"), 2, 2);
+        grid->addWidget(new QLabel("Stop:"), 3, 2);
         auto* stopCombo = new QComboBox;
         stopCombo->addItem("1", 1);
         stopCombo->addItem("2", 2);
-        grid->addWidget(stopCombo, 2, 3);
+        grid->addWidget(stopCombo, 3, 3);
 
         vbox->addWidget(group);
 
         // Save port settings on any change
-        auto savePort = [portCombo, baudCombo, dataCombo, parityCombo, stopCombo]() {
+        auto savePort = [portCombo, customEdit, baudCombo, dataCombo, parityCombo, stopCombo]() {
             auto& s = AppSettings::instance();
-            s.setValue("SerialPortName", portCombo->currentData().toString());
+            QString port = portCombo->currentData().toString();
+            if (port == "__custom__") {
+                port = customEdit->text().trimmed();
+            }
+            s.setValue("SerialPortName", port);
             s.setValue("SerialBaudRate", baudCombo->currentData().toString());
             s.setValue("SerialDataBits", dataCombo->currentData().toString());
             s.setValue("SerialParity", parityCombo->currentData().toString());
@@ -2530,6 +2570,7 @@ QWidget* RadioSetupDialog::buildSerialTab()
             s.save();
         };
         connect(portCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, savePort);
+        connect(customEdit, &QLineEdit::textChanged, this, savePort);
         connect(baudCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, savePort);
     }
 
