@@ -282,7 +282,19 @@ jobs:
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait --timeout 600
+            --wait --timeout 600 2>&1 | tee notarize-output.txt || true
+
+          # Extract submission ID and fetch detailed log on failure
+          SUB_ID=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' notarize-output.txt | head -1)
+          if grep -q "Invalid" notarize-output.txt; then
+            echo "=== Notarization FAILED — fetching Apple's rejection log ==="
+            xcrun notarytool log "$SUB_ID" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" || true
+            exit 1
+          fi
+
           xcrun stapler staple \
             AetherSDR-${{ github.ref_name }}-macOS-${{ matrix.label }}.dmg
           echo "Notarization and stapling complete"
