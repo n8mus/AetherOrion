@@ -933,10 +933,13 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                                 sendCmd(cmd);
                         }
 
-                        // Always create remote_audio_rx — TCI, DAX, and PC Audio
-                        // all consume this stream. Bandwidth is negligible compared
-                        // to spectrum/waterfall data. (#1014)
+                        // Create remote_audio_rx if PC Audio is on OR TCI autostart
+                        // is enabled. The stream's existence tells the radio to route
+                        // audio to PC instead of its physical outputs. (#1014, #1051)
                         {
+                        bool needStream = AppSettings::instance().value("PcAudioEnabled", "True").toString() == "True"
+                            || AppSettings::instance().value("AutoStartTCI", "False").toString() == "True";
+                        if (needStream) {
                             sendCmd(
                                 QString("stream create type=remote_audio_rx compression=%1").arg(audioCompressionParam()),
                                 [this](int code, const QString& body) {
@@ -947,6 +950,9 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                                         qCWarning(lcProtocol) << "RadioModel: stream create remote_audio_rx failed, code"
                                                    << Qt::hex << code << "body:" << body;
                                 });
+                        } else {
+                            qCDebug(lcProtocol) << "RadioModel: PC audio disabled, no TCI — skipping remote_audio_rx";
+                        }
                         }
 
         // Request DAX TX audio stream (PC mic → radio, DAX mode)

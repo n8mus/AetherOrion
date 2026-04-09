@@ -1139,13 +1139,21 @@ MainWindow::MainWindow(QWidget* parent)
     // Antenna list and S-meter are now wired per-widget in onSliceAdded.
 
     // ── Title bar: PC Audio, master volume, headphone volume ────────────────
-    // PC Audio toggle controls local playback only — the remote_audio_rx
-    // stream stays alive regardless so TCI/DAX always have audio (#1014).
+    // The remote_audio_rx stream controls the radio's audio routing:
+    // stream exists → audio to PC; stream removed → audio to radio speakers.
+    // Keep the stream alive when TCI clients need it (#1014).
     connect(m_titleBar, &TitleBar::pcAudioToggled, this, [this](bool on) {
         if (on) {
-            audioStartRx();
+            m_radioModel.createRxAudioStream();
         } else {
-            audioStopRx();
+            // Don't remove stream if TCI clients are connected (#1014)
+            bool tciNeedsStream = false;
+#ifdef HAVE_WEBSOCKETS
+            tciNeedsStream = m_tciServer && m_tciServer->clientCount() > 0;
+#endif
+            if (!tciNeedsStream) {
+                m_radioModel.removeRxAudioStream();
+            }
         }
     });
     connect(m_titleBar, &TitleBar::masterVolumeChanged, this, [this](int pct) {
@@ -1694,6 +1702,17 @@ MainWindow::MainWindow(QWidget* parent)
         connect(m_radioModel.panStream(), &PanadapterStream::daxAudioReady,
                 m_tciServer, &TciServer::onDaxAudioReady);
     }
+
+    // Create/remove audio stream based on TCI client demand (#1014).
+    // When PC Audio is off, a TCI client connecting still needs the stream.
+    connect(m_tciServer, &TciServer::clientCountChanged, this, [this](int count) {
+        bool pcAudio = AppSettings::instance().value("PcAudioEnabled", "True").toString() == "True";
+        if (count > 0 && !pcAudio && m_radioModel.isConnected()) {
+            m_radioModel.createRxAudioStream();
+        } else if (count == 0 && !pcAudio) {
+            m_radioModel.removeRxAudioStream();
+        }
+    });
 #endif
 
 #if defined(Q_OS_MAC) || defined(HAVE_PIPEWIRE)
