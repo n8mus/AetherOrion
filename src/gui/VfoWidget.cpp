@@ -319,17 +319,6 @@ void VfoWidget::buildUI()
 
     root->addLayout(hdr);
 
-#ifdef HAVE_RADE
-    // ── RADE modem status indicator (hidden until RADE mode activated) ────
-    m_radeStatusLabel = new QLabel;
-    m_radeStatusLabel->setFixedHeight(16);
-    m_radeStatusLabel->setTextFormat(Qt::RichText);
-    m_radeStatusLabel->setStyleSheet(
-        "QLabel { color: #00b4d8; font-size: 10px; font-weight: bold;"
-        " background: transparent; border: none; padding: 0; margin: 0; }");
-    m_radeStatusLabel->hide();
-    root->addWidget(m_radeStatusLabel);
-#endif
 
     // Close and lock buttons — children of our parent (SpectrumWidget) so they
     // can render outside our bounds. Lifecycle managed by VfoWidget destructor.
@@ -489,7 +478,25 @@ void VfoWidget::buildUI()
         m_freqStack->setCurrentIndex(0);
     });
 
-    root->addWidget(m_freqStack, 0, Qt::AlignRight);
+    // ── Frequency row: [RADE label] [stretch] [frequency] ────────────────
+    {
+        auto* freqRow = new QHBoxLayout;
+        freqRow->setContentsMargins(0, 0, 0, 0);
+        freqRow->setSpacing(4);
+#ifdef HAVE_RADE
+        m_radeStatusLabel = new QLabel;
+        m_radeStatusLabel->setFixedHeight(16);
+        m_radeStatusLabel->setTextFormat(Qt::RichText);
+        m_radeStatusLabel->setStyleSheet(
+            "QLabel { color: #00b4d8; font-size: 10px; font-weight: bold;"
+            " background: transparent; border: none; padding: 0; margin: 0; }");
+        m_radeStatusLabel->hide();
+        freqRow->addWidget(m_radeStatusLabel);
+#endif
+        freqRow->addStretch(1);
+        freqRow->addWidget(m_freqStack);
+        root->addLayout(freqRow);
+    }
 
     // ── S-meter + dBm row (75/25 split) ────────────────────────────────────
     // S-meter bar is painted in paintEvent; spacer reserves its space.
