@@ -29,7 +29,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ github.ref_name }}" \
+          TAG="${{ github.ref_name }}"
+          # Wait for the release to exist (created by maintainer or another workflow)
+          for i in $(seq 1 30); do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              break
+            fi
+            echo "Waiting for release $TAG to be created... ($i/30)"
+            sleep 10
+          done
+          # Create a draft release if it still doesn't exist
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --notes "Release $TAG" --draft
+          fi
+          gh release upload "$TAG" \
             com.aethersdr.radio.streamDeckPlugin \
             streamcontroller-aethersdr.zip \
             --clobber
