@@ -1139,9 +1139,14 @@ MainWindow::MainWindow(QWidget* parent)
     // Antenna list and S-meter are now wired per-widget in onSliceAdded.
 
     // ── Title bar: PC Audio, master volume, headphone volume ────────────────
+    // PC Audio toggle controls local playback only — the remote_audio_rx
+    // stream stays alive regardless so TCI/DAX always have audio (#1014).
     connect(m_titleBar, &TitleBar::pcAudioToggled, this, [this](bool on) {
-        if (on) m_radioModel.createRxAudioStream();
-        else    m_radioModel.removeRxAudioStream();
+        if (on) {
+            audioStartRx();
+        } else {
+            audioStopRx();
+        }
     });
     connect(m_titleBar, &TitleBar::masterVolumeChanged, this, [this](int pct) {
         bool pcAudio = AppSettings::instance().value("PcAudioEnabled", "True").toString() == "True";
