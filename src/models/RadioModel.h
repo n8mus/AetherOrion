@@ -331,8 +331,10 @@ public:
     // Send a command with a response callback (for firmware uploader, etc.)
     void sendCmdPublic(const QString& cmd, std::function<void(int code, const QString& body)> cb);
 
-    // Radio software version string
+    // Radio software version string (from discovery broadcast, e.g. "4.1.5")
     QString softwareVersion() const { return m_version; }
+    // SmartSDR protocol version from the V line (e.g. "1.4.0.0"), empty until connected
+    QString protocolVersion() const { return m_protocolVersion; }
 
 private slots:
     void onStatusReceived(const QString& object, const QMap<QString, QString>& kvs);
