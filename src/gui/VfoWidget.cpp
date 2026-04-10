@@ -692,7 +692,7 @@ void VfoWidget::buildTabContent()
         m_sqlBtn->setToolTip("Squelch gate \u2014 silences audio when the signal drops below the threshold.");
         m_sqlSlider->setToolTip("Squelch threshold. Increase to require a stronger signal before audio opens.");
         m_agcCmb->setToolTip("AGC speed. Slow resists pumping on quiet bands; Fast tracks rapid signal changes.");
-        m_agcTSlider->setToolTip("AGC threshold. Higher values reduce the maximum gain applied to weak signals.");
+        m_agcTSlider->setToolTip(QString("AGC Threshold: %1").arg(m_agcTSlider->value()));
         m_panSlider->setToolTip("Pans audio between left and right channels.");
 
         // Accessible names set inline after each widget creation below (#870)
@@ -818,6 +818,7 @@ void VfoWidget::buildTabContent()
         });
         connect(m_agcTSlider, &QSlider::valueChanged, this, [this, agcVal](int v) {
             agcVal->setText(QString::number(v));
+            m_agcTSlider->setToolTip(QString("AGC Threshold: %1").arg(v));
             if (!m_updatingFromModel && m_slice) m_slice->setAgcThreshold(v);
         });
         connect(m_panSlider, &QSlider::valueChanged, this, [this](int v) {
@@ -2359,6 +2360,7 @@ void VfoWidget::syncFromSlice()
     {
         QSignalBlocker sb(m_agcTSlider);
         m_agcTSlider->setValue(m_slice->agcThreshold());
+        m_agcTSlider->setToolTip(QString("AGC Threshold: %1").arg(m_slice->agcThreshold()));
     }
 
     // ESC (diversity beamforming) — phase in radians, display as degrees

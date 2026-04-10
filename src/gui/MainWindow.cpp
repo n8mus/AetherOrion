@@ -107,10 +107,6 @@
 #include "core/PipeWireAudioBridge.h"
 #endif
 #include <QDebug>
-#include <QFile>
-#ifdef Q_OS_LINUX
-#include <unistd.h>
-#endif
 
 namespace AetherSDR {
 
@@ -2027,18 +2023,6 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         setPaTempDisplayUnit(!m_paTempUseFahrenheit);
         return true;
     }
-    if (obj == m_cpuLabel && event->type() == QEvent::MouseButtonPress) {
-        m_cpuDisplayMode = (m_cpuDisplayMode + 1) % 3;
-        AppSettings::instance().setValue("CpuDisplayMode", m_cpuDisplayMode);
-        if (m_cpuDisplayMode == 2) {
-            m_cpuLabel->parentWidget()->setVisible(false);
-        } else {
-            m_cpuLabel->parentWidget()->setVisible(true);
-            m_cpuLabel->setText((m_cpuDisplayMode == 1 ? "SYS: " : "CPU: ") + QString("\u2014"));
-            m_cpuLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
-        }
-        return true;
-    }
     if (obj == m_networkLabel && event->type() == QEvent::MouseButtonDblClick) {
         NetworkDiagnosticsDialog dlg(&m_radioModel, this);
         dlg.exec();
@@ -3607,95 +3591,6 @@ void MainWindow::buildUI()
     m_txIndicator->setAlignment(Qt::AlignCenter);
     m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
     hbox->addWidget(m_txIndicator);
-
-    addSep();
-
-    // CPU usage indicator (#1056)
-    auto* cpuStack = new QWidget;
-    cpuStack->setMinimumWidth(kTelemetryStackMinWidth);
-    auto* cpuVbox = new QVBoxLayout(cpuStack);
-    cpuVbox->setContentsMargins(0, 0, 0, 0);
-    cpuVbox->setSpacing(0);
-    m_cpuLabel = new QLabel("CPU: \u2014");
-    m_cpuLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
-    m_cpuLabel->setAlignment(Qt::AlignCenter);
-    m_cpuLabel->setCursor(Qt::PointingHandCursor);
-    m_cpuLabel->setToolTip("Click to cycle: App CPU \u2192 System CPU \u2192 Hidden");
-    m_cpuLabel->installEventFilter(this);
-    cpuVbox->addWidget(m_cpuLabel);
-    hbox->addWidget(cpuStack);
-
-    m_cpuDisplayMode = AppSettings::instance().value("CpuDisplayMode", 0).toInt();
-    if (m_cpuDisplayMode == 2) cpuStack->setVisible(false);
-
-    m_cpuTimer = new QTimer(this);
-    connect(m_cpuTimer, &QTimer::timeout, this, [this, cpuStack] {
-        if (!m_cpuLabel || m_cpuDisplayMode == 2) return;
-#ifdef Q_OS_LINUX
-        static qint64 lastAppTicks = 0;
-        static qint64 lastSysBusy  = 0;
-        static qint64 lastSysTotal = 0;
-        static qint64 lastWall     = 0;
-
-        const qint64 wall = QDateTime::currentMSecsSinceEpoch();
-        int pct = -1;
-
-        if (m_cpuDisplayMode == 0) {
-            QFile f("/proc/self/stat");
-            if (f.open(QIODevice::ReadOnly)) {
-                const QByteArrayList fields = f.readAll().simplified().split(' ');
-                if (fields.size() > 14) {
-                    const qint64 utime = fields[13].toLongLong();
-                    const qint64 stime = fields[14].toLongLong();
-                    const qint64 ticks = utime + stime;
-                    const long   hz    = sysconf(_SC_CLK_TCK);
-                    if (lastWall > 0 && wall > lastWall && hz > 0)
-                        pct = qBound(0, qRound(100.0 * (ticks - lastAppTicks) / hz
-                                               / ((wall - lastWall) / 1000.0)), 999);
-                    lastAppTicks = ticks;
-                }
-            }
-        } else {
-            QFile f("/proc/stat");
-            if (f.open(QIODevice::ReadOnly)) {
-                const QByteArray line = f.readLine();
-                const QByteArrayList fields = line.simplified().split(' ');
-                if (fields.size() >= 5) {
-                    qint64 user  = fields[1].toLongLong();
-                    qint64 nice  = fields[2].toLongLong();
-                    qint64 sys   = fields[3].toLongLong();
-                    qint64 idle  = fields[4].toLongLong();
-                    qint64 busy  = user + nice + sys;
-                    qint64 total = busy + idle;
-                    if (fields.size() >= 9) {
-                        for (int i = 5; i <= 8; ++i)
-                            total += fields[i].toLongLong();
-                    }
-                    if (lastSysTotal > 0 && total > lastSysTotal)
-                        pct = qBound(0, qRound(100.0 * (busy - lastSysBusy)
-                                               / (total - lastSysTotal)), 100);
-                    lastSysBusy  = busy;
-                    lastSysTotal = total;
-                }
-            }
-        }
-        lastWall = wall;
-
-        if (pct >= 0) {
-            QString color = "#8aa8c0";
-            if (pct >= 80)      color = "#e05050";
-            else if (pct >= 50) color = "#f0c040";
-            m_cpuLabel->setStyleSheet(
-                QString("QLabel { color: %1; font-size: 12px; }").arg(color));
-            const QString prefix = (m_cpuDisplayMode == 1) ? "SYS: " : "CPU: ";
-            m_cpuLabel->setText(prefix + QString::number(pct) + "%");
-        }
-        Q_UNUSED(cpuStack);
-#else
-        Q_UNUSED(cpuStack);
-#endif
-    });
-    m_cpuTimer->start(1500);
 
     addSep();
 
