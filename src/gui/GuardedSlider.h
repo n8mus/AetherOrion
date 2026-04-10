@@ -4,6 +4,7 @@
 #include <QComboBox>
 #include <QAbstractItemView>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QWheelEvent>
 
 // Global lock for sidebar controls — when locked, sliders, combo boxes,
@@ -25,6 +26,13 @@ private:
 class GuardedSlider : public QSlider {
 public:
     using QSlider::QSlider;
+    void mousePressEvent(QMouseEvent* ev) override {
+        if (ControlsLock::isLocked()) {
+            ev->ignore();
+            return;
+        }
+        QSlider::mousePressEvent(ev);
+    }
     void wheelEvent(QWheelEvent* ev) override {
         if (ControlsLock::isLocked()) {
             ev->ignore();
