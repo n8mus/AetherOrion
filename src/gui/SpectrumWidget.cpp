@@ -1189,16 +1189,8 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
         // 4x multiplier: dragging 1/4 of widget width doubles/halves bandwidth
         const double scale = std::pow(2.0, static_cast<double>(-dx) / (width() / 4.0));
         const double newBw = std::clamp(m_bwDragStartBw * scale, 0.004, 14.0);
-        // SSB modes: center on filter midpoint so the passband stays visible.
-        // Other modes: center on VFO frequency.
+        // Keep the current pan center on zoom — don't snap to VFO. (#1093)
         double zoomCenter = m_centerMhz;
-        if (const auto* ao = activeOverlay()) {
-            if (m_mode == "USB" || m_mode == "LSB" || m_mode == "DIGU" || m_mode == "DIGL" || m_mode == "RTTY") {
-                zoomCenter = ao->freqMhz + (ao->filterLowHz + ao->filterHighHz) / 2.0 / 1.0e6;
-            } else {
-                zoomCenter = ao->freqMhz;
-            }
-        }
         m_bandwidthMhz = newBw;
         m_centerMhz = zoomCenter;
         markOverlayDirty();
