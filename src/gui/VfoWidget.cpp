@@ -2497,9 +2497,9 @@ void VfoWidget::updateFilterLabel()
     if (!m_slice) return;
     const QString& mode = m_slice->mode();
     int w;
-    if (mode == "USB" || mode == "DIGU" || mode == "FDV")
+    if (mode == "USB" || mode == "FDV")
         w = m_slice->filterHigh();
-    else if (mode == "LSB" || mode == "DIGL")
+    else if (mode == "LSB")
         w = std::abs(m_slice->filterLow());
     else
         w = m_slice->filterHigh() - m_slice->filterLow();
