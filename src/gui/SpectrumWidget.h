@@ -110,6 +110,9 @@ public:
     int stepSize() const { return m_stepHz; }
     void setStepSize(int hz) { m_stepHz = hz; }
 
+    // Set panadapter bandwidth zoom limits (MHz). Called per-radio model.
+    void setBandwidthLimits(double minMhz, double maxMhz) { m_minBwMhz = minMhz; m_maxBwMhz = maxMhz; }
+
     // Set the per-mode filter limits (Hz). Called when mode changes.
     void setFilterLimits(int minHz, int maxHz) { m_filterMinHz = minHz; m_filterMaxHz = maxHz; }
 
@@ -321,6 +324,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
+    bool event(QEvent* event) override;
     void leaveEvent(QEvent* event) override;
 
 public:
@@ -383,6 +387,10 @@ private:
     int m_scrollAccum{0};   // trackpad pixel scroll accumulator (macOS)
     int m_angleAccum{0};    // mouse wheel angle accumulator (#390)
     qint64 m_lastWheelMs{0}; // debounce: timestamp of last accepted wheel step
+
+    // Panadapter bandwidth zoom limits (MHz), set per-radio model
+    double m_minBwMhz{0.010};   // 10 kHz default
+    double m_maxBwMhz{5.400};   // safe default for unknown radios
 
     // ── FFT display controls (radio-side via "display pan set") ──────────
     int   m_panIndex{0};             // per-pan settings index (0, 1, 2, 3)
@@ -536,9 +544,11 @@ private:
     QMap<int, VfoWidget*> m_vfoWidgets;
     VfoWidget* m_vfoWidget{nullptr};  // alias to active slice widget (compat)
 
-    // Bottom-left waterfall zoom buttons: S(egment), B(and)
+    // Bottom-left waterfall zoom buttons: S(egment), B(and), −/+ (bandwidth)
     QPushButton* m_zoomSegBtn{nullptr};
     QPushButton* m_zoomBandBtn{nullptr};
+    QPushButton* m_zoomOutBtn{nullptr};
+    QPushButton* m_zoomInBtn{nullptr};
 
 #ifdef AETHER_GPU_SPECTRUM
     bool m_rhiInitialized{false};
