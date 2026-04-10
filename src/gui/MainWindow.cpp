@@ -1413,8 +1413,8 @@ MainWindow::MainWindow(QWidget* parent)
         auto* s = activeSlice();
         if (!s || s->isLocked()) return;
         int stepHz = spectrum() ? spectrum()->stepSize() : 100;
-        // Initialize target from slice on first step or after external QSY
-        if (m_flexTargetMhz < 0.0)
+        // Initialize target from slice on first step or after external QSY (#1098)
+        if (m_flexTargetMhz < 0.0 || std::abs(m_flexTargetMhz - s->frequency()) > 0.001)
             m_flexTargetMhz = s->frequency();
         m_flexTargetMhz += steps * stepHz / 1e6;
         // Optimistic VFO display update — immediate visual feedback
@@ -1468,6 +1468,24 @@ MainWindow::MainWindow(QWidget* parent)
                     if (slices[i]->sliceId() == m_activeSliceId) { idx = i; break; }
                 }
                 setActiveSlice(slices[(idx - 1 + slices.size()) % slices.size()]->sliceId());
+            }
+        } else if (actionName == "ToggleAgc") {
+            if (auto* s = activeSlice()) {
+                static const char* modes[] = {"off", "slow", "med", "fast"};
+                QString cur = s->agcMode().toLower();
+                int idx = 0;
+                for (int i = 0; i < 4; ++i) {
+                    if (cur == modes[i]) { idx = i; break; }
+                }
+                s->setAgcMode(modes[(idx + 1) % 4]);
+            }
+        } else if (actionName == "VolumeUp") {
+            if (auto* s = activeSlice()) {
+                s->setAudioGain(std::min(100.0f, s->audioGain() + 5.0f));
+            }
+        } else if (actionName == "VolumeDown") {
+            if (auto* s = activeSlice()) {
+                s->setAudioGain(std::max(0.0f, s->audioGain() - 5.0f));
             }
         }
     });
