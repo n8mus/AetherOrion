@@ -107,6 +107,12 @@
 #include "core/PipeWireAudioBridge.h"
 #endif
 #include <QDebug>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <psapi.h>
+#else
+#include <sys/resource.h>
+#endif
 
 namespace AetherSDR {
 
@@ -3539,6 +3545,102 @@ void MainWindow::buildUI()
     gpsVbox->addWidget(m_gpsLabel);
     gpsVbox->addWidget(m_gpsStatusLabel);
     hbox->addWidget(gpsStack);
+
+    addSep();
+
+    // CPU (top) + Memory (bottom) stacked
+    {
+        auto* cpuStack = new QWidget;
+        cpuStack->setMinimumWidth(kTelemetryStackMinWidth);
+        auto* cpuVbox = new QVBoxLayout(cpuStack);
+        cpuVbox->setContentsMargins(0, 0, 0, 0);
+        cpuVbox->setSpacing(0);
+        m_cpuLabel = new QLabel("CPU: \u2014");
+        m_cpuLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
+        m_cpuLabel->setAlignment(Qt::AlignCenter);
+        m_cpuLabel->setToolTip("AetherSDR process CPU usage");
+        m_memLabel = new QLabel("Mem: \u2014");
+        m_memLabel->setStyleSheet("QLabel { color: #607080; font-size: 12px; }");
+        m_memLabel->setAlignment(Qt::AlignCenter);
+        m_memLabel->setToolTip("AetherSDR process memory (RSS)");
+        cpuVbox->addWidget(m_cpuLabel);
+        cpuVbox->addWidget(m_memLabel);
+        hbox->addWidget(cpuStack);
+
+        m_cpuTimer = new QTimer(this);
+        m_cpuTimer->setInterval(1500);
+        connect(m_cpuTimer, &QTimer::timeout, this, [this]() {
+            double cpuPct = -1.0;
+#ifdef Q_OS_WIN
+            static FILETIME prevKernel{}, prevUser{};
+            static qint64 prevWall = 0;
+            FILETIME creation, exit, kernel, user;
+            if (GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user)) {
+                auto toUs = [](const FILETIME& ft) -> qint64 {
+                    return (static_cast<qint64>(ft.dwHighDateTime) << 32 | ft.dwLowDateTime) / 10;
+                };
+                qint64 now = QDateTime::currentMSecsSinceEpoch() * 1000;
+                qint64 cpuUs = toUs(kernel) + toUs(user);
+                qint64 prevCpuUs = toUs(prevKernel) + toUs(prevUser);
+                if (prevWall > 0) {
+                    qint64 wallDelta = now - prevWall;
+                    qint64 cpuDelta = cpuUs - prevCpuUs;
+                    if (wallDelta > 0)
+                        cpuPct = 100.0 * cpuDelta / wallDelta / QThread::idealThreadCount();
+                }
+                prevKernel = kernel;
+                prevUser = user;
+                prevWall = now;
+            }
+#else
+            // POSIX (Linux + macOS): getrusage
+            static qint64 prevUserUs = 0, prevSysUs = 0, prevWallMs = 0;
+            struct rusage ru;
+            if (getrusage(RUSAGE_SELF, &ru) == 0) {
+                qint64 userUs = ru.ru_utime.tv_sec * 1000000LL + ru.ru_utime.tv_usec;
+                qint64 sysUs  = ru.ru_stime.tv_sec * 1000000LL + ru.ru_stime.tv_usec;
+                qint64 nowMs  = QDateTime::currentMSecsSinceEpoch();
+                if (prevWallMs > 0) {
+                    qint64 wallDelta = (nowMs - prevWallMs) * 1000; // to microseconds
+                    qint64 cpuDelta  = (userUs - prevUserUs) + (sysUs - prevSysUs);
+                    if (wallDelta > 0)
+                        cpuPct = 100.0 * cpuDelta / wallDelta / QThread::idealThreadCount();
+                }
+                prevUserUs = userUs;
+                prevSysUs  = sysUs;
+                prevWallMs = nowMs;
+            }
+#endif
+            if (cpuPct >= 0.0) {
+                QString color = "#8aa8c0";
+                if (cpuPct >= 80.0) color = "#e05050";
+                else if (cpuPct >= 50.0) color = "#f0c040";
+                m_cpuLabel->setText(QString("CPU: %1%").arg(cpuPct, 0, 'f', 1));
+                m_cpuLabel->setStyleSheet(QString("QLabel { color: %1; font-size: 12px; }").arg(color));
+            }
+
+            // Memory (RSS)
+#ifdef Q_OS_WIN
+            PROCESS_MEMORY_COUNTERS pmc;
+            if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+                double mb = pmc.WorkingSetSize / (1024.0 * 1024.0);
+                m_memLabel->setText(QString("Mem: %1 MB").arg(static_cast<int>(mb)));
+            }
+#else
+            // getrusage ru_maxrss is in KB on Linux, bytes on macOS
+            struct rusage ruMem;
+            if (getrusage(RUSAGE_SELF, &ruMem) == 0) {
+#ifdef Q_OS_MAC
+                double mb = ruMem.ru_maxrss / (1024.0 * 1024.0);
+#else
+                double mb = ruMem.ru_maxrss / 1024.0;
+#endif
+                m_memLabel->setText(QString("Mem: %1 MB").arg(static_cast<int>(mb)));
+            }
+#endif
+        });
+        m_cpuTimer->start();
+    }
 
     addSep();
 
