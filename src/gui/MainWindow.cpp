@@ -4792,6 +4792,8 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             sw, &SpectrumWidget::setFftFillColor);
     connect(menu, &SpectrumOverlayMenu::fftHeatMapChanged,
             sw, &SpectrumWidget::setFftHeatMap);
+    connect(menu, &SpectrumOverlayMenu::showGridChanged,
+            sw, &SpectrumWidget::setShowGrid);
     connect(menu, &SpectrumOverlayMenu::noiseFloorPositionChanged,
             sw, &SpectrumWidget::setNoiseFloorPosition);
     connect(menu, &SpectrumOverlayMenu::noiseFloorEnableChanged,

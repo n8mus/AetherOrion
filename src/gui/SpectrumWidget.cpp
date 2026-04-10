@@ -212,6 +212,7 @@ void SpectrumWidget::loadSettings()
         m_bandPlanFontSize = s.value("BandPlanFontSize", "6").toInt();
     }
     m_fftHeatMap     = s.value(settingsKey("DisplayFftHeatMap"), "True").toString() == "True";
+    m_showGrid       = s.value(settingsKey("DisplayShowGrid"), "True").toString() == "True";
     m_wfColorScheme  = static_cast<WfColorScheme>(
         std::clamp(s.value(settingsKey("DisplayWfColorScheme"), "0").toInt(),
                    0, static_cast<int>(WfColorScheme::Count) - 1));
@@ -228,7 +229,7 @@ void SpectrumWidget::loadSettings()
         m_overlayMenu->syncDisplaySettings(m_fftAverage, m_fftFps,
             static_cast<int>(m_fftFillAlpha * 100), m_fftWeightedAvg, m_fftFillColor,
             m_wfColorGain, m_wfBlackLevel, m_wfAutoBlack, m_wfLineDuration,
-            75, false, m_fftHeatMap, static_cast<int>(m_wfColorScheme));
+            75, false, m_fftHeatMap, static_cast<int>(m_wfColorScheme), m_showGrid);
 }
 
 VfoWidget* SpectrumWidget::addVfoWidget(int sliceId)
@@ -293,6 +294,13 @@ void SpectrumWidget::setFftHeatMap(bool on) {
     auto& s = AppSettings::instance();
     s.setValue(settingsKey("DisplayFftHeatMap"), on ? "True" : "False");
     s.save();
+}
+void SpectrumWidget::setShowGrid(bool on) {
+    m_showGrid = on;
+    auto& s = AppSettings::instance();
+    s.setValue(settingsKey("DisplayShowGrid"), on ? "True" : "False");
+    s.save();
+    markOverlayDirty();
 }
 void SpectrumWidget::setFftFillAlpha(float a) {
     m_fftFillAlpha = std::clamp(a, 0.0f, 1.0f);
@@ -2777,6 +2785,7 @@ void SpectrumWidget::paintEvent(QPaintEvent* ev)
 
 void SpectrumWidget::drawGrid(QPainter& p, const QRect& r)
 {
+    if (!m_showGrid) return;
     const int w = r.width();
     const int h = r.height();
 
