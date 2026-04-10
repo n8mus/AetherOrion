@@ -2024,6 +2024,12 @@ void SpectrumWidget::initialize(QRhiCommandBuffer* cb)
     m_wfTexFullUpload = false;
     m_wfLastUploadedRow = m_wfWriteRow;
     m_rhiInitialized = true;
+
+    // Re-apply cursor now that the native HWND exists on Windows. (#1096)
+    // setCursor() in the constructor runs before QRhiWidget creates its native
+    // surface; calling it again here ensures the HWND gets the correct cursor
+    // shape rather than defaulting to NULL (invisible).
+    setCursor(cursor());
 }
 
 void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb)
