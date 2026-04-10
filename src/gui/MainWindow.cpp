@@ -1709,8 +1709,10 @@ MainWindow::MainWindow(QWidget* parent)
         bool pcAudio = AppSettings::instance().value("PcAudioEnabled", "True").toString() == "True";
         if (count > 0 && !pcAudio && m_radioModel.isConnected()) {
             m_radioModel.createRxAudioStream();
+            m_titleBar->setPcAudioEnabled(true);   // reflect TCI-forced stream in UI (#1071)
         } else if (count == 0 && !pcAudio) {
             m_radioModel.removeRxAudioStream();
+            m_titleBar->setPcAudioEnabled(false);  // restore button to saved preference (#1071)
         }
     });
 #endif
