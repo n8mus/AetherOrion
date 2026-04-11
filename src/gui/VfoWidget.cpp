@@ -3078,7 +3078,8 @@ void VfoWidget::applyFilterPreset(int widthHz)
         // Centered on carrier — radio's BFO handles pitch offset
         lo = -widthHz / 2;
         hi =  widthHz / 2;
-    } else if (mode == "AM" || mode == "SAM" || mode == "DSB") {
+    } else if (mode == "AM" || mode == "SAM" || mode == "DSB"
+               || mode == "FM" || mode == "NFM" || mode == "DFM") {
         lo = -(widthHz / 2); hi = (widthHz / 2);
     } else {
         // USB/FDV/etc: low cut at 95 Hz to reject carrier/hum
