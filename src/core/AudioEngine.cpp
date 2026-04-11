@@ -708,7 +708,12 @@ bool AudioEngine::startTxStream(const QHostAddress& radioAddress, quint16 radioP
     m_txPacketCount = 0;
     m_txAccumulator.clear();
 
-    QAudioFormat fmt = makeFormat();
+    // TX mic capture uses Int16 — we convert to float32 after capture.
+    // (makeFormat() returns Float for the RX sink, but mic hardware is Int16.)
+    QAudioFormat fmt;
+    fmt.setSampleRate(DEFAULT_SAMPLE_RATE);
+    fmt.setChannelCount(2);
+    fmt.setSampleFormat(QAudioFormat::Int16);
     const QAudioDevice dev = m_inputDevice.isNull()
         ? QMediaDevices::defaultAudioInput() : m_inputDevice;
 
