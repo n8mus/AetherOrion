@@ -3651,7 +3651,7 @@ void MainWindow::buildUI()
     // ── Center stretch → STATION → stretch ───────────────────────────────
     hbox->addStretch(1);
 
-    auto* stationPrefix = new QLabel("STATION:");
+    auto* stationPrefix = new QLabel("RADIO:");
     stationPrefix->setStyleSheet(valStyle);
     hbox->addWidget(stationPrefix);
 

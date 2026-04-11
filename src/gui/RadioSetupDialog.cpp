@@ -3,6 +3,7 @@
 #include "ComboStyle.h"
 #include "models/RadioModel.h"
 #include "core/AppSettings.h"
+#include <QSysInfo>
 #include "core/AudioEngine.h"
 #ifdef HAVE_SERIALPORT
 #include "core/SerialPortController.h"
@@ -240,10 +241,12 @@ QWidget* RadioSetupDialog::buildRadioTab()
         });
 
         grid->addWidget(new QLabel("Station Name:"), 1, 2);
+        QString stationVal = AppSettings::instance().value("StationName", "").toString();
         auto* stationEdit = new QLineEdit(
-            AppSettings::instance().value("StationName", "AetherSDR").toString());
+            stationVal.isEmpty() ? QSysInfo::machineHostName() : stationVal);
         stationEdit->setStyleSheet(kEditStyle);
-        stationEdit->setToolTip("Identifies this client to other Multi-Flex stations");
+        stationEdit->setToolTip("Identifies this client to other Multi-Flex stations.\n"
+                                "Defaults to OS hostname if empty.");
         grid->addWidget(stationEdit, 1, 3);
         connect(stationEdit, &QLineEdit::editingFinished, this, [this, stationEdit] {
             auto& s = AppSettings::instance();
