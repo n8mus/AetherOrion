@@ -24,7 +24,6 @@ void TransmitModel::resetState()
     m_memoriesEnabled = false;
     m_usingMemory = false;
     m_showTxInWaterfall = false;
-    m_speechProcLocalSet = false;  // accept initial status on connect
 
     emit apdStateChanged();
     emit moxChanged(false);
@@ -71,7 +70,7 @@ void TransmitModel::applyTransmitStatus(const QMap<QString, QString>& kvs)
         bool v = kvs["mic_acc"] == "1";
         if (m_micAcc != v) { m_micAcc = v; micChanged = true; }
     }
-    if (kvs.contains("speech_processor_enable") && !m_speechProcLocalSet) {
+    if (kvs.contains("speech_processor_enable")) {
         bool v = kvs["speech_processor_enable"] == "1";
         if (m_speechProcEnable != v) { m_speechProcEnable = v; micChanged = true; }
     }
@@ -406,7 +405,6 @@ void TransmitModel::setSpeechProcessorEnable(bool on)
     // Optimistic update: radio does not echo speech_processor_enable in
     // incremental status — only in the initial full dump on connect.
     m_speechProcEnable = on;
-    m_speechProcLocalSet = true;  // radio doesn't echo — we're authoritative (#1104)
     emit micStateChanged();
     emit commandReady(QString("transmit set speech_processor_enable=%1").arg(on ? 1 : 0));
 }
