@@ -6,6 +6,32 @@ namespace AetherSDR {
 
 const std::vector<ReleaseEntry>& whatsNewEntries() {
     static const std::vector<ReleaseEntry> entries = {
+        {QStringLiteral("0.8.9"), QStringLiteral("2026-04-11"), QStringLiteral("Float32 Audio, Display Panel Redesign, Community PR Blitz"), {
+            {ChangeCategory::Feature, QStringLiteral("Float32 audio pipeline"), QStringLiteral("End-to-end float32 from radio to speaker — eliminates distortion at high AF slider levels All DSP filters (NR2, RN2, NR4, DFNR, BNR) now process in native float32 Resampler converted to float32 I/O...")},
+            {ChangeCategory::Feature, QStringLiteral("Adjustable spectrum trace thickness"), QStringLiteral("GPU triangle strip expansion for variable-width spectrum line (0.5–5.0 px) Line Width slider in Display panel, persisted per-pan Setting to \"Off\" hides trace entirely, showing only fill gradient")},
+            {ChangeCategory::Feature, QStringLiteral("Display panel redesign"), QStringLiteral("Compact layout: sliders grouped at top, toggle buttons condensed into labeled row Heat Map, Grid, Weighted Average, Cursor Freq as toggle buttons with color state Removed separator between FFT and ...")},
+            {ChangeCategory::Feature, QStringLiteral("Band Stack panel with frequency bookmarks"), QStringLiteral("Vertical bookmark strip alongside panadapter with FRStack-style save/restore Saves frequency, mode, filter, antennas, AGC, volume, NB/NR/WNB per bookmark Color-coded by band plan segment, persisted...")},
+            {ChangeCategory::Feature, QStringLiteral("CPU and memory indicator"), QStringLiteral("Cross-platform process CPU and RSS in status bar")},
+            {ChangeCategory::Feature, QStringLiteral("Panadapter zoom buttons"), QStringLiteral("−/+ buttons and macOS trackpad pinch-to-zoom (community: rfoust)")},
+            {ChangeCategory::Feature, QStringLiteral("Collapsible VFO flags"), QStringLiteral("Click slice letter badge to collapse/expand (community: rfoust)")},
+            {ChangeCategory::Feature, QStringLiteral("VU meter popout"), QStringLiteral("S-Meter can be detached into floating window (community: chibondking)")},
+            {ChangeCategory::Feature, QStringLiteral("Off-screen slice context menu"), QStringLiteral("Right-click off-screen indicators: Close, Move Here, Center (community: rfoust)")},
+            {ChangeCategory::BugFix, QStringLiteral("Radio-authoritative band changes"), QStringLiteral("Band buttons use `display pan set band=` — radio manages band stack Bandwidth drag no longer snaps pan center to VFO")},
+            {ChangeCategory::BugFix, QStringLiteral("PC Audio toggle vs StreamDeck TCI"), QStringLiteral("StreamDeck no longer overrides user's explicit PC Audio off toggle")},
+            {ChangeCategory::BugFix, QStringLiteral("VFO drag snap"), QStringLiteral("Passband drag moves VFO relative to grab point, no initial frequency jump")},
+            {ChangeCategory::BugFix, QStringLiteral("DFM/FM filter centering"), QStringLiteral("FM/NFM/DFM filters centered symmetrically instead of USB-style offset")},
+            {ChangeCategory::BugFix, QStringLiteral("Multi-pan band change crash"), QStringLiteral("Null guards for spectrum() during pan reassignment")},
+            {ChangeCategory::BugFix, QStringLiteral("HGauge meter colors"), QStringLiteral("Green/yellow/red zones with white labels for readability Yellow caution zones added to all gauges")},
+            {ChangeCategory::BugFix, QStringLiteral("Logging checkboxes not persisting"), QStringLiteral("Fixed dots in XML keys; default Discovery/Commands/Status to enabled")},
+            {ChangeCategory::BugFix, QStringLiteral("Status bar RADIO label"), QStringLiteral("Renamed STATION to RADIO; station name defaults to OS hostname for multi-flex")},
+            {ChangeCategory::BugFix, QStringLiteral("Aurora power meter"), QStringLiteral("AU- models show 0-600W scale instead of 0-120W")},
+            {ChangeCategory::BugFix, QStringLiteral("FlexControl stale QSY"), QStringLiteral("Reset target on external frequency change; added AGC/volume button actions")},
+            {ChangeCategory::BugFix, QStringLiteral("macOS CoreAudio crashes"), QStringLiteral("Guard stop() in StoppedState; route device switch to audio thread; restart on silent stop")},
+            {ChangeCategory::BugFix, QStringLiteral("PROC turning off on VOX toggle"), QStringLiteral("Investigated: cannot reproduce on firmware v4.1.5")},
+            {ChangeCategory::BugFix, QStringLiteral("Additional fixes"), QStringLiteral("Mic bias/boost UI update (#1045) DFNR reset button (#1055) Support bundle firmware version (#1057) GuardedSlider lock bypass (#1060) VFO filter BW for DIGU/DIGL (#1066) CMake GPU/DFNR diagnostics (...")},
+            {ChangeCategory::Infrastructure, QStringLiteral("Vendored RADE Opus snapshot"), QStringLiteral("Offline builds — no network download needed (community: jensenpat)")},
+            {ChangeCategory::Infrastructure, QStringLiteral("A-index in propagation overlay"), QStringLiteral("Shows alongside K-index and SFI (community: jensenpat)")},
+        }},
         {QStringLiteral("0.8.8"), QStringLiteral("2026-04-10"), QStringLiteral("Band Stack Panel, Radio-Authoritative Bands, Cross-Platform CPU Monitor"), {
             {ChangeCategory::Feature, QStringLiteral("Band Stack panel"), QStringLiteral("Vertical bookmark strip alongside the panadapter, toggled by 3-dot icon in status bar Click \"+\" to save current frequency, click a bookmark to recall, right-click to delete Saves/restores: frequenc...")},
             {ChangeCategory::Feature, QStringLiteral("CPU and memory indicator"), QStringLiteral("Process CPU usage and RSS memory in the status bar Cross-platform: getrusage (Linux/macOS), GetProcessTimes (Windows) Color-coded: blue < 50%, yellow 50-79%, red 80%+")},

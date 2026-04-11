@@ -3,6 +3,117 @@
 All notable changes to AetherSDR are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [v0.8.9] — 2026-04-11
+
+### Float32 Audio, Display Panel Redesign, Community PR Blitz
+
+### New Features
+
+**Float32 audio pipeline**
+- End-to-end float32 from radio to speaker — eliminates distortion at high AF slider levels
+- All DSP filters (NR2, RN2, NR4, DFNR, BNR) now process in native float32
+- Resampler converted to float32 I/O (r8brain double precision preserved internally)
+- Removes all unnecessary int16↔float conversion overhead
+
+**Adjustable spectrum trace thickness (#1116)**
+- GPU triangle strip expansion for variable-width spectrum line (0.5–5.0 px)
+- Line Width slider in Display panel, persisted per-pan
+- Setting to "Off" hides trace entirely, showing only fill gradient
+
+**Display panel redesign**
+- Compact layout: sliders grouped at top, toggle buttons condensed into labeled row
+- Heat Map, Grid, Weighted Average, Cursor Freq as toggle buttons with color state
+- Removed separator between FFT and waterfall sections
+
+**Band Stack panel with frequency bookmarks**
+- Vertical bookmark strip alongside panadapter with FRStack-style save/restore
+- Saves frequency, mode, filter, antennas, AGC, volume, NB/NR/WNB per bookmark
+- Color-coded by band plan segment, persisted per-radio
+
+**CPU and memory indicator (#1056)**
+- Cross-platform process CPU and RSS in status bar
+
+**Panadapter zoom buttons (#1050)**
+- −/+ buttons and macOS trackpad pinch-to-zoom (community: rfoust)
+
+**Collapsible VFO flags (#1166)**
+- Click slice letter badge to collapse/expand (community: rfoust)
+
+**VU meter popout (#993)**
+- S-Meter can be detached into floating window (community: chibondking)
+
+**Off-screen slice context menu**
+- Right-click off-screen indicators: Close, Move Here, Center (community: rfoust)
+
+### Bug Fixes
+
+**Radio-authoritative band changes (#1093)**
+- Band buttons use `display pan set band=` — radio manages band stack
+- Bandwidth drag no longer snaps pan center to VFO
+
+**PC Audio toggle vs StreamDeck TCI**
+- StreamDeck no longer overrides user's explicit PC Audio off toggle
+
+**VFO drag snap (#1120)**
+- Passband drag moves VFO relative to grab point, no initial frequency jump
+
+**DFM/FM filter centering (#1122)**
+- FM/NFM/DFM filters centered symmetrically instead of USB-style offset
+
+**Multi-pan band change crash (#1146)**
+- Null guards for spectrum() during pan reassignment
+
+**HGauge meter colors (#1152)**
+- Green/yellow/red zones with white labels for readability
+- Yellow caution zones added to all gauges
+
+**Logging checkboxes not persisting**
+- Fixed dots in XML keys; default Discovery/Commands/Status to enabled
+
+**Status bar RADIO label (#1113)**
+- Renamed STATION to RADIO; station name defaults to OS hostname for multi-flex
+
+**Aurora power meter (#484)**
+- AU- models show 0-600W scale instead of 0-120W
+
+**FlexControl stale QSY (#1098)**
+- Reset target on external frequency change; added AGC/volume button actions
+
+**macOS CoreAudio crashes (#1059, #1114, #1149)**
+- Guard stop() in StoppedState; route device switch to audio thread; restart on silent stop
+
+**PROC turning off on VOX toggle (#1104)**
+- Investigated: cannot reproduce on firmware v4.1.5
+
+**Additional fixes**
+- Mic bias/boost UI update (#1045)
+- DFNR reset button (#1055)
+- Support bundle firmware version (#1057)
+- GuardedSlider lock bypass (#1060)
+- VFO filter BW for DIGU/DIGL (#1066)
+- CMake GPU/DFNR diagnostics (#1067)
+- TCI PC Audio button state (#1071)
+- TGXL connection errors (#1039)
+- Manual probe radio identity (#1072)
+- Windows QRhi cursor (#1096)
+- Grid lines toggle (#1065)
+- AGC Threshold tooltip (#1064)
+
+### Infrastructure
+
+**Vendored RADE Opus snapshot**
+- Offline builds — no network download needed (community: jensenpat)
+
+**A-index in propagation overlay**
+- Shows alongside K-index and SFI (community: jensenpat)
+
+### Contributors
+
+- **rfoust** — Zoom buttons, collapsible VFO flags, off-screen slice menu
+- **chibondking** — VU meter popout
+- **jensenpat** — Vendored Opus, A-index, spot colors, memory persistence, full frequency display, macOS DAX driver check
+- **AetherClaude (pi-claude)** — Multiple bug fixes and features
+
 ## [v0.8.8] — 2026-04-10
 
 ### Band Stack Panel, Radio-Authoritative Bands, Cross-Platform CPU Monitor
