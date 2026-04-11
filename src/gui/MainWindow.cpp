@@ -1981,12 +1981,8 @@ void MainWindow::closeEvent(QCloseEvent* event)
     // SplitterState no longer saved (2-pane layout uses stretch factors)
     // ConnPanelCollapsed removed — panel is now a popup dialog
 
-    if (m_memoryDialog && m_memoryDialog->isVisible()) {
-        s.setValue("MemoryDialogOpen", "True");
-        s.setValue("MemoryDialogGeometry", m_memoryDialog->saveGeometry().toBase64());
-    } else {
-        s.setValue("MemoryDialogOpen", "False");
-    }
+    s.setValue("MemoryDialogOpen",
+        (m_memoryDialog && m_memoryDialog->isVisible()) ? "True" : "False");
 
     // Save active slice frequency/mode for restore on next launch
     auto* sl = activeSlice();
