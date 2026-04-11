@@ -1164,6 +1164,7 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         const int right = std::max(loX, hiX);
         if (mx > left + GRAB && mx < right - GRAB) {
             m_draggingVfo = true;
+            m_vfoDragOffsetHz = static_cast<int>(std::round((xToMhz(mx) - ao->freqMhz) * 1.0e6));
             setCursor(Qt::SizeHorCursor);
             ev->accept();
             return;
@@ -1264,7 +1265,7 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
 
     if (m_draggingVfo) {
         const int mx = static_cast<int>(ev->position().x());
-        const double mhz = snapToStep(xToMhz(mx), m_stepHz);
+        const double mhz = snapToStep(xToMhz(mx) - m_vfoDragOffsetHz / 1.0e6, m_stepHz);
         emit frequencyClicked(mhz);
         ev->accept();
         return;

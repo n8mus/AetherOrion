@@ -455,6 +455,7 @@ private:
     int m_filterDragStartHz{0};     // filter edge Hz at grab time (#764)
     // VFO passband drag state (#404)
     bool m_draggingVfo{false};
+    int  m_vfoDragOffsetHz{0};  // Hz offset from VFO at grab point (#1120)
     // dBm scale strip drag state
     static constexpr int DBM_STRIP_W = 36;  // width of the dBm scale strip
     static constexpr int DBM_ARROW_H = 14;  // height of each arrow button
