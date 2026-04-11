@@ -4721,17 +4721,22 @@ void MainWindow::setActiveSlice(int sliceId)
             m_panStack->activeApplet()->setSliceId(sliceId);
     }
     m_appletPanel->setSlice(s);
-    spectrum()->overlayMenu()->setSlice(s);
+    auto* sw = spectrum();
+    if (sw) {
+        sw->overlayMenu()->setSlice(s);
 
-    // Sync step size from the new active slice
-    if (s->stepHz() > 0) {
-        if (spectrum()) spectrum()->setStepSize(s->stepHz());
+        // Sync step size from the new active slice
+        if (s->stepHz() > 0) {
+            sw->setStepSize(s->stepHz());
+            m_appletPanel->rxApplet()->syncStepFromSlice(s->stepHz(), s->stepList());
+        }
+
+        // Switch active VFO widget display (NR2/RN2/RADE are wired permanently
+        // in wireVfoWidget, no disconnect/reconnect needed)
+        sw->setActiveVfoWidget(sliceId);
+    } else if (s->stepHz() > 0) {
         m_appletPanel->rxApplet()->syncStepFromSlice(s->stepHz(), s->stepList());
     }
-
-    // Switch active VFO widget display (NR2/RN2/RADE are wired permanently
-    // in wireVfoWidget, no disconnect/reconnect needed)
-    spectrum()->setActiveVfoWidget(sliceId);
 
     // Update filter limits for the active slice's mode
     updateFilterLimitsForMode(s->mode());
@@ -4784,8 +4789,10 @@ void MainWindow::updateFilterLimitsForMode(const QString& mode)
         // USB, DIGU, CW, RTTY, etc.
         minHz = 0; maxHz = 12000;
     }
-    spectrum()->setFilterLimits(minHz, maxHz);
-    spectrum()->setMode(mode);
+    if (auto* s = spectrum()) {
+        s->setFilterLimits(minHz, maxHz);
+        s->setMode(mode);
+    }
 }
 
 void MainWindow::pushSliceOverlay(SliceModel* s)
@@ -6686,15 +6693,18 @@ void MainWindow::restoreBandState(const BandSnapshot& snap)
 
 void MainWindow::onFrequencyChanged(double mhz)
 {
+    auto* sw = spectrum();
+    if (!sw) return;  // pan may be absent during band change (#1146)
+
     // If the slice is locked, snap spectrum back to the current freq.
     if (auto* s = activeSlice(); s && s->isLocked()) {
         m_updatingFromModel = true;
-        spectrum()->setVfoFrequency(s->frequency());
+        sw->setVfoFrequency(s->frequency());
         m_updatingFromModel = false;
         return;
     }
 
-    spectrum()->setVfoFrequency(mhz);
+    sw->setVfoFrequency(mhz);
     if (!m_updatingFromModel) {
         if (auto* s = activeSlice()) {
             s->setFrequency(mhz);
