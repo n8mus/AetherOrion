@@ -207,6 +207,7 @@ private:
     int     m_micLevel{50};
     bool    m_micAcc{false};
     bool    m_speechProcEnable{false};
+    bool    m_speechProcLocalSet{false}; // true after local set — ignore status echo (#1104)
     int     m_speechProcLevel{0};
     bool    m_companderOn{false};
     int     m_companderLevel{0};
