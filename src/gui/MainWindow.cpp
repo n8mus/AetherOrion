@@ -1305,6 +1305,13 @@ MainWindow::MainWindow(QWidget* parent)
     // All three power gauges (TxApplet, TunerApplet, SMeterWidget) update together.
     auto updatePowerScale = [this]() {
         int maxW = m_radioModel.transmitModel().maxPowerLevel();
+        // Aurora (AU-) radios have an integrated 600W PA (Overlord) but
+        // max_power_level only reports the exciter limit (100W). Use model
+        // name to detect the true PA capability. (#484)
+        const QString& model = m_radioModel.model();
+        if (model.startsWith("AU-") && maxW <= 100) {
+            maxW = 500;
+        }
         bool hasAmp = m_radioModel.hasAmplifier();
         m_appletPanel->txApplet()->setPowerScale(maxW, hasAmp);
         m_appletPanel->tunerApplet()->setPowerScale(maxW, hasAmp);
