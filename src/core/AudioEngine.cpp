@@ -928,31 +928,40 @@ void AudioEngine::onTxAudioReady()
     if (data.isEmpty()) return;
 #endif
 
-    // Convert mic int16 → float32 at capture boundary
-    {
+    // Resample int16 to 24kHz stereo if needed, then convert to float32
+    // for RADE. Normal TX path stays int16 (Opus requires int16).
+    if (m_txNeedsResample && m_txResampler) {
+        // Convert int16 → float32 for float32 Resampler
         const auto* i16 = reinterpret_cast<const int16_t*>(data.constData());
         const int numSamples = data.size() / static_cast<int>(sizeof(int16_t));
-        QByteArray floatData(numSamples * static_cast<int>(sizeof(float)), Qt::Uninitialized);
-        auto* fd = reinterpret_cast<float*>(floatData.data());
+        QByteArray f32(numSamples * static_cast<int>(sizeof(float)), Qt::Uninitialized);
+        auto* fd = reinterpret_cast<float*>(f32.data());
         for (int i = 0; i < numSamples; ++i)
             fd[i] = i16[i] / 32768.0f;
-        data = floatData;
-    }
 
-    // Resample to 24kHz stereo using r8brain polyphase resampler
-    if (m_txNeedsResample && m_txResampler) {
-        const auto* pcm = reinterpret_cast<const float*>(data.constData());
         if (m_txInputMono) {
-            data = m_txResampler->processMonoToStereo(pcm, data.size() / static_cast<int>(sizeof(float)));
+            f32 = m_txResampler->processMonoToStereo(
+                reinterpret_cast<const float*>(f32.constData()),
+                f32.size() / static_cast<int>(sizeof(float)));
         } else {
-            data = m_txResampler->processStereoToStereo(pcm, data.size() / (2 * static_cast<int>(sizeof(float))));
+            f32 = m_txResampler->processStereoToStereo(
+                reinterpret_cast<const float*>(f32.constData()),
+                f32.size() / (2 * static_cast<int>(sizeof(float))));
         }
+
+        // Convert back to int16 for the rest of the TX path
+        const auto* rsrc = reinterpret_cast<const float*>(f32.constData());
+        const int rcount = f32.size() / static_cast<int>(sizeof(float));
+        data.resize(rcount * static_cast<int>(sizeof(int16_t)));
+        auto* rdst = reinterpret_cast<int16_t*>(data.data());
+        for (int i = 0; i < rcount; ++i)
+            rdst[i] = static_cast<int16_t>(std::clamp(rsrc[i] * 32768.0f, -32768.0f, 32767.0f));
     } else if (m_txInputMono) {
-        // 24kHz mono float32 (no resample needed) → duplicate to stereo
-        const auto* src = reinterpret_cast<const float*>(data.constData());
-        const int monoSamples = data.size() / static_cast<int>(sizeof(float));
-        QByteArray stereo(monoSamples * 2 * static_cast<int>(sizeof(float)), Qt::Uninitialized);
-        auto* dst = reinterpret_cast<float*>(stereo.data());
+        // 24kHz mono int16 (no resample needed) → duplicate to stereo
+        const auto* src = reinterpret_cast<const int16_t*>(data.constData());
+        const int monoSamples = data.size() / static_cast<int>(sizeof(int16_t));
+        QByteArray stereo(monoSamples * 2 * static_cast<int>(sizeof(int16_t)), Qt::Uninitialized);
+        auto* dst = reinterpret_cast<int16_t*>(stereo.data());
         for (int i = 0; i < monoSamples; ++i) {
             dst[i * 2] = src[i];
             dst[i * 2 + 1] = src[i];
@@ -960,9 +969,15 @@ void AudioEngine::onTxAudioReady()
         data = stereo;
     }
 
-    // RADE mode: emit raw PCM for RADEEngine instead of sending VITA-49
+    // RADE mode: convert int16 → float32 and emit for RADEEngine
     if (m_radeMode) {
-        emit txRawPcmReady(data);  // data is float32 stereo 24kHz
+        const auto* i16 = reinterpret_cast<const int16_t*>(data.constData());
+        const int ns = data.size() / static_cast<int>(sizeof(int16_t));
+        QByteArray f32(ns * static_cast<int>(sizeof(float)), Qt::Uninitialized);
+        auto* fd = reinterpret_cast<float*>(f32.data());
+        for (int i = 0; i < ns; ++i)
+            fd[i] = i16[i] / 32768.0f;
+        emit txRawPcmReady(f32);
         return;
     }
 
@@ -970,24 +985,22 @@ void AudioEngine::onTxAudioReady()
     // Don't send mic audio — it would conflict with the DAX stream.
     if (m_daxTxMode) return;
 
-    // ── Apply client-side PC mic gain ────────────────────────────────────
-    // mic_level slider (0-100) maps to 0.0-1.0 gain on raw float32 PCM.
+    // ── Apply client-side PC mic gain (int16) ───────────────────────────
     const float gain = m_pcMicGain.load();
     if (gain < 0.999f) {
-        auto* pcm = reinterpret_cast<float*>(data.data());
-        int sampleCount = data.size() / static_cast<int>(sizeof(float));
+        auto* pcm = reinterpret_cast<int16_t*>(data.data());
+        int sampleCount = data.size() / static_cast<int>(sizeof(int16_t));
         for (int i = 0; i < sampleCount; ++i)
-            pcm[i] *= gain;
+            pcm[i] = static_cast<int16_t>(std::clamp(
+                static_cast<int>(pcm[i] * gain), -32768, 32767));
     }
 
-    // ── Client-side PC mic level metering ────────────────────────────────
-    // Accumulate peak and RMS over a ~50ms window, then emit once.
-    // Only used when mic_selection=PC (gated in MainWindow).
+    // ── Client-side PC mic level metering (int16) ───────────────────────
     {
-        const auto* pcm = reinterpret_cast<const float*>(data.constData());
-        int sampleCount = data.size() / static_cast<int>(sizeof(float));
+        const auto* pcm = reinterpret_cast<const int16_t*>(data.constData());
+        int sampleCount = data.size() / static_cast<int>(sizeof(int16_t));
         for (int i = 0; i < sampleCount; i += 2) {  // stereo: use L channel
-            float s = std::abs(pcm[i]);
+            float s = std::abs(pcm[i]) / 32768.0f;
             if (s > m_pcMicPeak) m_pcMicPeak = s;
             m_pcMicSumSq += static_cast<double>(s) * s;
             m_pcMicSampleCount++;
@@ -1006,17 +1019,9 @@ void AudioEngine::onTxAudioReady()
     // ── Opus TX path: always active for remote_audio_tx ────────────────
     // Sends Opus during both RX (VOX/met_in_rx metering) and TX (voice).
     // The radio requires Opus on remote_audio_tx (enforces compression=OPUS).
-    // Convert float32→int16 at the Opus boundary (libopus requires int16).
+    // Data is int16 stereo — accumulate directly for Opus encoding.
     if (m_opusTxEnabled) {
-        {
-            const auto* f32 = reinterpret_cast<const float*>(data.constData());
-            const int nSamples = data.size() / static_cast<int>(sizeof(float));
-            QByteArray i16data(nSamples * static_cast<int>(sizeof(int16_t)), Qt::Uninitialized);
-            auto* i16 = reinterpret_cast<int16_t*>(i16data.data());
-            for (int i = 0; i < nSamples; ++i)
-                i16[i] = static_cast<int16_t>(std::clamp(f32[i] * 32768.0f, -32768.0f, 32767.0f));
-            m_opusTxAccumulator.append(i16data);
-        }
+        m_opusTxAccumulator.append(data);
         // 240 stereo sample frames × 2 channels × 2 bytes = 960 bytes per 10ms frame
         constexpr int OPUS_FRAME_BYTES = 240 * 2 * sizeof(int16_t);
 
@@ -1070,20 +1075,21 @@ void AudioEngine::onTxAudioReady()
         return;
     }
 
-    // ── Uncompressed TX path ─────────────────────────────────────────────
-    // Data is float32 stereo — accumulate and send as float32 VITA-49 packets.
+    // ── Uncompressed TX path (not used — radio forces Opus) ────────────
     m_txAccumulator.append(data);
 
-    // 128 stereo pairs × 2 channels × sizeof(float) = 1024 bytes per packet
-    constexpr int TX_FLOAT_BYTES_PER_PACKET = TX_SAMPLES_PER_PACKET * 2 * sizeof(float);
-    while (m_txAccumulator.size() >= TX_FLOAT_BYTES_PER_PACKET) {
-        const float* pcm = reinterpret_cast<const float*>(m_txAccumulator.constData());
+    while (m_txAccumulator.size() >= TX_PCM_BYTES_PER_PACKET) {
+        const int16_t* pcm = reinterpret_cast<const int16_t*>(m_txAccumulator.constData());
 
-        // Already float32 — send directly
-        QByteArray packet = buildVitaTxPacket(pcm, TX_SAMPLES_PER_PACKET);
+        // Convert int16 → float32 for VITA-49 packet (radio expects float32)
+        float floatBuf[TX_SAMPLES_PER_PACKET * 2];
+        for (int i = 0; i < TX_SAMPLES_PER_PACKET * 2; ++i)
+            floatBuf[i] = pcm[i] / 32768.0f;
+
+        QByteArray packet = buildVitaTxPacket(floatBuf, TX_SAMPLES_PER_PACKET);
         emit txPacketReady(packet);
 
-        m_txAccumulator.remove(0, TX_FLOAT_BYTES_PER_PACKET);
+        m_txAccumulator.remove(0, TX_PCM_BYTES_PER_PACKET);
     }
 }
 
