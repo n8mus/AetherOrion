@@ -43,29 +43,44 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     barLayout->addWidget(m_titleLabel);
     barLayout->addStretch();
 
-    // Dock button — hidden when docked, shown when floating
-    m_dockBtn = new QPushButton("\u21a9 Dock");
-    m_dockBtn->setFixedSize(50, 14);
-    m_dockBtn->setStyleSheet(
-        "QPushButton { background: #1a2a3a; color: #8aa8c0; border: 1px solid #304050; "
-        "border-radius: 3px; font-size: 9px; font-weight: bold; }"
-        "QPushButton:hover { background: #203040; color: #c8d8e8; }");
-    m_dockBtn->hide();
-    connect(m_dockBtn, &QPushButton::clicked, this, &PanadapterApplet::dockClicked);
-    barLayout->addWidget(m_dockBtn);
-
     const QString btnStyle = QStringLiteral(
         "QPushButton { background: transparent; color: #6a8090; "
         "border: none; font-size: 9px; padding: 0; }"
         "QPushButton:hover { color: #c8d8e8; }");
 
-    auto* closeBtn = new QPushButton("\u00D7");
-    closeBtn->setFixedSize(14, 14);
-    closeBtn->setStyleSheet(btnStyle + "QPushButton:hover { color: #ff4040; }");
-    connect(closeBtn, &QPushButton::clicked, this, [this]() {
+    // Pop-out / Dock button (⬈ when docked, ↩ when floating)
+    m_popOutBtn = new QPushButton("\u2b08");  // ⬈
+    m_popOutBtn->setFixedSize(16, 14);
+    m_popOutBtn->setStyleSheet(btnStyle + "QPushButton { font-size: 11px; }");
+    m_popOutBtn->setToolTip("Pop out panadapter");
+    m_popOutBtn->hide();  // hidden in single-pan mode
+    connect(m_popOutBtn, &QPushButton::clicked, this, [this]() {
+        if (m_isFloating) {
+            emit dockClicked();
+        } else {
+            emit popOutClicked();
+        }
+    });
+    barLayout->addWidget(m_popOutBtn);
+
+    // Maximize button (□) — placeholder for future use
+    m_maxBtn = new QPushButton("\u25a1");  // □
+    m_maxBtn->setFixedSize(16, 14);
+    m_maxBtn->setStyleSheet(btnStyle + "QPushButton { font-size: 11px; }");
+    m_maxBtn->setToolTip("Maximize panadapter");
+    m_maxBtn->hide();  // hidden in single-pan mode
+    barLayout->addWidget(m_maxBtn);
+
+    // Close button (×)
+    m_closeBtn = new QPushButton("\u00D7");
+    m_closeBtn->setFixedSize(16, 14);
+    m_closeBtn->setStyleSheet(btnStyle + "QPushButton { font-size: 11px; } QPushButton:hover { color: #ff4040; }");
+    m_closeBtn->setToolTip("Close panadapter");
+    m_closeBtn->hide();  // hidden in single-pan mode
+    connect(m_closeBtn, &QPushButton::clicked, this, [this]() {
         emit closeRequested(m_panId);
     });
-    barLayout->addWidget(closeBtn);
+    barLayout->addWidget(m_closeBtn);
 
     layout->addWidget(titleBar);
 
@@ -233,9 +248,24 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     layout->addWidget(m_cwPanel);
 }
 
-void PanadapterApplet::setDockButtonVisible(bool visible)
+void PanadapterApplet::setMultiPanMode(bool multi)
 {
-    if (m_dockBtn) m_dockBtn->setVisible(visible);
+    // In single-pan mode, hide all decorations — nothing to pop out, maximize, or close
+    if (m_popOutBtn) m_popOutBtn->setVisible(multi);
+    if (m_maxBtn) m_maxBtn->setVisible(multi);
+    if (m_closeBtn) m_closeBtn->setVisible(multi);
+}
+
+void PanadapterApplet::setFloatingState(bool floating)
+{
+    m_isFloating = floating;
+    if (m_popOutBtn) {
+        m_popOutBtn->setText(floating ? "\u21a9" : "\u2b08");  // ↩ or ⬈
+        m_popOutBtn->setToolTip(floating ? "Dock panadapter" : "Pop out panadapter");
+        m_popOutBtn->setVisible(true);  // always visible when floating
+    }
+    // When floating, always show close (to dock via window close)
+    if (m_closeBtn && floating) m_closeBtn->setVisible(true);
 }
 
 void PanadapterApplet::setSliceId(int id)

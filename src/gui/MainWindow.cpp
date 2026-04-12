@@ -5133,6 +5133,9 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             m_panStack->dockPanadapter(applet->panId());
         }
     });
+    connect(applet, &PanadapterApplet::popOutClicked, this, [this, applet]() {
+        m_panStack->floatPanadapter(applet->panId());
+    });
 
     // ── DAX IQ pan routing from overlay menu ───────────────────────────
     // The overlay controls which pan feeds which IQ channel (routing only).

@@ -24,8 +24,8 @@ PanFloatingWindow::PanFloatingWindow(PanadapterApplet* applet, QWidget* parent)
     m_layout->addWidget(m_applet, 1);
     m_applet->show();
 
-    // Show the dock button in the applet's title bar
-    m_applet->setDockButtonVisible(true);
+    // Show dock icon in the applet's title bar
+    m_applet->setFloatingState(true);
     connect(m_applet, &PanadapterApplet::dockClicked, this, [this]() {
         emit dockRequested(panId());
     });
