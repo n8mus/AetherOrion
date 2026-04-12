@@ -341,10 +341,10 @@ void PanadapterStream::processDatagram(const QByteArray& data)
             if (payloadBytes < 2) return;
             const int monoSamples = payloadBytes / 2;
             const uchar* src = raw + payloadStart;
-            pcm.resize(monoSamples * 4);
-            auto* dst = reinterpret_cast<qint16*>(pcm.data());
+            pcm.resize(monoSamples * 2 * static_cast<int>(sizeof(float)));
+            auto* dst = reinterpret_cast<float*>(pcm.data());
             for (int i = 0; i < monoSamples; ++i) {
-                const qint16 s = qFromBigEndian<qint16>(src + i * 2);
+                const float s = qFromBigEndian<qint16>(src + i * 2) / 32768.0f;
                 dst[i * 2]     = s;
                 dst[i * 2 + 1] = s;
             }
