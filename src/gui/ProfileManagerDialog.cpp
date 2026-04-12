@@ -224,7 +224,7 @@ QWidget* ProfileManagerDialog::buildAutoSaveTab()
     m_autoSaveTx->setChecked(m_model->autoSave());
 
     connect(m_autoSaveTx, &QCheckBox::toggled, this, [this](bool on) {
-        m_model->sendCommand(QString("radio set auto_save=%1").arg(on ? 1 : 0));
+        m_model->sendCommand(QString("profile autosave %1").arg(on ? "on" : "off"));
     });
 
     vbox->addWidget(m_autoSaveTx);

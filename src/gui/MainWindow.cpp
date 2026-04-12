@@ -3188,9 +3188,11 @@ void MainWindow::buildMenuBar()
     });
     helpMenu->addSeparator();
     helpMenu->addAction("Support...", this, [this]() {
-        SupportDialog dlg(this);
-        dlg.setRadioModel(&m_radioModel);
-        dlg.exec();
+        auto* dlg = new SupportDialog(this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setRadioModel(&m_radioModel);
+        dlg->show();
+        dlg->raise();
     });
     helpMenu->addAction("Slice Troubleshooting...", this, [this]() {
         SliceTroubleshootingDialog dlg(&m_radioModel, m_audio, this);
