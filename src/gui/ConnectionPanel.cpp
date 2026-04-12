@@ -568,7 +568,7 @@ void ConnectionPanel::probeRadio(const QString& ip)
         m_manualSourceWarningLabel->setVisible(true);
         sock->deleteLater();
         m_manualProbeBtn->setEnabled(true);
-        m_manualProbeBtn->setText("Go");
+        m_manualProbeBtn->setText("Connect");
         return;
     }
     sock->connectToHost(ip, 4992);
@@ -579,7 +579,7 @@ void ConnectionPanel::probeRadio(const QString& ip)
             sock->abort();
             sock->deleteLater();
             m_manualProbeBtn->setEnabled(true);
-            m_manualProbeBtn->setText("Go");
+            m_manualProbeBtn->setText("Connect");
         }
     });
 
@@ -626,7 +626,7 @@ void ConnectionPanel::probeRadio(const QString& ip)
                             m_radios[i] = info;
                             m_radioList->item(i)->setText(info.displayName());
                             m_manualProbeBtn->setEnabled(true);
-                            m_manualProbeBtn->setText("Go");
+                            m_manualProbeBtn->setText("Connect");
                             emit routedRadioFound(info);
                             return;
                         }
@@ -636,7 +636,7 @@ void ConnectionPanel::probeRadio(const QString& ip)
                     m_radioList->addItem(info.displayName());
 
                     m_manualProbeBtn->setEnabled(true);
-                    m_manualProbeBtn->setText("Go");
+                    m_manualProbeBtn->setText("Connect");
                     emit routedRadioFound(info);
 
                     qDebug() << "ConnectionPanel: routed radio found at" << ip
@@ -654,7 +654,7 @@ void ConnectionPanel::probeRadio(const QString& ip)
         qWarning() << "ConnectionPanel: probe failed:" << sock->errorString();
         sock->deleteLater();
         m_manualProbeBtn->setEnabled(true);
-        m_manualProbeBtn->setText("Go");
+        m_manualProbeBtn->setText("Connect");
     });
 }
 

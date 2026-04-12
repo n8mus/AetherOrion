@@ -1901,42 +1901,15 @@ MainWindow::MainWindow(QWidget* parent)
             showMemoryDialog();
     });
 
-    // What's New dialog — show on version change (#483)
-    // Also check for newer release and offer upgrade (#486)
-    QTimer::singleShot(600, this, [this]() {
+    // Track last-seen version (used by Help → What's New)
+    {
         auto& settings = AppSettings::instance();
-        QString lastSeen = settings.value("LastSeenVersion").toString();
         QString current = QCoreApplication::applicationVersion();
-
-        // Version changed since last launch — show What's New immediately
-        if (lastSeen != current) {
+        if (settings.value("LastSeenVersion").toString() != current) {
             settings.setValue("LastSeenVersion", current);
             settings.save();
-            m_whatsNewDialog = new WhatsNewDialog(lastSeen, current, this);
-            m_whatsNewDialog->show();
-            return;  // don't also check for upgrade on the same launch
         }
-
-        // Same version — check if a newer release is available
-        auto* nam = new QNetworkAccessManager(this);
-        auto* reply = nam->get(QNetworkRequest(
-            QUrl("https://api.github.com/repos/ten9876/AetherSDR/releases/latest")));
-        connect(reply, &QNetworkReply::finished, this, [this, reply, nam, current] {
-            reply->deleteLater();
-            nam->deleteLater();
-            if (reply->error() != QNetworkReply::NoError) return;
-            auto doc = QJsonDocument::fromJson(reply->readAll());
-            QString latest = doc.object().value("tag_name").toString();
-            if (latest.startsWith('v')) latest = latest.mid(1);
-            auto latestVer = VersionNumber::parse(latest);
-            auto currentVer = VersionNumber::parse(current);
-            if (latestVer.isNull() || currentVer >= latestVer) return;
-
-            // Newer version available — show What's New with upgrade button
-            m_whatsNewDialog = new WhatsNewDialog(current, latest, this, true);
-            m_whatsNewDialog->show();
-        });
-    });
+    }
 }
 
 MainWindow::~MainWindow()
