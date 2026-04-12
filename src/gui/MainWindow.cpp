@@ -3665,10 +3665,6 @@ void MainWindow::buildUI()
     // ── Center stretch → STATION → stretch ───────────────────────────────
     hbox->addStretch(1);
 
-    auto* stationPrefix = new QLabel("RADIO:");
-    stationPrefix->setStyleSheet(valStyle);
-    hbox->addWidget(stationPrefix);
-
     m_stationNickLabel = new QLabel("N0CALL");
     m_stationNickLabel->setStyleSheet(
         "QLabel { color: #c8d8e8; font-size: 21px; background: #0a0a14; "
