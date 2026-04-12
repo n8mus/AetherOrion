@@ -5211,7 +5211,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     disconnect(menu, &SpectrumOverlayMenu::displaySettingsReset, this, nullptr);
     connect(menu, &SpectrumOverlayMenu::backgroundImageRequested,
             this, [this, sw] {
-        QString path = QFileDialog::getOpenFileName(this, "Choose Background Image",
+        QString path = QFileDialog::getOpenFileName(sw, "Choose Background Image",
             QString(), "Images (*.png *.jpg *.jpeg *.bmp)");
         if (path.isEmpty()) return;
         sw->setBackgroundImage(path);
