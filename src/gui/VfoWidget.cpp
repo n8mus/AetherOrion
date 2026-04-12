@@ -2784,14 +2784,10 @@ void VfoWidget::updateFreqLabel()
 void VfoWidget::updateFilterLabel()
 {
     if (!m_slice) return;
-    const QString& mode = m_slice->mode();
-    int w;
-    if (mode == "USB" || mode == "FDV")
-        w = m_slice->filterHigh();
-    else if (mode == "LSB")
-        w = std::abs(m_slice->filterLow());
-    else
-        w = m_slice->filterHigh() - m_slice->filterLow();
+    // Always show the filter width (hi - lo), matching the filter preset
+    // buttons. Previously showed the edge value for USB/LSB, which
+    // disagreed with the highlighted button by ~100 Hz (#1225).
+    int w = m_slice->filterHigh() - m_slice->filterLow();
     if (w >= 1000)
         m_filterWidthLbl->setText(QString("%1K").arg(w / 1000.0, 0, 'f', 1));
     else
