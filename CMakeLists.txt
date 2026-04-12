@@ -448,6 +448,8 @@ set(GUI_SOURCES
     src/gui/ProfileManagerDialog.cpp
     src/gui/PanadapterApplet.cpp
     src/gui/PanadapterStack.cpp
+    src/gui/PanDropOverlay.cpp
+    src/gui/PanFloatingWindow.cpp
     src/gui/PanLayoutDialog.cpp
     src/gui/AppletPanel.cpp
     src/gui/FloatingAppletWindow.cpp
