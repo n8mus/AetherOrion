@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QWidget>
-#include <QPoint>
 
 class QLabel;
 class QPushButton;
@@ -16,7 +15,6 @@ class SpectrumWidget;
 // Adds a title bar with placeholder min/max/close buttons above the
 // SpectrumWidget.  Prepares for future multi-slice stacking where each
 // slice gets its own PanadapterApplet in a vertical splitter.
-// Title bar supports drag-to-rearrange and drag-out-to-float.
 class PanadapterApplet : public QWidget {
     Q_OBJECT
 
@@ -29,12 +27,9 @@ public:
     QString panId() const { return m_panId; }
     void setPanId(const QString& id) { m_panId = id; }
 
-    // Set the slice ID (0=A, 1=B, 2=C, 3=D) for internal tracking.
+    // Set the slice ID (0=A, 1=B, 2=C, 3=D) shown in the title bar.
     void setSliceId(int id);
     void clearSliceTitle();
-
-    // Show/hide the "Dock" button in the title bar (for floating windows).
-    void setDockButtonVisible(bool visible);
 
     // CW decode panel
     void setCwPanelVisible(bool visible);
@@ -46,16 +41,10 @@ public:
 
     QSize sizeHint() const override { return {800, 316}; }
 
-    // MIME type used for panadapter drag-and-drop
-    static constexpr const char* kMimeType = "application/x-aethersdr-panadapter";
-
 signals:
     void activated(const QString& panId);
     void closeRequested(const QString& panId);
-    void dockRequested(const QString& panId);
     void pitchRangeChanged(int minHz, int maxHz);
-    void dragStarted(const QString& panId);
-    void dragDroppedOutside(const QString& panId);
 
 protected:
     bool eventFilter(QObject* obj, QEvent* ev) override;
@@ -63,10 +52,7 @@ protected:
 private:
     QString m_panId;
     SpectrumWidget* m_spectrum{nullptr};
-    QWidget*        m_titleBarWidget{nullptr};
     QLabel*         m_titleLabel{nullptr};
-    QPushButton*    m_dockBtn{nullptr};
-    QPoint          m_dragStartPos;
 
     // CW decode
     QWidget*   m_cwPanel{nullptr};
