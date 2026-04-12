@@ -173,6 +173,7 @@ public:
     bool    tcxoPresent()  const { return m_tcxoPresent; }
     bool    binauralRx()   const { return m_binauralRx; }
     bool    muteLocalWhenRemote() const { return m_muteLocalWhenRemote; }
+    bool    autoSave() const { return m_autoSave; }
     int     freqErrorPpb() const { return m_freqErrorPpb; }
     double  calFreqMhz() const { return m_calFreqMhz; }
 
@@ -442,6 +443,7 @@ private:
     bool        m_tcxoPresent{false};
     bool        m_binauralRx{false};
     bool        m_muteLocalWhenRemote{false};
+    bool        m_autoSave{true};
     int         m_lineoutGain{50};
     bool        m_lineoutMute{false};
     int         m_headphoneGain{50};
