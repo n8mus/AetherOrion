@@ -72,15 +72,23 @@ bool PanadapterStream::start(RadioConnection* conn)
 {
     if (isRunning()) stop();  // clean up previous session before rebinding (#561)
 
+    // Try 4991 first (VPN/firewall rules may allow this port specifically),
+    // then count down for Multi-Flex (multiple clients on the same host).
     static constexpr quint16 LAN_VITA_PORT = 4991;
-    bool bound = m_socket.bind(QHostAddress::AnyIPv4, LAN_VITA_PORT,
-                               QAbstractSocket::ReuseAddressHint);
-    if (bound)
-        qCDebug(lcVita49) << "PanadapterStream: bound to LAN VITA-49 port" << LAN_VITA_PORT;
-    else {
-        qCDebug(lcVita49) << "PanadapterStream: port" << LAN_VITA_PORT
-                 << "unavailable, using OS-assigned port";
+    static constexpr int MAX_PORT_ATTEMPTS = 10;
+    bool bound = false;
+    for (int attempt = 0; attempt < MAX_PORT_ATTEMPTS && !bound; ++attempt) {
+        quint16 port = LAN_VITA_PORT - attempt;
+        bound = m_socket.bind(QHostAddress::AnyIPv4, port);
+        if (bound) {
+            qCDebug(lcVita49) << "PanadapterStream: bound to UDP port" << port;
+        }
+    }
+    if (!bound) {
+        // All preferred ports in use — fall back to OS-assigned
         bound = m_socket.bind(QHostAddress::AnyIPv4, 0);
+        if (bound)
+            qCDebug(lcVita49) << "PanadapterStream: using OS-assigned port" << m_socket.localPort();
     }
     if (!bound) {
         qCWarning(lcVita49) << "PanadapterStream: failed to bind UDP socket:"
