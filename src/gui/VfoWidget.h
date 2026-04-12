@@ -94,7 +94,8 @@ Q_SIGNALS:
     void playToggled(bool on);
     void splitToggled();
     void swapRequested();
-    void autotuneRequested(bool intermittent);  // CW auto-tune: false=once, true=loop
+    void autotuneRequested(bool intermittent);  // CW auto-tune: false=stop, true=loop
+    void autotuneOnceRequested();               // CW auto-tune one-shot
     void addSpotRequested(double freqMhz);
     void sliceActivationRequested(int sliceId);
 

@@ -251,7 +251,8 @@ public:
     QString audioCompressionParam() const;        // "none" or "opus" based on settings
     void sendCwKey(bool down);                    // straight key via netcw stream
     void sendCwPaddle(bool dit, bool dah);        // iambic paddle via netcw stream
-    void cwAutoTune(int sliceId, bool intermittent); // slice auto_tune
+    void cwAutoTune(int sliceId, bool intermittent); // int=1 start loop, int=0 stop
+    void cwAutoTuneOnce(int sliceId);                // one-shot (no int= param)
     void addSlice();           // Create a new slice on the active panadapter
     void addSliceOnPan(const QString& panId); // Create a new slice on a specific pan
     void createPanadapter();   // Create a new independent panadapter

@@ -462,10 +462,18 @@ void RadioModel::sendNetCwCommand(const QString& baseCmd)
 
 void RadioModel::cwAutoTune(int sliceId, bool intermittent)
 {
-    if (intermittent)
+    if (intermittent) {
         sendCmd(QString("slice auto_tune %1 int=1").arg(sliceId));
-    else
-        sendCmd(QString("slice auto_tune %1").arg(sliceId));
+    } else {
+        // int=0 stops the autotune engine (FlexLib: isIntermittent=false)
+        sendCmd(QString("slice auto_tune %1 int=0").arg(sliceId));
+    }
+}
+
+void RadioModel::cwAutoTuneOnce(int sliceId)
+{
+    // One-shot autotune (FlexLib: isIntermittent=null)
+    sendCmd(QString("slice auto_tune %1").arg(sliceId));
 }
 
 void RadioModel::addSlice()

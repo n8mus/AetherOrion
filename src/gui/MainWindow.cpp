@@ -5642,6 +5642,10 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
         if (m_radioModel.slice(sliceId))
             m_radioModel.cwAutoTune(sliceId, intermittent);
     });
+    connect(w, &VfoWidget::autotuneOnceRequested, this, [this, sliceId]() {
+        if (m_radioModel.slice(sliceId))
+            m_radioModel.cwAutoTuneOnce(sliceId);
+    });
     connect(w, &VfoWidget::addSpotRequested, this, [this](double freqMhz) {
         spectrum()->showAddSpotDialog(freqMhz);
     });

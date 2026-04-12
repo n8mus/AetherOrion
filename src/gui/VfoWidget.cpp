@@ -2970,7 +2970,7 @@ void VfoWidget::rebuildFilterButtons()
         m_autotuneOnceBtn->setFixedHeight(26);
         m_autotuneOnceBtn->setStyleSheet(btnStyle);
         connect(m_autotuneOnceBtn, &QPushButton::clicked, this, [this]() {
-            emit autotuneRequested(false);
+            emit autotuneOnceRequested();
         });
         hbox->addWidget(m_autotuneOnceBtn, 1);
 
