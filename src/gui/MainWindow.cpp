@@ -419,6 +419,20 @@ MainWindow::MainWindow(QWidget* parent)
     });
     connect(m_appletPanel->mqttApplet(), &MqttApplet::disconnectRequested,
             this, [this] { m_mqttClient->disconnect(); });
+
+    // MQTT → panadapter overlay display
+    connect(m_appletPanel->mqttApplet(), &MqttApplet::displayValueChanged,
+            this, [this](const QString& key, const QString& value) {
+        if (auto* sw = m_panStack->activeSpectrum()) {
+            sw->setMqttDisplayValue(key, value);
+        }
+    });
+    connect(m_appletPanel->mqttApplet(), &MqttApplet::displayCleared,
+            this, [this] {
+        if (auto* sw = m_panStack->activeSpectrum()) {
+            sw->clearMqttDisplay();
+        }
+    });
 #endif
 
     m_spotThread = new QThread(this);

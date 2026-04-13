@@ -148,6 +148,12 @@ public:
     }
     bool propForecastVisible() const { return m_propForecastVisible; }
 
+    // MQTT device status overlay (#699)
+    void setMqttDisplayValue(const QString& key, const QString& value) {
+        m_mqttDisplayValues[key] = value; markOverlayDirty();
+    }
+    void clearMqttDisplay() { m_mqttDisplayValues.clear(); markOverlayDirty(); }
+
     // NB Waterfall Blanker (#277) — client-side impulse suppression
     void setWfBlankerEnabled(bool on);
     void setWfBlankerThreshold(float t);
@@ -483,6 +489,9 @@ private:
     int  m_propKIndex{-1};
     int  m_propAIndex{-1};
     int  m_propSfi{-1};
+
+    // MQTT device status overlay
+    QMap<QString, QString> m_mqttDisplayValues;
 
     // Background image
     QImage  m_bgImage;

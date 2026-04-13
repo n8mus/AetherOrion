@@ -2397,6 +2397,23 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb)
                     int x = specRect.right() - DBM_STRIP_W - 8 - fm.horizontalAdvance(label);
                     p.drawText(x, y, label);
                 }
+
+                // MQTT device status overlay (#699)
+                if (!m_mqttDisplayValues.isEmpty()) {
+                    QFont mqttFont(p.font().family(), 12, QFont::Bold);
+                    p.setFont(mqttFont);
+                    p.setPen(QColor(0x80, 0xd0, 0xff, 200));
+                    const QFontMetrics fm2(mqttFont);
+                    QString mqttLabel;
+                    for (auto it = m_mqttDisplayValues.constBegin();
+                         it != m_mqttDisplayValues.constEnd(); ++it) {
+                        if (!mqttLabel.isEmpty()) { mqttLabel += QStringLiteral("   "); }
+                        mqttLabel += it.key() + QStringLiteral(": ") + it.value();
+                    }
+                    int mx = specRect.right() - DBM_STRIP_W - 8 - fm2.horizontalAdvance(mqttLabel);
+                    int my = specRect.top() + fm2.ascent() + 22;
+                    p.drawText(mx, my, mqttLabel);
+                }
             }
 
             // Cursor frequency label (#726)
