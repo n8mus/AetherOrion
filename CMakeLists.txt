@@ -892,7 +892,9 @@ if(ENABLE_MQTT)
         ${MOSQUITTO_DIR}/src)
     target_sources(AetherSDR PRIVATE ${MOSQUITTO_SOURCES})
     if(WIN32)
-        set_source_files_properties(${MOSQUITTO_SOURCES} PROPERTIES COMPILE_FLAGS "-w")
+        set_source_files_properties(${MOSQUITTO_SOURCES} PROPERTIES
+            COMPILE_FLAGS "-w -DLIBMOSQUITTO_STATIC -DLIBMOSQCOMMON_STATIC")
+        target_compile_definitions(AetherSDR PRIVATE LIBMOSQUITTO_STATIC LIBMOSQCOMMON_STATIC)
     else()
         set_source_files_properties(${MOSQUITTO_SOURCES} PROPERTIES
             COMPILE_FLAGS "-w -DWITH_THREADING")
