@@ -56,6 +56,8 @@ public:
     void setSlice(SliceModel* slice);
 
     bool isRecording() const { return m_recording; }
+    bool isPlaying() const { return m_playing; }
+    bool hasLastRecording() const { return !m_lastRecordingPath.isEmpty(); }
 
     // Duration of current recording in seconds (0 if not recording)
     int recordingDurationSecs() const;
@@ -64,6 +66,10 @@ public slots:
     // Manual control
     void startRecording();
     void stopRecording();
+
+    // Playback of last recording
+    void startPlayback();
+    void stopPlayback();
 
     // Audio feeds — thread-safe, called from audio thread
     void feedRxAudio(const QByteArray& pcm);
@@ -76,6 +82,10 @@ signals:
     void recordingStarted(const QString& filePath);
     void recordingStopped(const QString& filePath, int durationSecs);
     void recordingError(const QString& error);
+    void playbackStarted();
+    void playbackStopped();
+    void playbackAudio(const QByteArray& pcm);  // float32 stereo chunks for AudioEngine
+    void muteRxRequested(bool mute);  // mute live RX during playback
 
 private:
     void startFile();
@@ -107,6 +117,12 @@ private:
 
     // Idle timeout
     QTimer*     m_idleTimer{nullptr};
+
+    // Playback
+    bool        m_playing{false};
+    QString     m_lastRecordingPath;
+    QFile*      m_playFile{nullptr};
+    QTimer*     m_playTimer{nullptr};
 
     // Thread safety for audio feed paths
     std::mutex  m_writeMutex;

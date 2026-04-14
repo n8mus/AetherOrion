@@ -34,6 +34,7 @@
 #include <QMediaDevices>
 #include <QAudioDevice>
 #include <QFileDialog>
+#include <QStandardPaths>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QProgressBar>
@@ -1573,6 +1574,129 @@ QWidget* RadioSetupDialog::buildAudioTab()
     }
 
     vbox->addWidget(pcGroup);
+
+    // ── Recording ───────────────────────────────────────────────────────
+    {
+        auto* recGroup = new QGroupBox("Recording");
+        recGroup->setStyleSheet(kGroupStyle);
+        auto* recLayout = new QVBoxLayout(recGroup);
+
+        auto& settings = AppSettings::instance();
+
+        // Mode: Radio Side vs Client Side
+        auto* modeRow = new QHBoxLayout;
+        auto* modeLabel = new QLabel("Record Mode:");
+        modeLabel->setStyleSheet(kLabelStyle);
+        modeLabel->setFixedWidth(90);
+        modeRow->addWidget(modeLabel);
+
+        const QString modeBtnStyle =
+            "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; "
+            "border-radius: 3px; padding: 2px 10px; font-size: 11px; }"
+            "QPushButton:checked { background: #00607a; color: #e0f0ff; border-color: #00b4d8; }";
+
+        auto* radioSideBtn = new QPushButton("Radio Side");
+        radioSideBtn->setCheckable(true);
+        radioSideBtn->setStyleSheet(modeBtnStyle);
+        auto* clientSideBtn = new QPushButton("Client Side");
+        clientSideBtn->setCheckable(true);
+        clientSideBtn->setStyleSheet(modeBtnStyle);
+
+        bool clientSide = settings.value("RecordingMode", "Radio").toString() == "Client";
+        radioSideBtn->setChecked(!clientSide);
+        clientSideBtn->setChecked(clientSide);
+
+        connect(radioSideBtn, &QPushButton::clicked, this, [radioSideBtn, clientSideBtn]() {
+            QSignalBlocker b(clientSideBtn);
+            radioSideBtn->setChecked(true);
+            clientSideBtn->setChecked(false);
+            auto& s = AppSettings::instance();
+            s.setValue("RecordingMode", "Radio");
+            s.save();
+        });
+        connect(clientSideBtn, &QPushButton::clicked, this, [radioSideBtn, clientSideBtn]() {
+            QSignalBlocker b(radioSideBtn);
+            clientSideBtn->setChecked(true);
+            radioSideBtn->setChecked(false);
+            auto& s = AppSettings::instance();
+            s.setValue("RecordingMode", "Client");
+            s.save();
+        });
+
+        modeRow->addWidget(radioSideBtn);
+        modeRow->addWidget(clientSideBtn);
+        modeRow->addStretch();
+        recLayout->addLayout(modeRow);
+
+        // Recording directory (client-side only)
+        auto* dirRow = new QHBoxLayout;
+        auto* dirLabel = new QLabel("Save to:");
+        dirLabel->setStyleSheet(kLabelStyle);
+        dirLabel->setFixedWidth(90);
+        auto* dirEdit = new QLineEdit;
+        dirEdit->setText(settings.value("QsoRecordingDir",
+            QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+            + "/AetherSDR/Recordings").toString());
+        dirEdit->setStyleSheet(
+            "QLineEdit { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; "
+            "border-radius: 3px; padding: 2px 4px; font-size: 11px; }");
+        auto* browseBtn = new QPushButton("...");
+        browseBtn->setFixedWidth(30);
+        browseBtn->setStyleSheet(modeBtnStyle);
+        connect(browseBtn, &QPushButton::clicked, this, [this, dirEdit]() {
+            QString dir = QFileDialog::getExistingDirectory(this, "Select Recording Directory",
+                                                            dirEdit->text());
+            if (!dir.isEmpty()) {
+                dirEdit->setText(dir);
+                auto& s = AppSettings::instance();
+                s.setValue("QsoRecordingDir", dir);
+                s.save();
+            }
+        });
+        connect(dirEdit, &QLineEdit::editingFinished, this, [dirEdit]() {
+            auto& s = AppSettings::instance();
+            s.setValue("QsoRecordingDir", dirEdit->text());
+            s.save();
+        });
+        dirRow->addWidget(dirLabel);
+        dirRow->addWidget(dirEdit, 1);
+        dirRow->addWidget(browseBtn);
+        recLayout->addLayout(dirRow);
+
+        // Auto-record on TX
+        auto* autoRow = new QHBoxLayout;
+        auto* autoCheck = new QCheckBox("Auto-record on TX");
+        autoCheck->setStyleSheet("QCheckBox { color: #c8d8e8; }");
+        autoCheck->setChecked(settings.value("QsoRecordingAutoRecord", "False").toString() == "True");
+        connect(autoCheck, &QCheckBox::toggled, this, [](bool on) {
+            auto& s = AppSettings::instance();
+            s.setValue("QsoRecordingAutoRecord", on ? "True" : "False");
+            s.save();
+        });
+        autoRow->addWidget(autoCheck);
+
+        // Idle timeout
+        auto* timeoutLabel = new QLabel("Idle timeout:");
+        timeoutLabel->setStyleSheet("QLabel { color: #8090a0; font-size: 11px; }");
+        auto* timeoutSpin = new QSpinBox;
+        timeoutSpin->setRange(10, 3600);
+        timeoutSpin->setSuffix(" sec");
+        timeoutSpin->setValue(settings.value("QsoRecordingIdleTimeout", "120").toInt());
+        timeoutSpin->setStyleSheet(
+            "QSpinBox { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; "
+            "border-radius: 3px; padding: 2px; font-size: 11px; }");
+        connect(timeoutSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [](int v) {
+            auto& s = AppSettings::instance();
+            s.setValue("QsoRecordingIdleTimeout", QString::number(v));
+            s.save();
+        });
+        autoRow->addStretch();
+        autoRow->addWidget(timeoutLabel);
+        autoRow->addWidget(timeoutSpin);
+        recLayout->addLayout(autoRow);
+
+        vbox->addWidget(recGroup);
+    }
 
     // ── NVIDIA BNR (GPU Noise Removal) ──────────────────────────────────
 #ifdef HAVE_BNR

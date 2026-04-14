@@ -271,6 +271,18 @@ MainWindow::MainWindow(QWidget* parent)
 
     // QSO audio recorder (#1297) — lives on main thread, audio feeds are thread-safe
     m_qsoRecorder = new QsoRecorder(this);
+    connect(m_qsoRecorder, &QsoRecorder::playbackAudio,
+            m_audio, &AudioEngine::feedDecodedSpeech);
+    // During playback, block live RX audio from entering the buffer
+    connect(m_qsoRecorder, &QsoRecorder::muteRxRequested, this, [this](bool mute) {
+        if (mute) {
+            disconnect(m_radioModel.panStream(), &PanadapterStream::audioDataReady,
+                       m_audio, &AudioEngine::feedAudioData);
+        } else {
+            connect(m_radioModel.panStream(), &PanadapterStream::audioDataReady,
+                    m_audio, &AudioEngine::feedAudioData);
+        }
+    });
 
     // Band plan manager — must be created before buildMenuBar() which references it
     m_bandPlanMgr = new BandPlanManager(this);
@@ -1130,11 +1142,11 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_radioModel.panStream(), &PanadapterStream::audioDataReady,
             m_audio, &AudioEngine::feedAudioData);
 
-    // ── QSO recorder: tap RX and TX audio, trigger on MOX (#1297) ───────
+    // ── QSO recorder: tap RX audio, trigger on MOX (#1297) ────────────
+    // Only RX audio is recorded — TX audio (txRawPcmReady) is int16 and
+    // would need separate handling to avoid format mismatch.
     connect(m_radioModel.panStream(), &PanadapterStream::audioDataReady,
             m_qsoRecorder, &QsoRecorder::feedRxAudio);
-    connect(m_audio, &AudioEngine::txRawPcmReady,
-            m_qsoRecorder, &QsoRecorder::feedTxAudio);
     connect(&m_radioModel.transmitModel(), &TransmitModel::moxChanged,
             m_qsoRecorder, &QsoRecorder::onMoxChanged);
 
@@ -5825,14 +5837,40 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
         if (auto* sl = m_radioModel.slice(sliceId))
             sl->setAudioGain(v);
     });
-    // Record/playback
-    connect(w, &VfoWidget::recordToggled, this, [this, sliceId](bool on) {
-        if (auto* sl = m_radioModel.slice(sliceId))
-            sl->setRecordOn(on);
+    // Record/playback — route to radio or client-side QsoRecorder (#1297)
+    connect(w, &VfoWidget::recordToggled, this, [this, w, sliceId](bool on) {
+        bool clientSide = AppSettings::instance().value("RecordingMode", "Radio").toString() == "Client";
+        if (clientSide) {
+            if (on)
+                m_qsoRecorder->startRecording();
+            else
+                m_qsoRecorder->stopRecording();
+            w->setRecordOn(on);  // drive pulse animation for client-side
+        } else {
+            if (auto* sl = m_radioModel.slice(sliceId))
+                sl->setRecordOn(on);
+        }
     });
-    connect(w, &VfoWidget::playToggled, this, [this, sliceId](bool on) {
-        if (auto* sl = m_radioModel.slice(sliceId))
-            sl->setPlayOn(on);
+    // Client-side recording stopped by idle timeout → update VFO button
+    connect(m_qsoRecorder, &QsoRecorder::recordingStopped, w, [w]() {
+        w->setRecordOn(false);
+        w->setPlayEnabled(true);
+    });
+    // Client-side playback
+    connect(w, &VfoWidget::playToggled, this, [this, w, sliceId](bool on) {
+        bool clientSide = AppSettings::instance().value("RecordingMode", "Radio").toString() == "Client";
+        if (clientSide) {
+            if (on)
+                m_qsoRecorder->startPlayback();
+            else
+                m_qsoRecorder->stopPlayback();
+        } else {
+            if (auto* sl = m_radioModel.slice(sliceId))
+                sl->setPlayOn(on);
+        }
+    });
+    connect(m_qsoRecorder, &QsoRecorder::playbackStopped, w, [w]() {
+        w->setPlayOn(false);
     });
     connect(s, &SliceModel::recordOnChanged, w, &VfoWidget::setRecordOn);
     connect(s, &SliceModel::playOnChanged, w, &VfoWidget::setPlayOn);

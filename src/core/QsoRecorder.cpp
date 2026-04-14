@@ -82,6 +82,11 @@ int QsoRecorder::recordingDurationSecs() const
 void QsoRecorder::startRecording()
 {
     if (m_recording) return;
+    // Re-read settings in case they changed via Radio Setup dialog
+    auto& s = AppSettings::instance();
+    m_recordingDir = s.value("QsoRecordingDir", m_recordingDir).toString();
+    m_idleTimeoutSecs = s.value("QsoRecordingIdleTimeout", "120").toInt();
+    m_autoRecord = s.value("QsoRecordingAutoRecord", "False").toString() == "True";
     startFile();
 }
 
@@ -94,30 +99,48 @@ void QsoRecorder::stopRecording()
 
 // ── Audio feeds ─────────────────────────────────────────────────────────────
 
+// Convert float32 stereo PCM to int16 stereo PCM for WAV output.
+static QByteArray float32ToInt16(const QByteArray& pcm)
+{
+    const int numFloats = pcm.size() / static_cast<int>(sizeof(float));
+    QByteArray out(numFloats * static_cast<int>(sizeof(qint16)), Qt::Uninitialized);
+    const float* src = reinterpret_cast<const float*>(pcm.constData());
+    qint16* dst = reinterpret_cast<qint16*>(out.data());
+    for (int i = 0; i < numFloats; ++i) {
+        float clamped = std::clamp(src[i], -1.0f, 1.0f);
+        dst[i] = static_cast<qint16>(clamped * 32767.0f);
+    }
+    return out;
+}
+
 void QsoRecorder::feedRxAudio(const QByteArray& pcm)
 {
     std::lock_guard<std::mutex> lock(m_writeMutex);
     if (!m_recording || !m_file) return;
-    m_file->write(pcm);
-    m_dataBytes += static_cast<quint32>(pcm.size());
+    QByteArray converted = float32ToInt16(pcm);
+    m_file->write(converted);
+    m_dataBytes += static_cast<quint32>(converted.size());
 }
 
 void QsoRecorder::feedTxAudio(const QByteArray& pcm)
 {
     std::lock_guard<std::mutex> lock(m_writeMutex);
     if (!m_recording || !m_file) return;
-    m_file->write(pcm);
-    m_dataBytes += static_cast<quint32>(pcm.size());
+    QByteArray converted = float32ToInt16(pcm);
+    m_file->write(converted);
+    m_dataBytes += static_cast<quint32>(converted.size());
 }
 
 // ── TX state tracking ───────────────────────────────────────────────────────
 
 void QsoRecorder::onMoxChanged(bool mox)
 {
+    // Only auto-record when in client-side recording mode
+    bool clientSide = AppSettings::instance().value("RecordingMode", "Radio").toString() == "Client";
     if (mox) {
         // TX started — begin recording if auto-record is on and not already recording
-        if (m_autoRecord && !m_recording)
-            startFile();
+        if (clientSide && m_autoRecord && !m_recording)
+            startRecording();
 
         // Reset idle timer on each TX
         m_idleTimer->stop();
@@ -181,6 +204,7 @@ void QsoRecorder::finalizeFile()
 
     patchWavHeader();
     QString filePath = m_file->fileName();
+    m_lastRecordingPath = filePath;
     int durationSecs = static_cast<int>(m_startTime.secsTo(QDateTime::currentDateTimeUtc()));
 
     m_file->close();
@@ -264,6 +288,80 @@ void QsoRecorder::patchWavHeader()
     m_file->seek(40);
     qToLittleEndian<quint32>(m_dataBytes, buf);
     m_file->write(buf, 4);
+}
+
+// ── Playback ───────────────────────────────────────────────────────────────
+
+void QsoRecorder::startPlayback()
+{
+    if (m_playing || m_lastRecordingPath.isEmpty()) return;
+
+    m_playFile = new QFile(m_lastRecordingPath, this);
+    if (!m_playFile->open(QIODevice::ReadOnly)) {
+        delete m_playFile;
+        m_playFile = nullptr;
+        return;
+    }
+
+    // Skip WAV header
+    m_playFile->seek(WAV_HEADER_SIZE);
+    m_playing = true;
+
+    // Feed audio in chunks matching the recording format (24kHz stereo int16).
+    // Convert int16 → float32 for AudioEngine. Timer paces at ~10ms intervals
+    // (same as AudioEngine RX timer) to avoid buffer overrun.
+    static constexpr int kChunkFrames = 240;  // 10ms at 24kHz
+    static constexpr int kChunkBytes = kChunkFrames * NUM_CHANNELS * (BITS_PER_SAMPLE / 8);
+
+    m_playTimer = new QTimer(this);
+    m_playTimer->setInterval(10);
+    connect(m_playTimer, &QTimer::timeout, this, [this]() {
+        if (!m_playFile || !m_playFile->isOpen()) {
+            stopPlayback();
+            return;
+        }
+
+        QByteArray chunk = m_playFile->read(kChunkBytes);
+        if (chunk.isEmpty()) {
+            stopPlayback();
+            return;
+        }
+
+        // Convert int16 → float32 for AudioEngine
+        int numSamples = chunk.size() / static_cast<int>(sizeof(qint16));
+        QByteArray floatPcm(numSamples * static_cast<int>(sizeof(float)), Qt::Uninitialized);
+        const qint16* src = reinterpret_cast<const qint16*>(chunk.constData());
+        float* dst = reinterpret_cast<float*>(floatPcm.data());
+        for (int i = 0; i < numSamples; ++i) {
+            dst[i] = static_cast<float>(src[i]) / 32768.0f;
+        }
+
+        emit playbackAudio(floatPcm);
+    });
+    m_playTimer->start();
+    emit muteRxRequested(true);
+    emit playbackStarted();
+}
+
+void QsoRecorder::stopPlayback()
+{
+    if (!m_playing) return;
+    m_playing = false;
+
+    if (m_playTimer) {
+        m_playTimer->stop();
+        m_playTimer->deleteLater();
+        m_playTimer = nullptr;
+    }
+
+    if (m_playFile) {
+        m_playFile->close();
+        m_playFile->deleteLater();
+        m_playFile = nullptr;
+    }
+
+    emit muteRxRequested(false);
+    emit playbackStopped();
 }
 
 } // namespace AetherSDR
