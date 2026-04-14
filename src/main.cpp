@@ -82,11 +82,14 @@ int main(int argc, char* argv[])
     }
 
     // Prefer native Wayland when running under a Wayland session (#1233).
-    // Without this, Qt falls back to XWayland (xcb platform) where GLX
+    // Without this, Qt may fall back to XWayland (xcb platform) where GLX
     // context switching between the main window and child dialogs triggers
     // a BadAccess crash (X_GLXMakeCurrent) on some compositors.
     // Only set when QT_QPA_PLATFORM isn't already configured by the user.
-    if (!qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) {
+    // Skip for AppImage: the bundled Qt Wayland plugin may not match the
+    // host compositor's protocol version, causing an abort on init (#1389).
+    if (!qEnvironmentVariableIsSet("QT_QPA_PLATFORM")
+            && !qEnvironmentVariableIsSet("APPIMAGE")) {
         const QByteArray session = qgetenv("XDG_SESSION_TYPE");
         if (session == "wayland" && qEnvironmentVariableIsSet("WAYLAND_DISPLAY")) {
             qputenv("QT_QPA_PLATFORM", "wayland");
