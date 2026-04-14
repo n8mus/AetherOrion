@@ -28,6 +28,7 @@
 #include "AntennaGeniusApplet.h"
 #include "RadioSetupDialog.h"
 #include "NetworkDiagnosticsDialog.h"
+#include "PropDashboardDialog.h"
 #include "MemoryDialog.h"
 #include "DxClusterDialog.h"
 #include "CwxPanel.h"
@@ -2221,6 +2222,21 @@ void MainWindow::showNetworkDiagnosticsDialog()
     m_networkDiagnosticsDialog->show();
     m_networkDiagnosticsDialog->raise();
     m_networkDiagnosticsDialog->activateWindow();
+}
+
+void MainWindow::showPropDashboard()
+{
+    if (!m_propDashboardDialog) {
+        auto* dlg = new PropDashboardDialog(m_propForecast, this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setModal(false);
+        dlg->setWindowModality(Qt::NonModal);
+        m_propDashboardDialog = dlg;
+    }
+
+    m_propDashboardDialog->show();
+    m_propDashboardDialog->raise();
+    m_propDashboardDialog->activateWindow();
 }
 
 bool MainWindow::eventFilter(QObject* obj, QEvent* event)
@@ -5193,6 +5209,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             sw->setPropForecast(fc.kIndex, fc.aIndex, fc.sfi);
         }
     }
+
+    // Click on K/A/SFI overlay → open prop dashboard
+    connect(sw, &SpectrumWidget::propForecastClicked,
+            this, &MainWindow::showPropDashboard);
 
     if (auto* pan = m_radioModel.panadapter(applet->panId())) {
         connect(pan, &PanadapterModel::wideChanged,

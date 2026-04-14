@@ -150,7 +150,7 @@ public:
     // HF propagation forecast overlay (K-index, A-index, and Solar Flux Index).
     // Values of -1 mean not yet fetched; visible only when enabled.
     void setPropForecastVisible(bool on) { m_propForecastVisible = on; markOverlayDirty(); }
-    void setPropForecast(int kIndex, int aIndex, int sfi) {
+    void setPropForecast(double kIndex, int aIndex, int sfi) {
         m_propKIndex = kIndex;
         m_propAIndex = aIndex;
         m_propSfi = sfi;
@@ -330,6 +330,7 @@ signals:
     void tnfDepthRequested(int id, int depthDb);
     void tnfPermanentRequested(int id, bool permanent);
     void sliceCloseRequested(int sliceId);
+    void propForecastClicked();  // click on K/A/SFI overlay text
     void sliceTuneRequested(int sliceId, double freqMhz);
     void popOutRequested(bool popOut);  // true=float, false=dock
     void sliceTxRequested(int sliceId);
@@ -498,7 +499,8 @@ private:
 
     // HF propagation forecast overlay
     bool m_propForecastVisible{false};
-    int  m_propKIndex{-1};
+    double m_propKIndex{-1.0};
+    QRect  m_propClickRect;  // bounding rect of rendered prop text for click detection
     int  m_propAIndex{-1};
     int  m_propSfi{-1};
 

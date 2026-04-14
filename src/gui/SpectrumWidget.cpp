@@ -982,6 +982,16 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
     if (ev->button() == Qt::LeftButton)
         m_clickPressPos = ev->position().toPoint();
 
+    // Click on prop forecast overlay → open dashboard
+    if (ev->button() == Qt::LeftButton && !m_propClickRect.isNull()) {
+        const QPoint pos(static_cast<int>(ev->position().x()), y);
+        if (m_propClickRect.contains(pos)) {
+            emit propForecastClicked();
+            ev->accept();
+            return;
+        }
+    }
+
     // Click on a spot label → tune to that frequency
     if (m_showSpots && ev->button() == Qt::LeftButton) {
         const QPoint pos(static_cast<int>(ev->position().x()), y);
@@ -1523,6 +1533,12 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
                             }
                         }
                     }
+                }
+                // Prop forecast overlay click target
+                if (!foundCursor && !m_propClickRect.isNull()
+                    && m_propClickRect.contains(QPoint(mx, y))) {
+                    setCursor(Qt::PointingHandCursor);
+                    foundCursor = true;
                 }
                 if (!foundCursor) setCursor(Qt::CrossCursor);
             }
@@ -2477,7 +2493,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb)
                     QString label;
                     if (showProp) {
                         label += QString("K%1  A%2  SFI %3")
-                            .arg(m_propKIndex)
+                            .arg(m_propKIndex, 0, 'f', 2)
                             .arg(m_propAIndex)
                             .arg(m_propSfi);
                     }
@@ -2496,6 +2512,18 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb)
                     }
                     int x = specRect.right() - DBM_STRIP_W - 8 - fm.horizontalAdvance(label);
                     p.drawText(x, y, label);
+
+                    // Store click rect for the prop portion only
+                    if (showProp) {
+                        QString propText = QString("K%1  A%2  SFI %3")
+                            .arg(m_propKIndex, 0, 'f', 2)
+                            .arg(m_propAIndex)
+                            .arg(m_propSfi);
+                        int propW = fm.horizontalAdvance(propText);
+                        m_propClickRect = QRect(x, y - fm.ascent(), propW, fm.height());
+                    } else {
+                        m_propClickRect = QRect();
+                    }
                 }
 
                 // MQTT device status overlay (#699)
@@ -3117,12 +3145,15 @@ void SpectrumWidget::paintEvent(QPaintEvent* ev)
             // Prop forecast (leftmost: "K3  A12  SFI 110")
             if (showProp) {
                 QString propStr = QString("K%1  A%2  SFI %3")
-                    .arg(m_propKIndex)
+                    .arg(m_propKIndex, 0, 'f', 2)
                     .arg(m_propAIndex)
                     .arg(m_propSfi);
                 int pw = fm.horizontalAdvance(propStr);
                 x -= pw;
                 p.drawText(x, topY, propStr);
+                m_propClickRect = QRect(x, topY - fm.ascent(), pw, fm.height());
+            } else {
+                m_propClickRect = QRect();
             }
         }
     }

@@ -136,6 +136,7 @@ private:
                                 std::shared_ptr<QStringList> panIds, int created);
     void updatePaTempLabel();
     void showNetworkDiagnosticsDialog();
+    void showPropDashboard();
     void setPaTempDisplayUnit(bool useFahrenheit);
     void syncMemorySpot(int memoryIndex);
     void removeMemorySpot(int memoryIndex);
@@ -231,6 +232,7 @@ private:
     QPointer<QDialog> m_spotHubDialog;
     QPointer<QDialog> m_radioSetupDialog;
     QPointer<QDialog> m_networkDiagnosticsDialog;
+    QPointer<QDialog> m_propDashboardDialog;
     QPointer<QDialog> m_memoryDialog;
     QPointer<WhatsNewDialog> m_whatsNewDialog;
     QPointer<QDialog> m_dspDialog;
