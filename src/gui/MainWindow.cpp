@@ -908,10 +908,15 @@ MainWindow::MainWindow(QWidget* parent)
 
         // Skip if this pan already has an applet
         if (m_panStack->panadapter(pan->panId())) {
-            connect(pan, &PanadapterModel::infoChanged,
-                    m_panStack->spectrum(pan->panId()), &SpectrumWidget::setFrequencyRange);
-            connect(pan, &PanadapterModel::levelChanged,
-                    m_panStack->spectrum(pan->panId()), &SpectrumWidget::setDbmRange);
+            if (auto* sw = m_panStack->spectrum(pan->panId())) {
+                connect(pan, &PanadapterModel::infoChanged,
+                        sw, &SpectrumWidget::setFrequencyRange);
+                connect(pan, &PanadapterModel::levelChanged,
+                        sw, &SpectrumWidget::setDbmRange);
+                connect(pan, &PanadapterModel::wideChanged,
+                        sw, &SpectrumWidget::setWideActive);
+                sw->setWideActive(pan->wideActive());
+            }
             return;
         }
 
@@ -4989,6 +4994,12 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             PropForecast fc = m_propForecast->lastForecast();
             sw->setPropForecast(fc.kIndex, fc.aIndex, fc.sfi);
         }
+    }
+
+    if (auto* pan = m_radioModel.panadapter(applet->panId())) {
+        connect(pan, &PanadapterModel::wideChanged,
+                sw, &SpectrumWidget::setWideActive);
+        sw->setWideActive(pan->wideActive());
     }
 
     // ── Tuning step size → this pan's spectrum widget ─────────────────────
