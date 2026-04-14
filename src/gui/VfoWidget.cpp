@@ -202,7 +202,6 @@ void VfoWidget::wheelEvent(QWheelEvent* ev)
             if (steps != 0) {
                 double newMhz = m_slice->frequency() + steps * stepHz / 1e6;
                 m_slice->setFrequency(newMhz);
-                emit stepTuned(newMhz);
             }
         }
         ev->accept();
@@ -221,7 +220,6 @@ void VfoWidget::wheelEvent(QWheelEvent* ev)
             if (steps != 0) {
                 double newMhz = m_slice->frequency() + steps * stepHz / 1e6;
                 m_slice->setFrequency(newMhz);
-                emit stepTuned(newMhz);
             }
             ev->accept();
             return;
