@@ -3262,25 +3262,9 @@ double SpectrumWidget::effectiveGridStepMhz(int widgetWidth) const
     if (m_freqGridSpacingKhz <= 0)
         return autoStep();
 
-    // Manual spacing — check that labels won't overlap (~60px minimum per label)
-    static const int validKhz[] = { 1, 2, 5, 10, 25, 50, 100 };
-    const double minStepMhz = (widgetWidth > 0)
-        ? m_bandwidthMhz / (widgetWidth / 60.0)
-        : 0.0;
-
-    // Start from the user's chosen value; clamp up if too dense
-    double manualMhz = m_freqGridSpacingKhz * 0.001;
-    if (manualMhz >= minStepMhz)
-        return manualMhz;
-
-    // Find the smallest valid option that fits
-    for (int khz : validKhz) {
-        double mhz = khz * 0.001;
-        if (mhz >= minStepMhz && mhz > manualMhz)
-            return mhz;
-    }
-    // All manual options too dense — fall back to auto
-    return autoStep();
+    // Manual spacing — always respect the user's choice for grid lines.
+    // Labels are thinned separately in drawFreqScale() to prevent overlap.
+    return m_freqGridSpacingKhz * 0.001;
 }
 
 void SpectrumWidget::drawGrid(QPainter& p, const QRect& r)
@@ -3937,12 +3921,25 @@ void SpectrumWidget::drawFreqScale(QPainter& p, const QRect& r)
     else if (stepMhz < 1.0)    decimals = 3;
     else                        decimals = 2;
 
-    for (double freq = firstLine; freq <= endMhz; freq += stepMhz) {
+    // Compute label thinning: draw a tick on every grid line but only label
+    // every Nth line so labels don't overlap (~60px minimum between labels).
+    int labelEvery = 1;
+    if (m_freqGridSpacingKhz > 0 && width() > 0) {
+        double pxPerStep = (stepMhz / m_bandwidthMhz) * width();
+        if (pxPerStep < 60.0)
+            labelEvery = static_cast<int>(std::ceil(60.0 / pxPerStep));
+    }
+
+    int stepIdx = 0;
+    for (double freq = firstLine; freq <= endMhz; freq += stepMhz, ++stepIdx) {
         const int x = mhzToX(freq);
 
-        // Tick mark
+        // Tick mark on every grid line
         p.setPen(QColor(0x40, 0x60, 0x80));
         p.drawLine(x, r.top(), x, r.top() + 4);
+
+        // Label only every Nth line to prevent overlap
+        if (stepIdx % labelEvery != 0) continue;
 
         const QString label = QString::number(freq, 'f', decimals);
         const int tw = fm.horizontalAdvance(label);
