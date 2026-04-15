@@ -1907,10 +1907,10 @@ MainWindow::MainWindow(QWidget* parent)
         m_tciServer->wireSlice(s->sliceId(), s);
     m_tciServer->wireSpotModel();
 
-    // Wire RX audio from PanadapterStream → TCI server for audio streaming
+    // Wire RX audio from PanadapterStream → TCI server for audio streaming.
+    // TCI audio feeds exclusively from DAX (not audioDataReady) so that
+    // audio_mute doesn't kill TCI audio (#1331).
     if (m_radioModel.panStream()) {
-        connect(m_radioModel.panStream(), &PanadapterStream::audioDataReady,
-                m_tciServer, &TciServer::onRxAudioReady);
         connect(m_radioModel.panStream(), &PanadapterStream::daxAudioReady,
                 m_tciServer, &TciServer::onDaxAudioReady);
         connect(m_radioModel.panStream(), &PanadapterStream::iqDataReady,

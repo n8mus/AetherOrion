@@ -221,6 +221,13 @@ void TciServer::onClientDisconnected()
             delete m_clients[i].protocol;
             delete m_clients[i].resampler;
             m_clients.removeAt(i);
+
+            // Release DAX if no remaining clients want audio (#1331)
+            bool anyAudio = false;
+            for (const auto& cs : m_clients) {
+                if (cs.audioEnabled) { anyAudio = true; break; }
+            }
+            if (!anyAudio) releaseDaxForTci();
             break;
         }
     }
@@ -253,6 +260,7 @@ void TciServer::onTextMessage(const QString& msg)
         // Handle audio start/stop at server level (affects per-client state)
         if (trimmed.startsWith("audio_start")) {
             client.audioEnabled = true;
+            ensureDaxForTci();
             ws->sendTextMessage(cmd.trimmed() + ";");
             qCInfo(lcCat) << "TCI: audio started for client"
                           << ws->peerAddress().toString()
@@ -263,6 +271,12 @@ void TciServer::onTextMessage(const QString& msg)
         }
         if (trimmed.startsWith("audio_stop")) {
             client.audioEnabled = false;
+            // Release DAX if no other clients still want audio
+            bool anyAudio = false;
+            for (const auto& cs : m_clients) {
+                if (cs.audioEnabled) { anyAudio = true; break; }
+            }
+            if (!anyAudio) releaseDaxForTci();
             ws->sendTextMessage(cmd.trimmed() + ";");
             qCInfo(lcCat) << "TCI: audio stopped for client"
                           << ws->peerAddress().toString();
@@ -889,6 +903,51 @@ void TciServer::onIqDataReady(int channel, const QByteArray& rawPayload, int sam
         if (cs.iqEnabled && cs.iqChannel == trx)
             cs.socket->sendBinaryMessage(frame);
     }
+}
+
+// ── DAX channel management for TCI audio (#1331) ─────────────────────────────
+//
+// TCI audio feeds from daxAudioReady (not audioDataReady) so that audio_mute
+// doesn't kill TCI audio. We auto-assign a DAX channel to each slice that
+// doesn't already have one, and release it when the last TCI audio client
+// disconnects.
+
+void TciServer::ensureDaxForTci()
+{
+    if (!m_model || !m_model->isConnected()) return;
+
+    for (auto* s : m_model->slices()) {
+        if (s->daxChannel() != 0) continue;  // user already assigned a channel
+
+        // Find an available DAX channel (1-4)
+        QSet<int> used;
+        for (auto* sl : m_model->slices()) {
+            if (sl->daxChannel() > 0)
+                used.insert(sl->daxChannel());
+        }
+        for (int ch = 1; ch <= 4; ++ch) {
+            if (!used.contains(ch)) {
+                qCInfo(lcCat) << "TCI: auto-assigning DAX channel" << ch
+                              << "to slice" << s->sliceId() << "for TCI audio (#1331)";
+                s->setDaxChannel(ch);
+                m_tciDaxSlices.insert(s->sliceId());
+                break;
+            }
+        }
+    }
+}
+
+void TciServer::releaseDaxForTci()
+{
+    if (!m_model) return;
+
+    for (int sliceId : m_tciDaxSlices) {
+        if (auto* s = m_model->slice(sliceId)) {
+            qCInfo(lcCat) << "TCI: releasing DAX channel from slice" << sliceId << "(#1331)";
+            s->setDaxChannel(0);
+        }
+    }
+    m_tciDaxSlices.clear();
 }
 
 } // namespace AetherSDR
