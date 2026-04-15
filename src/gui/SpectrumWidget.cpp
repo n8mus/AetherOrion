@@ -1725,7 +1725,7 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
         const QRect timeScaleRect = waterfallTimeScaleRect(wfRect);
         const int dragHeight = std::max(1, timeScaleRect.height());
         const int maxOffset = maxWaterfallHistoryOffsetRows();
-        const int dy = y - m_timeScaleDragStartY;
+        const int dy = m_timeScaleDragStartY - y;  // pull up = scroll back in time
         const int deltaRows = (maxOffset > 0)
             ? static_cast<int>(std::round((static_cast<double>(dy) / dragHeight) * maxOffset))
             : 0;
