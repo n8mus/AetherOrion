@@ -70,6 +70,8 @@ public:
 
     float rxVolume() const  { return m_rxVolume.load(); }
     void  setRxVolume(float v);
+    void  setRxBoost(bool on) { m_rxBoost.store(on); }
+    bool  rxBoost() const { return m_rxBoost.load(); }
 
     bool isMuted() const       { return m_muted.load(); }
     void setMuted(bool m);
@@ -244,6 +246,7 @@ private:
     QAudioDevice m_outputDevice;
     QAudioDevice m_inputDevice;
     std::atomic<float> m_rxVolume{1.0f};
+    std::atomic<bool>  m_rxBoost{false};  // 50% software gain boost (#1445)
     std::atomic<bool>  m_muted{false};
     bool  m_resampleTo48k{false};      // RX: upsample 24kHz → 48kHz output
     std::unique_ptr<Resampler> m_rxResampler;  // 24k stereo → 48k stereo (lazy init)

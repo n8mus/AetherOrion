@@ -1621,6 +1621,41 @@ QWidget* RadioSetupDialog::buildAudioTab()
         });
     }
 
+    // Audio Boost toggle
+    {
+        auto* boostRow = new QHBoxLayout;
+        auto* boostLabel = new QLabel("Audio Boost:");
+        boostLabel->setStyleSheet(kLabelStyle);
+        boostLabel->setFixedWidth(90);
+        bool boostOn = AppSettings::instance().value("AudioBoost", "False").toString() == "True";
+        auto* boostBtn = new QPushButton(boostOn ? "Enabled" : "Disabled");
+        boostBtn->setCheckable(true);
+        boostBtn->setChecked(boostOn);
+        boostBtn->setToolTip("Apply 50% software gain boost to PC audio output.\n"
+                             "Compensates for lower levels with AGC-controlled audio.");
+        boostBtn->setStyleSheet(
+            "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+            "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+            "padding: 3px 10px; }"
+            "QPushButton:checked { background: #1a5030; color: #00e060; "
+            "border: 1px solid #20a040; }");
+        connect(boostBtn, &QPushButton::toggled, this, [this, boostBtn](bool on) {
+            boostBtn->setText(on ? "Enabled" : "Disabled");
+            auto& s = AppSettings::instance();
+            s.setValue("AudioBoost", on ? "True" : "False");
+            s.save();
+            if (m_audio) {
+                QMetaObject::invokeMethod(m_audio, [this, on]() {
+                    m_audio->setRxBoost(on);
+                }, Qt::QueuedConnection);
+            }
+        });
+        boostRow->addWidget(boostLabel);
+        boostRow->addWidget(boostBtn);
+        boostRow->addStretch(1);
+        pcLayout->addLayout(boostRow);
+    }
+
     vbox->addWidget(pcGroup);
 
     // ── Recording ───────────────────────────────────────────────────────

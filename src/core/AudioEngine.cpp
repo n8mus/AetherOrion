@@ -431,10 +431,22 @@ void AudioEngine::feedAudioData(const QByteArray& pcm)
 
     auto writeAudio = [this](const QByteArray& data) {
         if (!m_audioDevice || !m_audioDevice->isOpen()) return;
-        if (m_resampleTo48k)
-            m_rxBuffer.append(resampleStereo(data));
-        else
-            m_rxBuffer.append(data);
+        const QByteArray& resampled = m_resampleTo48k ? resampleStereo(data) : data;
+        if (m_rxBoost.load()) {
+            // Soft-knee boost — increases perceived loudness without hard clipping.
+            // Uses tanh compression: loud signals are gently limited while quiet
+            // signals get ~2x gain.  tanh(2*x) ≈ 2*x for small x, ≈ 1.0 for large x.
+            QByteArray boosted(resampled.size(), Qt::Uninitialized);
+            const auto* src = reinterpret_cast<const float*>(resampled.constData());
+            auto* dst = reinterpret_cast<float*>(boosted.data());
+            const int nSamples = resampled.size() / static_cast<int>(sizeof(float));
+            for (int i = 0; i < nSamples; ++i) {
+                dst[i] = std::tanh(src[i] * 2.0f);
+            }
+            m_rxBuffer.append(boosted);
+        } else {
+            m_rxBuffer.append(resampled);
+        }
         updateRxBufferStats();
     };
 
