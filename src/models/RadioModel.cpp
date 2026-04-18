@@ -1229,6 +1229,7 @@ void RadioModel::onDisconnected()
     m_panadapters.clear();
     m_activePanId.clear();
     m_ownedSliceIds.clear();
+    m_tnfModel.clear();
     if (!m_memories.isEmpty()) {
         m_memories.clear();
         emit memoriesCleared();
@@ -2291,7 +2292,7 @@ void RadioModel::handleRadioStatus(const QMap<QString, QString>& kvs)
         changed = true;
     }
     if (kvs.contains("tnf_enabled")) {
-        m_tnfModel.setGlobalEnabled(kvs["tnf_enabled"] == "1");
+        m_tnfModel.applyGlobalEnabled(kvs["tnf_enabled"] == "1");
     }
     // Audio outputs
     bool audioChanged = false;
