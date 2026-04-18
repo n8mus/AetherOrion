@@ -95,11 +95,11 @@ AudioEngine::AudioEngine(QObject* parent)
     connect(m_rxTimer, &QTimer::timeout, this, [this]() {
         if (!m_audioSink || !m_audioDevice || !m_audioDevice->isOpen() || m_audioSink->state() == QAudio::StoppedState) return;
 
-        // Cap buffer at ~200ms of audio to bound latency.
-        // At 24kHz stereo float32 = 192000 bytes/sec → 200ms = 38400 bytes.
-        // At 48kHz stereo float32 = 384000 bytes/sec → 200ms = 76800 bytes.
+        // Cap buffer to bound latency. Default 200ms, user-adjustable for
+        // high-jitter connections (VPN, SmartLink) where drops cause choppy audio.
         const int sampleRate = m_resampleTo48k ? 48000 : DEFAULT_SAMPLE_RATE;
-        const qsizetype maxBufBytes = sampleRate * 2 * static_cast<qsizetype>(sizeof(float)) / 5; // 200ms worth
+        const int bufMs = m_rxBufferCapMs.load();
+        const qsizetype maxBufBytes = sampleRate * 2 * static_cast<qsizetype>(sizeof(float)) * bufMs / 1000;
         if (m_rxBuffer.size() > maxBufBytes) {
             // Drop oldest samples to keep latency bounded
             m_rxBuffer.remove(0, m_rxBuffer.size() - maxBufBytes);
@@ -450,13 +450,14 @@ void AudioEngine::feedAudioData(const QByteArray& pcm)
         updateRxBufferStats();
     };
 
-    // Bypass client-side DSP during TX (#367). NR2/RN2/BNR adapt their
-    // internal state (noise floor, RNN hidden state) to silence during TX,
-    // causing distorted audio for several seconds after returning to RX.
+    // Bypass client-side DSP during TX (#367, #1505). NR2/RN2/BNR adapt
+    // their internal state to silence during TX, causing distorted audio
+    // after returning to RX. Use m_radioTransmitting (raw interlock state)
+    // so bypass kicks in even when an external app triggers PTT.
     // DSP mutex: prevents use-after-free if enable/disable runs concurrently (#502)
     {
         std::lock_guard<std::recursive_mutex> dspLock(m_dspMutex);
-        if (m_transmitting) {
+        if (m_radioTransmitting) {
             writeAudio(pcm);
             emit levelChanged(computeRMS(pcm));
         } else if (m_rn2Enabled && m_rn2) {

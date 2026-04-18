@@ -271,6 +271,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_audio = new AudioEngine;  // no parent — will be moved to thread
     m_audio->setRxBoost(
         AppSettings::instance().value("AudioBoost", "False").toString() == "True");
+    m_audio->setRxBufferCapMs(
+        AppSettings::instance().value("AudioBufferMs", "200").toInt());
     m_audio->moveToThread(m_audioThread);
     m_audioThread->start();
 

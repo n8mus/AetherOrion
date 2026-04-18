@@ -1656,6 +1656,40 @@ QWidget* RadioSetupDialog::buildAudioTab()
         pcLayout->addLayout(boostRow);
     }
 
+    // Audio Buffer (ms)
+    {
+        auto* bufRow = new QHBoxLayout;
+        auto* bufLabel = new QLabel("Audio Buffer:");
+        bufLabel->setStyleSheet(kLabelStyle);
+        bufLabel->setFixedWidth(90);
+        int bufMs = AppSettings::instance().value("AudioBufferMs", "200").toInt();
+        auto* bufEdit = new QLineEdit(QString::number(bufMs));
+        bufEdit->setStyleSheet(kEditStyle);
+        bufEdit->setFixedWidth(50);
+        auto* bufUnit = new QLabel("ms");
+        bufUnit->setStyleSheet(kLabelStyle);
+        auto* bufHint = new QLabel("(50–1000, increase for VPN/SmartLink jitter)");
+        bufHint->setStyleSheet("QLabel { color: #506070; font-size: 10px; }");
+        connect(bufEdit, &QLineEdit::editingFinished, this, [this, bufEdit] {
+            int val = qBound(50, bufEdit->text().toInt(), 1000);
+            bufEdit->setText(QString::number(val));
+            auto& s = AppSettings::instance();
+            s.setValue("AudioBufferMs", QString::number(val));
+            s.save();
+            if (m_audio) {
+                QMetaObject::invokeMethod(m_audio, [this, val]() {
+                    m_audio->setRxBufferCapMs(val);
+                }, Qt::QueuedConnection);
+            }
+        });
+        bufRow->addWidget(bufLabel);
+        bufRow->addWidget(bufEdit);
+        bufRow->addWidget(bufUnit);
+        bufRow->addWidget(bufHint);
+        bufRow->addStretch(1);
+        pcLayout->addLayout(bufRow);
+    }
+
     vbox->addWidget(pcGroup);
 
     // ── Recording ───────────────────────────────────────────────────────
