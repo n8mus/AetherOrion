@@ -167,7 +167,7 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
         button->setCheckable(true);
         button->setStyleSheet(modeCardStyle);
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        button->setMinimumHeight(84);
+        button->setMinimumHeight(100);
         m_modeButtons->addButton(button, static_cast<int>(mode));
     };
 

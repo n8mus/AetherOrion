@@ -3663,8 +3663,8 @@ void MainWindow::buildUI()
     m_connPanel = new ConnectionPanel(this);
     m_connPanel->setWindowFlags(Qt::Dialog);
     m_connPanel->setWindowTitle("Connect to Radio");
-    m_connPanel->setMinimumSize(640, 520);
-    m_connPanel->resize(760, 580);
+    m_connPanel->setMinimumSize(640, 580);
+    m_connPanel->resize(760, 660);
     m_connPanel->hide();
 
     // CWX panel — left of spectrum, hidden by default
