@@ -80,11 +80,17 @@ private:
         int          audioChannels{2};       // 1=mono, 2=stereo
         int          audioFormat{3};         // 0=int16, 3=float32
         Resampler*   resampler{nullptr};    // null if rate == 24000 (native)
+        QByteArray   rxAccumBuf;            // buffer DAX packets before resampling
         bool         rxSensorsEnabled{false};
         bool         txSensorsEnabled{false};
         bool         iqEnabled{false};       // client sent IQ_START
         int          iqChannel{0};           // TCI TRX → DAX IQ channel (0-based)
     };
+
+    // Minimum frames to accumulate before flushing to r8brain.
+    // ~21ms at 24kHz — large enough for clean resampling, small enough
+    // for acceptable latency in digital modes.
+    static constexpr int kAccumMinFrames = 512;
 
     void ensureDaxForTci();
     void releaseDaxForTci();

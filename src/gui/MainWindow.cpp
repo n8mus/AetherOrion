@@ -7433,9 +7433,17 @@ bool MainWindow::startDax()
         }
     });
 
-    // Create DAX RX streams (4 channels)
-    for (int ch = 1; ch <= 4; ++ch)
-        m_radioModel.sendCommand(QString("stream create type=dax_rx dax_channel=%1").arg(ch));
+    // Create DAX RX streams only for channels with slices assigned.
+    // FlexLib creates streams on demand, not all 4 unconditionally.
+    // Creating unused streams causes the radio to round-robin audio
+    // across all of them, starving the active channels.
+    for (auto* s : m_radioModel.slices()) {
+        int ch = s->daxChannel();
+        if (ch >= 1 && ch <= 4) {
+            m_radioModel.sendCommand(
+                QString("stream create type=dax_rx dax_channel=%1").arg(ch));
+        }
+    }
 
     // Wire DAX RX: PanadapterStream routes registered DAX streams here
     connect(m_radioModel.panStream(), &PanadapterStream::daxAudioReady,

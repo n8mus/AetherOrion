@@ -584,13 +584,14 @@ void TciServer::onRxAudioReady(const QByteArray& pcm)
                 hdr.receiver = 0;
                 hdr.sampleRate = static_cast<quint32>(cs.audioSampleRate);
                 hdr.format = 0;  // int16
-                hdr.length = static_cast<quint32>(audioFrames);
+                hdr.length = static_cast<quint32>(audioFrames * 2);  // total samples (stereo)
                 hdr.type = 1;    // RX_AUDIO
                 hdr.channels = 2;
                 std::memcpy(frame.data(), &hdr, sizeof(hdr));
                 auto* i16dst = reinterpret_cast<qint16*>(frame.data() + sizeof(hdr));
-                for (int i = 0; i < srcSamples; ++i)
+                for (int i = 0; i < srcSamples; ++i) {
                     i16dst[i] = static_cast<qint16>(std::clamp(audioSrc[i] * 32768.0f, -32768.0f, 32767.0f));
+                }
                 cs.socket->sendBinaryMessage(frame);
             } else {
                 // Mono int16
@@ -600,7 +601,7 @@ void TciServer::onRxAudioReady(const QByteArray& pcm)
                 hdr.receiver = 0;
                 hdr.sampleRate = static_cast<quint32>(cs.audioSampleRate);
                 hdr.format = 0;
-                hdr.length = static_cast<quint32>(audioFrames);
+                hdr.length = static_cast<quint32>(audioFrames);  // total samples (mono = frames)
                 hdr.type = 1;
                 hdr.channels = 1;
                 std::memcpy(frame.data(), &hdr, sizeof(hdr));
@@ -625,27 +626,45 @@ void TciServer::onDaxAudioReady(int channel, const QByteArray& pcm)
     }
     if (!anyAudio) return;
 
-    // Input: float32 stereo, 24 kHz
-    const auto* src = reinterpret_cast<const float*>(pcm.constData());
-    int stereoFrames = pcm.size() / (2 * static_cast<int>(sizeof(float)));
+    // Map DAX channel → TRX by finding which slice owns this channel.
+    int trx = 0;
+    if (m_model) {
+        for (auto* s : m_model->slices()) {
+            if (s->daxChannel() == channel) {
+                trx = s->sliceId();
+                break;
+            }
+        }
+    }
 
-    // Map DAX channel to TRX: channel 1 → TRX 0, channel 2 → TRX 1, etc.
-    int trx = channel - 1;
-    if (trx < 0) trx = 0;
-
-    // Per-client resampling (float32 I/O)
+    // Per-client: accumulate then resample
     for (auto& cs : m_clients) {
         if (!cs.audioEnabled) continue;
 
-        const float* audioSrc = src;
-        int audioFrames = stereoFrames;
+        // Accumulate DAX packets into a buffer before resampling.
+        // DAX delivers ~128-frame packets; r8brain needs larger blocks
+        // for clean output without startup transients.
+        cs.rxAccumBuf.append(pcm);
+
+        int accumFrames = cs.rxAccumBuf.size() / (2 * static_cast<int>(sizeof(float)));
+
+        // If no resampler, flush immediately (native 24kHz pass-through)
+        // If resampling, wait for enough data to feed r8brain cleanly
+        if (cs.resampler && accumFrames < kAccumMinFrames) {
+            continue;
+        }
+
+        const float* audioSrc = reinterpret_cast<const float*>(cs.rxAccumBuf.constData());
+        int audioFrames = accumFrames;
         QByteArray resampledBuf;
 
         if (cs.resampler) {
-            resampledBuf = cs.resampler->processStereoToStereo(src, stereoFrames);
+            resampledBuf = cs.resampler->processStereoToStereo(audioSrc, audioFrames);
             audioSrc = reinterpret_cast<const float*>(resampledBuf.constData());
             audioFrames = resampledBuf.size() / (2 * static_cast<int>(sizeof(float)));
         }
+
+        cs.rxAccumBuf.clear();
 
         int srcSamples = audioFrames * 2;  // stereo
 
@@ -673,13 +692,14 @@ void TciServer::onDaxAudioReady(int channel, const QByteArray& pcm)
                 hdr.receiver = static_cast<quint32>(trx);
                 hdr.sampleRate = static_cast<quint32>(cs.audioSampleRate);
                 hdr.format = 0;  // int16
-                hdr.length = static_cast<quint32>(audioFrames);
+                hdr.length = static_cast<quint32>(audioFrames * 2);  // total samples (stereo)
                 hdr.type = 1;    // RX_AUDIO
                 hdr.channels = 2;
                 std::memcpy(frame.data(), &hdr, sizeof(hdr));
                 auto* i16dst = reinterpret_cast<qint16*>(frame.data() + sizeof(hdr));
-                for (int i = 0; i < srcSamples; ++i)
+                for (int i = 0; i < srcSamples; ++i) {
                     i16dst[i] = static_cast<qint16>(std::clamp(audioSrc[i] * 32768.0f, -32768.0f, 32767.0f));
+                }
                 cs.socket->sendBinaryMessage(frame);
             } else {
                 // Mono int16
@@ -689,7 +709,7 @@ void TciServer::onDaxAudioReady(int channel, const QByteArray& pcm)
                 hdr.receiver = static_cast<quint32>(trx);
                 hdr.sampleRate = static_cast<quint32>(cs.audioSampleRate);
                 hdr.format = 0;
-                hdr.length = static_cast<quint32>(audioFrames);
+                hdr.length = static_cast<quint32>(audioFrames);  // total samples (mono = frames)
                 hdr.type = 1;
                 hdr.channels = 1;
                 std::memcpy(frame.data(), &hdr, sizeof(hdr));
@@ -722,7 +742,9 @@ QByteArray TciServer::buildAudioFrame(int receiver, int type,
     hdr.format     = 3;  // float32
     hdr.codec      = 0;
     hdr.crc        = 0;
-    hdr.length     = static_cast<quint32>(sampleCount);
+    // length = total number of floats in the data field (not frames).
+    // WSJT-X divides this by bytesPerFrame(2) to get stereo frame count.
+    hdr.length     = static_cast<quint32>(sampleCount * channels);
     hdr.type       = static_cast<quint32>(type);
     hdr.channels   = static_cast<quint32>(channels);
     std::memset(hdr.reserved, 0, sizeof(hdr.reserved));
@@ -990,34 +1012,51 @@ void TciServer::ensureDaxForTci()
     QSet<int> channelsNeeded;
 
     for (auto* s : m_model->slices()) {
-        if (s->daxChannel() != 0) continue;  // user already assigned a channel
-
-        // Find an available DAX channel (1-4)
-        QSet<int> used;
-        for (auto* sl : m_model->slices()) {
-            if (sl->daxChannel() > 0)
-                used.insert(sl->daxChannel());
-        }
-        for (int ch = 1; ch <= 4; ++ch) {
-            if (!used.contains(ch)) {
-                qCInfo(lcCat) << "TCI: auto-assigning DAX channel" << ch
-                              << "to slice" << s->sliceId() << "for TCI audio (#1331)";
-                s->setDaxChannel(ch);
-                m_tciDaxSlices.insert(s->sliceId());
-                channelsNeeded.insert(ch);
-                break;
+        if (s->daxChannel() == 0) {
+            // Slice has no DAX channel — auto-assign one
+            QSet<int> used;
+            for (auto* sl : m_model->slices()) {
+                if (sl->daxChannel() > 0) {
+                    used.insert(sl->daxChannel());
+                }
             }
+            for (int ch = 1; ch <= 4; ++ch) {
+                if (!used.contains(ch)) {
+                    qCInfo(lcCat) << "TCI: auto-assigning DAX channel" << ch
+                                  << "to slice" << s->sliceId() << "for TCI audio (#1331)";
+                    s->setDaxChannel(ch);
+                    m_tciDaxSlices.insert(s->sliceId());
+                    channelsNeeded.insert(ch);
+                    break;
+                }
+            }
+        } else {
+            // Slice already has a DAX channel (from radio profile) —
+            // still need to ensure a stream exists for it.
+            channelsNeeded.insert(s->daxChannel());
         }
     }
 
-    // Create DAX RX streams for channels we just assigned (if not already
-    // running from user's DAX bridge).  Insert placeholder (streamId=0) so
-    // the statusReceived handler knows to register the response.
+    // Create DAX RX streams for channels that need them.  Insert placeholder
+    // (streamId=0) so the statusReceived handler knows to register the response.
     for (int ch : channelsNeeded) {
         if (m_tciDaxStreamIds.contains(ch)) continue; // already have/pending
-        m_tciDaxStreamIds[ch] = 0;  // placeholder — filled by statusReceived
+        m_tciDaxStreamIds[ch] = 0;
         m_model->sendCommand(QString("stream create type=dax_rx dax_channel=%1").arg(ch));
         qCInfo(lcCat) << "TCI: creating DAX RX stream for channel" << ch << "(#1331)";
+    }
+
+    // Re-assert slice → DAX channel mapping so the radio registers our
+    // stream as a client.  Without this, dax_clients stays 0 and the
+    // radio sends silence instead of demodulated audio. (#1439)
+    for (auto* s : m_model->slices()) {
+        int ch = s->daxChannel();
+        if (ch > 0 && channelsNeeded.contains(ch)) {
+            m_model->sendCommand(QString("slice set %1 dax=%2")
+                .arg(s->sliceId()).arg(ch));
+            qCInfo(lcCat) << "TCI: re-asserting dax=" << ch
+                          << "on slice" << s->sliceId();
+        }
     }
 }
 
