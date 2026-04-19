@@ -4439,11 +4439,11 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
         const int fW   = fX2 - fX1;
 
         // ── Filter passband shading ──────────────────────────────────────
-        // All slices use the same style — color distinguishes them.
+        // Drawn only in the spectrum area. The waterfall is a historical
+        // record of received signals; painting a UI affordance over it
+        // makes the passband look like a signal in the history (#1270).
         p.fillRect(QRect(fX1, specRect.top(), fW, specRect.height()),
                    QColor(col.red(), col.green(), col.blue(), 35));
-        p.fillRect(QRect(fX1, wfRect.top(), fW, wfRect.height()),
-                   QColor(col.red(), col.green(), col.blue(), 25));
 
         // Filter edge lines — user-hidden via per-slice VFO flag toggle (#1526)
         if (!so.filterEdgesHidden) {
