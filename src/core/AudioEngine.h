@@ -82,6 +82,13 @@ public:
     void  setRxVolume(float v);
     void  setRxBoost(bool on) { m_rxBoost.store(on); }
     bool  rxBoost() const { return m_rxBoost.load(); }
+
+    // Client-side RX pan (0=full-left, 50=centre, 100=full-right).
+    // Normally the radio handles panning, but client-side NR mono-mixes
+    // L+R, discarding the balance. This re-applies it to the NR output
+    // so that the pan slider still works when NR2/NR4/etc. are active (#1460).
+    void setRxPan(int panValue);
+    int  rxPan() const { return m_rxPan.load(); }
     void  setRxBufferCapMs(int ms) { m_rxBufferCapMs.store(qBound(50, ms, 1000)); }
     int   rxBufferCapMs() const { return m_rxBufferCapMs.load(); }
 
@@ -400,6 +407,7 @@ private:
     QAudioDevice m_inputDevice;
     std::atomic<float> m_rxVolume{1.0f};
     std::atomic<bool>  m_rxBoost{false};  // 50% software gain boost (#1445)
+    std::atomic<int>   m_rxPan{50};       // 0=left, 50=centre, 100=right (#1460)
     std::atomic<int>   m_rxBufferCapMs{200}; // RX buffer cap in ms (#1505)
     std::atomic<bool>  m_muted{false};
     bool  m_resampleTo48k{false};      // RX: upsample 24kHz → 48kHz output

@@ -862,6 +862,7 @@ void VfoWidget::buildTabContent()
                                   : QString::fromUtf8("AF  \xF0\x9F\x94\x8A"));  // 🔊 AF
             m_tabBtns[0]->setText(on ? QString::fromUtf8("\xF0\x9F\x94\x87")
                                      : QString::fromUtf8("\xF0\x9F\x94\x8A"));
+            if (!m_updatingFromModel) emit audioMuteToggled(on);  // (#1560)
         });
         connect(m_sqlBtn, &QPushButton::toggled, this, [this](bool on) {
             if (!m_updatingFromModel && m_slice)
@@ -895,6 +896,7 @@ void VfoWidget::buildTabContent()
         });
         connect(m_panSlider, &QSlider::valueChanged, this, [this](int v) {
             if (!m_updatingFromModel && m_slice) m_slice->setAudioPan(v);
+            if (!m_updatingFromModel) emit rxPanChanged(v);  // (#1460)
         });
         connect(m_divBtn, &QPushButton::toggled, this, [this](bool on) {
             if (!m_updatingFromModel && m_slice)

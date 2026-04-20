@@ -79,6 +79,8 @@ public:
 
 Q_SIGNALS:
     void afGainChanged(int value);
+    void audioMuteToggled(bool on);   // per-slice AF mute changed by user (#1560)
+    void rxPanChanged(int value);     // pan slider moved; AudioEngine re-applies after NR (#1460)
     void closeSliceRequested();
     void lockToggled(bool locked);
     void nr2Toggled(bool on);
