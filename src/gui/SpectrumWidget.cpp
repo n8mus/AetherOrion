@@ -1190,7 +1190,9 @@ void SpectrumWidget::setSliceOverlayFreq(int sliceId, double freqMhz)
 {
     for (auto& so : m_sliceOverlays) {
         if (so.sliceId == sliceId) {
+            if (so.freqMhz == freqMhz) return;  // unchanged — no repaint needed
             so.freqMhz = freqMhz;
+            markOverlayDirty();  // repaint so markers reflect the new frequency (#1272)
             return;
         }
     }
@@ -1500,7 +1502,11 @@ int SpectrumWidget::mhzToX(double mhz) const
     const double startMhz = m_centerMhz - m_bandwidthMhz / 2.0;
     const double px = (mhz - startMhz) / m_bandwidthMhz * width();
     if (std::isnan(px) || std::isinf(px)) return -1;
-    return static_cast<int>(std::clamp(px, -1.0e6, 1.0e6));
+    // Round to nearest pixel so all vertical markers (VFO, TNF, filter edges) are
+    // centred on the true frequency.  Truncation caused ±1 px jitter during
+    // continuous tuning because the same frequency mapped to different pixels
+    // depending on floating-point remainder (#1272, also fixes cursor snap #1369).
+    return static_cast<int>(std::round(std::clamp(px, -1.0e6, 1.0e6)));
 }
 
 double SpectrumWidget::xToMhz(int x) const
@@ -3193,7 +3199,15 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb)
             // Cursor frequency label (#726)
             if (m_showCursorFreq && m_cursorPos.x() >= 0
                 && m_cursorPos.y() >= 0) {
-                const double freqMhz = xToMhz(m_cursorPos.x());
+                double freqMhz = xToMhz(m_cursorPos.x());
+                // Snap to the exact VFO frequency when hovering within 8 px of a slice
+                // marker so the readout exactly matches the flag value (#1369).
+                for (const auto& so : m_sliceOverlays) {
+                    if (std::abs(m_cursorPos.x() - mhzToX(so.freqMhz)) <= 8) {
+                        freqMhz = so.freqMhz;
+                        break;
+                    }
+                }
                 const QString label = QString::number(freqMhz, 'f', 6);
                 QFont f = p.font();
                 f.setPointSize(9);
@@ -3810,7 +3824,15 @@ void SpectrumWidget::paintEvent(QPaintEvent* ev)
     // ── Cursor frequency label (#456) ──────────────────────────────────────
     if (m_showCursorFreq && m_cursorPos.x() >= 0
         && m_cursorPos.y() >= 0) {
-        const double freqMhz = xToMhz(m_cursorPos.x());
+        double freqMhz = xToMhz(m_cursorPos.x());
+        // Snap to the exact VFO frequency when hovering within 8 px of a slice
+        // marker so the readout exactly matches the flag value (#1369).
+        for (const auto& so : m_sliceOverlays) {
+            if (std::abs(m_cursorPos.x() - mhzToX(so.freqMhz)) <= 8) {
+                freqMhz = so.freqMhz;
+                break;
+            }
+        }
         const QString label = QString::number(freqMhz, 'f', 6);
         QFont f = p.font();
         f.setPointSize(9);
