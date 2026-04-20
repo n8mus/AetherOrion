@@ -199,7 +199,7 @@ private:
     static constexpr double SnrqExp    = -0.25;
 
     // ── User-adjustable parameters (atomic for audio thread safety) ───
-    std::atomic<double> m_gainMax{1.5};     // cap gain — noise REDUCTION, not amplification
+    std::atomic<double> m_gainMax{1.0};     // cap gain — noise REDUCTION, never amplify above input (#1507)
     std::atomic<double> m_qSpp{0.2};        // speech presence probability prior
     std::atomic<double> m_gainSmooth{0.85}; // temporal gain smoothing (anti-musical-noise)
     std::atomic<int>    m_gainMethod{2};    // 0=Linear, 1=Log, 2=Gamma, 3=Trained

@@ -1581,7 +1581,7 @@ void AudioEngine::setNr2Enabled(bool on)
         }
         // Restore user-adjusted parameters from AppSettings
         auto& s = AppSettings::instance();
-        m_nr2->setGainMax(s.value("NR2GainMax", "1.50").toFloat());
+        m_nr2->setGainMax(s.value("NR2GainMax", "1.00").toFloat());  // default 1.0 = no amplification (#1507)
         m_nr2->setGainSmooth(s.value("NR2GainSmooth", "0.85").toFloat());
         m_nr2->setQspp(s.value("NR2Qspp", "0.20").toFloat());
         m_nr2->setGainMethod(s.value("NR2GainMethod", "2").toInt());
@@ -1932,13 +1932,17 @@ void AudioEngine::processNr2(const QByteArray& stereoPcm)
     // Process through SpectralNR (float32 I/O)
     m_nr2->process(m_nr2Mono.data(), m_nr2Processed.data(), stereoFrames);
 
-    // Mono float32 → stereo float32 (duplicate)
+    // Mono float32 → stereo float32, then re-apply the pan the radio had set
+    // before NR mono-mixed it away (#1460).
+    // Hard-clamp to ±1.0: if gainMax was tuned above 1.0 (not recommended),
+    // unclamped samples would cause digital crackling at the audio sink (#1507).
     const int outBytes = stereoFrames * 2 * static_cast<int>(sizeof(float));
     m_nr2Output.resize(outBytes);
     auto* dst = reinterpret_cast<float*>(m_nr2Output.data());
     for (int i = 0; i < stereoFrames; ++i) {
-        dst[2 * i]     = m_nr2Processed[i];
-        dst[2 * i + 1] = m_nr2Processed[i];
+        const float s = std::clamp(m_nr2Processed[i], -1.0f, 1.0f);
+        dst[2 * i]     = s;
+        dst[2 * i + 1] = s;
     }
 }
 
