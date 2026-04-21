@@ -131,6 +131,10 @@ private:
     void applyUiScale(int pct);
     void stepUiScale(int direction);  // +1 = zoom in, -1 = zoom out
     void toggleMinimalMode(bool on);
+    // Toggle OS window-chrome on/off (Qt::FramelessWindowHint).  Persists
+    // to AppSettings("FramelessWindow"). When on, users move/close the
+    // window via keyboard shortcuts or taskbar.
+    void setFramelessWindow(bool on);
     void showMemoryDialog();
     void showQuickAddMemoryDialog(const QString& preferredPanId = {});
     void updateKeyerAvailability(const QString& mode);

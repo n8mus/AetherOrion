@@ -303,6 +303,12 @@ MainWindow::MainWindow(QWidget* parent)
     setMinimumSize(1024, 600);
     resize(1400, 800);
 
+    // Apply frameless flag before first show() so the window is created
+    // without chrome from the start — avoids the flash + re-create that
+    // setWindowFlags() after show would cause (#framleess via View menu).
+    if (AppSettings::instance().value("FramelessWindow", "False").toString() == "True")
+        setWindowFlags(windowFlags() | Qt::FramelessWindowHint);
+
     applyDarkTheme();
 
     // Audio worker thread (#502) — AudioEngine runs on its own thread so
@@ -4181,6 +4187,18 @@ void MainWindow::buildMenuBar()
         toggleMinimalMode(on);
     });
 
+    auto* framelessAct = viewMenu->addAction("Frameless Window");
+    framelessAct->setCheckable(true);
+    framelessAct->setShortcut(QKeySequence("Ctrl+Shift+F"));
+    framelessAct->setToolTip(
+        "Hide the OS title bar to gain screen space.\n"
+        "When enabled, move/close via keyboard shortcuts or taskbar.");
+    framelessAct->setChecked(
+        AppSettings::instance().value("FramelessWindow", "False").toString() == "True");
+    connect(framelessAct, &QAction::toggled, this, [this](bool on) {
+        setFramelessWindow(on);
+    });
+
     auto* propForecastAct = viewMenu->addAction("Propagation Conditions");
     propForecastAct->setCheckable(true);
     propForecastAct->setChecked(
@@ -7435,6 +7453,27 @@ void MainWindow::stepUiScale(int direction)
     }
     if (best != current)
         applyUiScale(best);
+}
+
+void MainWindow::setFramelessWindow(bool on)
+{
+    auto& s = AppSettings::instance();
+    s.setValue("FramelessWindow", on ? "True" : "False");
+    s.save();
+
+    // setWindowFlags() re-creates the native window — save and restore
+    // geometry so the window stays where the user put it.
+    const QRect geom = geometry();
+    const bool wasVisible = isVisible();
+    Qt::WindowFlags flags = windowFlags();
+    if (on)
+        flags |= Qt::FramelessWindowHint;
+    else
+        flags &= ~Qt::FramelessWindowHint;
+    setWindowFlags(flags);
+    setGeometry(geom);
+    if (wasVisible)
+        show();
 }
 
 void MainWindow::toggleMinimalMode(bool on)
