@@ -416,7 +416,7 @@ void VfoWidget::buildUI()
     m_recordBtn->setCheckable(true);
     m_recordBtn->setToolTip("Record slice audio");
     m_recordBtn->setStyleSheet(sliceBtnStyle +
-        "QPushButton { color: #804040; }"
+        "QPushButton { color: #d04040; }"
         "QPushButton:checked { color: #ff2020; background: rgba(255,50,50,60); }");
     m_recordBtn->show();
     connect(m_recordBtn, &QPushButton::clicked, this, [this](bool checked) {
@@ -445,9 +445,9 @@ void VfoWidget::buildUI()
     m_playBtn->setEnabled(false);
     m_playBtn->setToolTip("Play recorded audio");
     m_playBtn->setStyleSheet(sliceBtnStyle +
-        "QPushButton { color: #406040; }"
+        "QPushButton { color: #70b070; }"
         "QPushButton:checked { color: #30d050; background: rgba(50,200,80,60); }"
-        "QPushButton:disabled { color: #303030; background: rgba(255,255,255,5); }");
+        "QPushButton:disabled { color: #505050; background: rgba(255,255,255,5); }");
     m_playBtn->show();
     connect(m_playBtn, &QPushButton::clicked, this, [this](bool checked) {
         emit playToggled(checked);

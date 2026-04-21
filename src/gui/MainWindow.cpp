@@ -4615,7 +4615,7 @@ void MainWindow::buildUI()
     m_radioInfoLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
     m_radioInfoLabel->setAlignment(Qt::AlignCenter);
     m_radioVersionLabel = new QLabel("");
-    m_radioVersionLabel->setStyleSheet("QLabel { color: #607080; font-size: 12px; }");
+    m_radioVersionLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
     m_radioVersionLabel->setAlignment(Qt::AlignCenter);
     radioVbox->addWidget(m_radioInfoLabel);
     radioVbox->addWidget(m_radioVersionLabel);
@@ -4652,7 +4652,7 @@ void MainWindow::buildUI()
     m_gpsLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
     m_gpsLabel->setAlignment(Qt::AlignCenter);
     m_gpsStatusLabel = new QLabel("");
-    m_gpsStatusLabel->setStyleSheet("QLabel { color: #607080; font-size: 12px; }");
+    m_gpsStatusLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
     m_gpsStatusLabel->setAlignment(Qt::AlignCenter);
     gpsVbox->addWidget(m_gpsLabel);
     gpsVbox->addWidget(m_gpsStatusLabel);
@@ -4840,11 +4840,11 @@ void MainWindow::buildUI()
     m_gridLabel->setAlignment(Qt::AlignCenter);
     m_gridLabel->setMinimumWidth(kTelemetryStackMinWidth);
     m_gpsDateLabel = new QLabel("");
-    m_gpsDateLabel->setStyleSheet("QLabel { color: #506070; font-size: 10px; }");
+    m_gpsDateLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
     m_gpsDateLabel->setAlignment(Qt::AlignCenter);
     m_gpsDateLabel->setMinimumWidth(kTelemetryStackMinWidth);
     m_gpsTimeLabel = new QLabel("");
-    m_gpsTimeLabel->setStyleSheet("QLabel { color: #607080; font-size: 12px; }");
+    m_gpsTimeLabel->setStyleSheet("QLabel { color: #8aa8c0; font-size: 12px; }");
     m_gpsTimeLabel->setAlignment(Qt::AlignCenter);
     m_gpsTimeLabel->setMinimumWidth(kTelemetryStackMinWidth);
     timeVbox->addWidget(m_gridLabel);
@@ -4945,10 +4945,18 @@ void MainWindow::onConnectionStateChanged(bool connected)
             bool divAllowed = model.contains("6500") || model.contains("6600")
                            || model.contains("6700") || model.contains("8600")
                            || model.contains("AU-520");
-            // Set diversity allowed on all existing VFO widgets
-            if (auto* sw = spectrum())
-                if (auto* vfo = sw->vfoWidget())
-                    vfo->setDiversityAllowed(divAllowed);
+            // Set diversity allowed on all existing VFO widgets (including Slice A at startup) (#1503)
+            if (m_panStack) {
+                for (auto* pan : m_radioModel.panadapters()) {
+                    if (auto* sw = m_panStack->spectrum(pan->panId())) {
+                        for (auto* slice : m_radioModel.slices()) {
+                            if (auto* vfo = sw->vfoWidget(slice->sliceId())) {
+                                vfo->setDiversityAllowed(divAllowed);
+                            }
+                        }
+                    }
+                }
+            }
         }
         // Only start the local RX audio sink if the user wants audio routed
         // to the PC. When PC Audio is off we may still request a
@@ -6158,7 +6166,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(tnf, &TnfModel::globalEnabledChanged,
             this, [this](bool on) {
         m_tnfIndicator->setStyleSheet(on
-            ? "QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 24px; }"
+            ? "QLabel { color: #00e060; font-weight: bold; font-size: 24px; }"
             : "QLabel { color: #404858; font-weight: bold; font-size: 24px; }");
     });
 
@@ -6166,7 +6174,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(&m_radioModel, &RadioModel::infoChanged, this, [this]() {
         bool fdx = m_radioModel.fullDuplexEnabled();
         m_fdxIndicator->setStyleSheet(fdx
-            ? "QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 24px; }"
+            ? "QLabel { color: #00e060; font-weight: bold; font-size: 24px; }"
             : "QLabel { color: #404858; font-weight: bold; font-size: 24px; }");
     });
     connect(sw, &SpectrumWidget::tnfCreateRequested,   tnf, &TnfModel::createTnf);
