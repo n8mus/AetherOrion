@@ -39,6 +39,9 @@ class ClientTube;
 class ClientPudu;
 class ClientPuduMonitor;
 class ClientReverb;
+#ifdef __APPLE__
+class MacNRFilter;
+#endif
 
 // AudioEngine handles audio playback (RX) and capture (TX).
 //
@@ -150,6 +153,12 @@ public:
     void setNr4NoiseEstimationMethod(int method);
     void setNr4MaskingDepth(float v);
     void setNr4SuppressionStrength(float v);
+
+    // Client-side MNR (macOS MMSE-Wiener spectral noise reduction)
+    Q_INVOKABLE void setMnrEnabled(bool on);
+    bool mnrEnabled() const { return m_mnrEnabled.load(); }
+    void setMnrStrength(float normalized);
+    float mnrStrength() const;
 
     // Client-side BNR (NVIDIA NIM GPU noise removal)
     Q_INVOKABLE void setBnrEnabled(bool on);
@@ -314,6 +323,7 @@ signals:
     void levelChanged(float rms);  // audio level for VU meter, 0.0–1.0
     void nr2EnabledChanged(bool on);
     void nr4EnabledChanged(bool on);
+    void mnrEnabledChanged(bool on);
     void rn2EnabledChanged(bool on);
     void bnrEnabledChanged(bool on);
     void bnrConnectionChanged(bool connected);
@@ -435,6 +445,13 @@ private:
     std::unique_ptr<SpecbleachFilter> m_nr4;
 #endif
     std::atomic<bool> m_nr4Enabled{false};
+
+    // Client-side MNR (macOS MMSE-Wiener)
+#ifdef __APPLE__
+    std::unique_ptr<MacNRFilter> m_mnr;
+#endif
+    std::atomic<bool>  m_mnrEnabled{false};
+    std::atomic<float> m_mnrStrength{1.0f};
 
     // Client-side RN2 (RNNoise)
     std::unique_ptr<RNNoiseFilter> m_rn2;

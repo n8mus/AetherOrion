@@ -1410,6 +1410,19 @@ MainWindow::MainWindow(QWidget* parent)
             }
         }
     };
+    auto syncMnr = [this](bool on) {
+        if (m_panStack) {
+            for (auto* applet : m_panStack->allApplets()) {
+                auto* sw = applet->spectrumWidget();
+                if (auto* vfo = sw->vfoWidget(m_activeSliceId)) {
+                    QSignalBlocker sb(vfo->mnrButton());
+                    vfo->mnrButton()->setChecked(on);
+                }
+                if (auto* btn = sw->overlayMenu()->dspMnrButton())
+                    { QSignalBlocker sb(btn); btn->setChecked(on); }
+            }
+        }
+    };
     auto syncDfnr = [this](bool on) {
         if (m_panStack) {
             for (auto* applet : m_panStack->allApplets()) {
@@ -1427,6 +1440,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_audio, &AudioEngine::rn2EnabledChanged, this, syncRn2);
     connect(m_audio, &AudioEngine::bnrEnabledChanged, this, syncBnr);
     connect(m_audio, &AudioEngine::nr4EnabledChanged, this, syncNr4);
+    connect(m_audio, &AudioEngine::mnrEnabledChanged, this, syncMnr);
     connect(m_audio, &AudioEngine::dfnrEnabledChanged, this, syncDfnr);
     // NR2/RN2/BNR/NR4/DFNR DSP controls now only in VFO DSP tab and spectrum overlay.
     // RxApplet DSP buttons removed — no sync wiring needed.
@@ -2797,6 +2811,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     s.setValue("ClientRn2Enabled", m_audio->rn2Enabled() ? "True" : "False");
     s.setValue("ClientNr4Enabled", m_audio->nr4Enabled() ? "True" : "False");
     s.setValue("ClientDfnrEnabled", m_audio->dfnrEnabled() ? "True" : "False");
+    s.setValue("ClientMnrEnabled", m_audio->mnrEnabled() ? "True" : "False");
     // BNR not persisted — requires manual enable each session
     // DEXP saved on-change in PhoneApplet — do NOT overwrite here, because
     // the radio may have reset DEXP to off (model reflects radio state, not
@@ -3703,6 +3718,13 @@ void MainWindow::buildMenuBar()
         });
         connect(dlg, &AetherDspDialog::dfnrPostFilterBetaChanged, this, [this](float v) {
             QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setDfnrPostFilterBeta(v); });
+        });
+        // Wire MNR enable / strength signals
+        connect(dlg, &AetherDspDialog::mnrEnabledChanged, this, [this](bool on) {
+            QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setMnrEnabled(on); });
+        });
+        connect(dlg, &AetherDspDialog::mnrStrengthChanged, this, [this](float v) {
+            QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setMnrStrength(v); });
         });
         m_dspDialog = dlg;
         dlg->show();
@@ -5346,6 +5368,8 @@ void MainWindow::onSliceAdded(SliceModel* s)
                 QMetaObject::invokeMethod(m_audio, [this]() { m_audio->setNr4Enabled(true); });
             else if (settings.value("ClientDfnrEnabled", "False").toString() == "True")
                 QMetaObject::invokeMethod(m_audio, [this]() { m_audio->setDfnrEnabled(true); });
+            else if (settings.value("ClientMnrEnabled", "False").toString() == "True")
+                QMetaObject::invokeMethod(m_audio, [this]() { m_audio->setMnrEnabled(true); });
             // BNR not auto-restored — requires manual enable each session
 
             // Restore DEXP (downward expander) — radio does not persist across sessions
@@ -6782,6 +6806,13 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     });
     connect(menu, &SpectrumOverlayMenu::nr4RightClicked,
             this, [this](const QPoint& pos) { showNr4ParamPopup(pos); });
+    connect(menu, &SpectrumOverlayMenu::mnrToggled,
+            this, [this](bool on) {
+        QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setMnrEnabled(on); });
+        // VFO button sync happens via AudioEngine::mnrEnabledChanged signal
+    });
+    connect(menu, &SpectrumOverlayMenu::mnrRightClicked,
+            this, [this](const QPoint&) { showMnrSettings(); });
     connect(menu, &SpectrumOverlayMenu::dfnrToggled,
             this, [this](bool on) {
         QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setDfnrEnabled(on); });
@@ -6995,6 +7026,10 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
     });
     connect(w, &VfoWidget::nr4RightClicked,
             this, [this](const QPoint& pos) { showNr4ParamPopup(pos); });
+    connect(w, &VfoWidget::mnrToggled, this, [this](bool on) {
+        QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setMnrEnabled(on); });
+    });
+    connect(w, &VfoWidget::mnrRightClicked, this, [this](const QPoint&) { showMnrSettings(); });
     connect(w, &VfoWidget::dfnrToggled, this, [this](bool on) {
         QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setDfnrEnabled(on); });
     });
@@ -7789,6 +7824,13 @@ void MainWindow::showNr2ParamPopup(const QPoint& globalPos)
             connect(dlg, &AetherDspDialog::dfnrPostFilterBetaChanged, this, [this](float v) {
                 QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setDfnrPostFilterBeta(v); });
             });
+            // Wire MNR enable / strength signals
+            connect(dlg, &AetherDspDialog::mnrEnabledChanged, this, [this](bool on) {
+                QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setMnrEnabled(on); });
+            });
+            connect(dlg, &AetherDspDialog::mnrStrengthChanged, this, [this](float v) {
+                QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setMnrStrength(v); });
+            });
             m_dspDialog = dlg;
             dlg->show();
         },
@@ -7910,6 +7952,13 @@ void MainWindow::showNr4ParamPopup(const QPoint& globalPos)
             connect(dlg, &AetherDspDialog::dfnrPostFilterBetaChanged, this, [this](float v) {
                 QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setDfnrPostFilterBeta(v); });
             });
+            // Wire MNR enable / strength signals
+            connect(dlg, &AetherDspDialog::mnrEnabledChanged, this, [this](bool on) {
+                QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setMnrEnabled(on); });
+            });
+            connect(dlg, &AetherDspDialog::mnrStrengthChanged, this, [this](float v) {
+                QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setMnrStrength(v); });
+            });
             m_dspDialog = dlg;
             dlg->show();
         },
@@ -8002,6 +8051,13 @@ void MainWindow::showDfnrParamPopup(const QPoint& globalPos)
             connect(dlg, &AetherDspDialog::nr4SuppressionChanged, this, [this](float v) {
                 QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setNr4SuppressionStrength(v); });
             });
+            // Wire MNR enable / strength signals
+            connect(dlg, &AetherDspDialog::mnrEnabledChanged, this, [this](bool on) {
+                QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setMnrEnabled(on); });
+            });
+            connect(dlg, &AetherDspDialog::mnrStrengthChanged, this, [this](float v) {
+                QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setMnrStrength(v); });
+            });
             m_dspDialog = dlg;
             dlg->show();
         },
@@ -8009,6 +8065,52 @@ void MainWindow::showDfnrParamPopup(const QPoint& globalPos)
     );
 
     popup->showAt(globalPos);
+}
+
+void MainWindow::showMnrSettings()
+{
+    if (m_dspDialog) {
+        m_dspDialog->raise();
+        m_dspDialog->activateWindow();
+        if (auto* d = qobject_cast<AetherDspDialog*>(m_dspDialog))
+            d->selectTab("MNR");
+        return;
+    }
+    auto* dlg = new AetherDspDialog(m_audio, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dlg, &AetherDspDialog::mnrEnabledChanged, this, [this](bool on) {
+        QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setMnrEnabled(on); });
+    });
+    connect(dlg, &AetherDspDialog::mnrStrengthChanged, this, [this](float v) {
+        QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setMnrStrength(v); });
+    });
+    connect(dlg, &AetherDspDialog::nr2GainMaxChanged, this, [this](float v) {
+        QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setNr2GainMax(v); });
+    });
+    connect(dlg, &AetherDspDialog::nr2GainSmoothChanged, this, [this](float v) {
+        QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setNr2GainSmooth(v); });
+    });
+    connect(dlg, &AetherDspDialog::nr2QsppChanged, this, [this](float v) {
+        QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setNr2Qspp(v); });
+    });
+    connect(dlg, &AetherDspDialog::nr2GainMethodChanged, this, [this](int m) {
+        QMetaObject::invokeMethod(m_audio, [this, m]() { m_audio->setNr2GainMethod(m); });
+    });
+    connect(dlg, &AetherDspDialog::nr2NpeMethodChanged, this, [this](int m) {
+        QMetaObject::invokeMethod(m_audio, [this, m]() { m_audio->setNr2NpeMethod(m); });
+    });
+    connect(dlg, &AetherDspDialog::nr2AeFilterChanged, this, [this](bool on) {
+        QMetaObject::invokeMethod(m_audio, [this, on]() { m_audio->setNr2AeFilter(on); });
+    });
+    connect(dlg, &AetherDspDialog::dfnrAttenLimitChanged, this, [this](float v) {
+        QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setDfnrAttenLimit(v); });
+    });
+    connect(dlg, &AetherDspDialog::dfnrPostFilterBetaChanged, this, [this](float v) {
+        QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setDfnrPostFilterBeta(v); });
+    });
+    m_dspDialog = dlg;
+    dlg->selectTab("MNR");
+    dlg->show();
 }
 
 void MainWindow::applyPanLayout(const QString& layoutId)
