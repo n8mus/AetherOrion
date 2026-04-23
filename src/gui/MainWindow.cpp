@@ -4528,7 +4528,9 @@ void MainWindow::buildUI()
     splitter->addWidget(m_panStack);
 
     // Band stack panel signal wiring
-    connect(m_panStack->bandStackPanel(), &BandStackPanel::addRequested, this, [this]() {
+    auto* bsPanel = m_panStack->bandStackPanel();
+
+    connect(bsPanel, &BandStackPanel::addRequested, this, [this]() {
         auto* slice = activeSlice();
         if (!slice) return;
         BandStackEntry entry;
@@ -4545,17 +4547,18 @@ void MainWindow::buildUI()
         entry.nbLevel = slice->nbLevel();
         entry.nrOn = slice->nrOn();
         entry.nrLevel = slice->nrLevel();
+        entry.createdAtMs = QDateTime::currentMSecsSinceEpoch();
         if (auto* pan = m_radioModel.activePanadapter()) {
             entry.wnbOn = pan->wnbActive();
             entry.wnbLevel = pan->wnbLevel();
         }
 
-        QColor color = BandStackPanel::colorForFrequency(entry.frequencyMhz, m_bandPlanMgr);
         BandStackSettings::instance().addEntry(m_radioModel.serial(), entry);
         BandStackSettings::instance().save();
-        m_panStack->bandStackPanel()->addBookmark(entry, color);
+        m_panStack->bandStackPanel()->loadBookmarks(
+            m_radioModel.serial(), m_bandPlanMgr);
     });
-    connect(m_panStack->bandStackPanel(), &BandStackPanel::recallRequested, this,
+    connect(bsPanel, &BandStackPanel::recallRequested, this,
             [this](const BandStackEntry& e) {
         auto* slice = activeSlice();
         if (!slice) return;
@@ -4615,11 +4618,68 @@ void MainWindow::buildUI()
             }
         }
     });
-    connect(m_panStack->bandStackPanel(), &BandStackPanel::removeRequested, this,
+    connect(bsPanel, &BandStackPanel::removeRequested, this,
             [this](int index) {
         BandStackSettings::instance().removeEntry(m_radioModel.serial(), index);
         BandStackSettings::instance().save();
-        m_panStack->bandStackPanel()->removeBookmark(index);
+        m_panStack->bandStackPanel()->loadBookmarks(
+            m_radioModel.serial(), m_bandPlanMgr);
+    });
+
+    // Clear All — with confirmation to avoid accidental loss during contests
+    connect(bsPanel, &BandStackPanel::clearAllRequested, this, [this]() {
+        if (BandStackSettings::instance().entries(m_radioModel.serial()).isEmpty())
+            return;
+        auto answer = QMessageBox::question(
+            this, "Clear All Bookmarks",
+            "Remove all band stack bookmarks?",
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes) return;
+        BandStackSettings::instance().clearAllEntries(m_radioModel.serial());
+        BandStackSettings::instance().save();
+        m_panStack->bandStackPanel()->loadBookmarks(
+            m_radioModel.serial(), m_bandPlanMgr);
+    });
+
+    // Clear band bookmarks (from grouped header right-click)
+    connect(bsPanel, &BandStackPanel::clearBandRequested, this,
+            [this](double lowMhz, double highMhz) {
+        BandStackSettings::instance().clearBandEntries(
+            m_radioModel.serial(), lowMhz, highMhz);
+        BandStackSettings::instance().save();
+        m_panStack->bandStackPanel()->loadBookmarks(
+            m_radioModel.serial(), m_bandPlanMgr);
+    });
+
+    // Group by band toggle
+    connect(bsPanel, &BandStackPanel::groupByBandChanged, this, [](bool grouped) {
+        BandStackSettings::instance().setGroupByBand(grouped);
+        BandStackSettings::instance().save();
+    });
+
+    // Auto-expiry setting changed
+    connect(bsPanel, &BandStackPanel::autoExpiryChanged, this, [](int minutes) {
+        BandStackSettings::instance().setAutoExpiryMinutes(minutes);
+        BandStackSettings::instance().save();
+    });
+
+    // Auto-expiry timer — runs every 30s, prunes stale bookmarks.
+    // Started on radio connect and stopped on disconnect so the tick doesn't
+    // fire in an idle app with no radio to prune bookmarks for.
+    m_bsExpiryTimer = new QTimer(this);
+    m_bsExpiryTimer->setInterval(30000);
+    connect(m_bsExpiryTimer, &QTimer::timeout, this, [this]() {
+        int minutes = BandStackSettings::instance().autoExpiryMinutes();
+        if (minutes <= 0) return;
+        if (m_radioModel.serial().isEmpty()) return;
+        qint64 maxAge = static_cast<qint64>(minutes) * 60 * 1000;
+        int removed = BandStackSettings::instance().removeExpiredEntries(
+            m_radioModel.serial(), maxAge);
+        if (removed > 0) {
+            BandStackSettings::instance().save();
+            m_panStack->bandStackPanel()->loadBookmarks(
+                m_radioModel.serial(), m_bandPlanMgr);
+        }
     });
     refreshMemoryBrowsePanel();
 
@@ -5172,10 +5232,27 @@ void MainWindow::onConnectionStateChanged(bool connected)
 
         // Load band stack bookmarks for this radio
         BandStackSettings::instance().load();
+        // Prune expired entries on startup
+        int expiryMin = BandStackSettings::instance().autoExpiryMinutes();
+        if (expiryMin > 0) {
+            qint64 maxAge = static_cast<qint64>(expiryMin) * 60 * 1000;
+            if (BandStackSettings::instance().removeExpiredEntries(
+                    m_radioModel.serial(), maxAge) > 0) {
+                BandStackSettings::instance().save();
+            }
+        }
+        // Apply saved UI preferences to the panel
+        m_panStack->bandStackPanel()->setGrouped(
+            BandStackSettings::instance().groupByBand());
+        m_panStack->bandStackPanel()->setAutoExpiryMinutes(expiryMin);
         m_panStack->bandStackPanel()->loadBookmarks(
             m_radioModel.serial(), m_bandPlanMgr);
         refreshMemoryBrowsePanel();
         updateBandStackIndicator();
+
+        // Start the auto-expiry timer now that we have a radio to prune for
+        if (m_bsExpiryTimer && !m_bsExpiryTimer->isActive())
+            m_bsExpiryTimer->start();
 
         // Auto-start 4-channel rigctld TCP servers if enabled
         auto& as = AppSettings::instance();
@@ -5330,6 +5407,8 @@ void MainWindow::onConnectionStateChanged(bool connected)
         m_stationLabel->setText("N0CALL");
         m_tnfIndicator->setStyleSheet("QLabel { color: #404858; font-weight: bold; font-size: 24px; }");
         m_panStack->bandStackPanel()->clear();
+        if (m_bsExpiryTimer && m_bsExpiryTimer->isActive())
+            m_bsExpiryTimer->stop();
         m_panStack->setBandStackVisible(false);
         refreshMemoryBrowsePanel();
         updateBandStackIndicator();
