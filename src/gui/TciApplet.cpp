@@ -156,6 +156,11 @@ void TciApplet::buildUI()
     m_tciEnable->setCheckable(true);
     m_tciEnable->setStyleSheet(kGreenToggle);
     m_tciEnable->setFixedSize(60, 22);
+    {
+        QSignalBlocker b(m_tciEnable);
+        m_tciEnable->setChecked(
+            settings.value("AutoStartTCI", "False").toString() == "True");
+    }
     enableRow->addWidget(m_tciEnable);
 
     outer->addLayout(enableRow);
@@ -184,6 +189,7 @@ void TciApplet::buildUI()
         }
         auto& ss = AppSettings::instance();
         ss.setValue("TciPort", QString::number(port));
+        ss.setValue("AutoStartTCI", on ? "True" : "False");
         ss.save();
         if (m_tciServer) {
             if (on) {
@@ -196,6 +202,8 @@ void TciApplet::buildUI()
                     m_tciStatus->setText("(port in use)");
                     m_tciStatus->setStyleSheet(
                         "QLabel { color: #cc3333; font-size: 10px; }");
+                    ss.setValue("AutoStartTCI", "False");
+                    ss.save();
                     emit tciToggled(false);
                     return;
                 }

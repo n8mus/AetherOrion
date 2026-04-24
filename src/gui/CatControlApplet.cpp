@@ -67,12 +67,22 @@ void CatControlApplet::buildUI()
     m_tcpEnable->setCheckable(true);
     m_tcpEnable->setStyleSheet(kGreenToggle);
     m_tcpEnable->setFixedSize(76, 22);
+    {
+        QSignalBlocker b(m_tcpEnable);
+        m_tcpEnable->setChecked(
+            settings.value("AutoStartRigctld", "False").toString() == "True");
+    }
     enableRow->addWidget(m_tcpEnable);
 
     m_ptyEnable = new QPushButton("Enable TTY");
     m_ptyEnable->setCheckable(true);
     m_ptyEnable->setStyleSheet(kGreenToggle);
     m_ptyEnable->setFixedSize(76, 22);
+    {
+        QSignalBlocker b(m_ptyEnable);
+        m_ptyEnable->setChecked(
+            settings.value("AutoStartCAT", "False").toString() == "True");
+    }
     enableRow->addWidget(m_ptyEnable);
 
     enableRow->addStretch();
@@ -116,6 +126,7 @@ void CatControlApplet::buildUI()
         }
         auto& ss = AppSettings::instance();
         ss.setValue("CatTcpPort", QString::number(basePort));
+        ss.setValue("AutoStartRigctld", on ? "True" : "False");
         ss.save();
         for (int i = 0; i < kChannels; ++i) {
             if (!m_servers[i]) {
@@ -132,6 +143,9 @@ void CatControlApplet::buildUI()
 
     // PTY toggle: start/stop all 4 PTYs
     connect(m_ptyEnable, &QPushButton::toggled, this, [this](bool on) {
+        auto& ss = AppSettings::instance();
+        ss.setValue("AutoStartCAT", on ? "True" : "False");
+        ss.save();
         for (int i = 0; i < kChannels; ++i) {
             if (!m_ptys[i]) {
                 continue;
