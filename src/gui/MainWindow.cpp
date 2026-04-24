@@ -7175,17 +7175,31 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         qDebug() << "MainWindow: switching to band" << bandName
                  << "freq:" << freqMhz << "mode:" << mode;
 
-        // Radio-authoritative band change: the radio manages its own band
-        // stack (frequency, mode, filters, pan center, bandwidth, antennas).
-        // One command handles everything.
-        m_bandSettings.setCurrentBand(bandName);
-
-        // Translate the UI band label to the radio's band-stack key. Mapping
-        // determined from SmartSDR pcap captures (#1540/#1211):
-        //   - Standard HF names (160, 80, ..., 6, 2200, 630): pass through
-        //   - XVTR display names ("2m"): send band=X<idx> (xvtr index)
-        //   - WWV / GEN: send numeric band-stack slot 33 / 34 (per pcap)
-        //   - Anything else: fall back to tuning the slice directly
+        // Maintainer note: keep band changes radio-authoritative.
+        //
+        // The Flex band stack owns the state users expect to survive a band
+        // jump: frequency, mode, filters, pan center, bandwidth/zoom, and
+        // built-in antenna selection. Aether should therefore send exactly one
+        // `display pan set <panId> band=<key>` command when it can form a
+        // spec-correct key. Do not use the `freqMhz` / `mode` arguments as a
+        // local fallback; those are static UI defaults, and the old fallback
+        // reset users to band-center SSB instead of restoring their saved stack
+        // state (#1876, #1852, #1856, #1849).
+        //
+        // UI band names are not always protocol keys:
+        //   - Native bands are displayed as "20m", "630m", etc., but Flex
+        //     expects bare keys such as "20" and "630".
+        //   - XVTR names are user labels such as "2m" or "70cm"; do not strip
+        //     those into native-band keys. Flex expects `X<order>`, where
+        //     `order` is the radio's XVTR setup order, not the xvtr status
+        //     object index, RF frequency, or display name.
+        //   - WWV / GEN use numeric band-stack slots 33 / 34 from SmartSDR
+        //     capture history (#1540/#1211).
+        //
+        // If no exact mapping exists, refuse the band change and leave the
+        // current slice/pan state untouched. Guessing is worse than failing
+        // visibly because a wrong tune destroys the very band-stack state this
+        // path exists to preserve.
         static const QSet<QString> kPassThroughBands = {
             "160", "80", "60", "40", "30", "20", "17", "15", "12", "10", "6",
             "2200", "630"
@@ -7195,9 +7209,21 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             { QStringLiteral("GEN"), 34 },
         };
 
+        // Band names from the UI carry the human suffix ("20m", "630m"),
+        // while the radio's band-stack keys are bare numbers ("20", "630").
+        // Only strip when the bare value is a known native band so XVTR names
+        // such as "2m" still fall through to the XVTR lookup below.
+        QString radioKey = bandName;
+        if (radioKey.endsWith('m') && radioKey.length() > 1) {
+            const QString stripped = radioKey.chopped(1);
+            if (kPassThroughBands.contains(stripped))
+                radioKey = stripped;
+        }
+
         QString stackKey;
-        if (kPassThroughBands.contains(bandName)) {
-            stackKey = bandName;
+        QString unsupportedBandReason;
+        if (kPassThroughBands.contains(radioKey)) {
+            stackKey = radioKey;
         } else if (kNumericBandSlots.contains(bandName)) {
             stackKey = QString::number(kNumericBandSlots.value(bandName));
             qDebug() << "  ↳ numeric band slot:" << bandName << "->" << stackKey;
@@ -7205,36 +7231,30 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             for (auto it = m_radioModel.xvtrList().constBegin();
                  it != m_radioModel.xvtrList().constEnd(); ++it) {
                 if (it.value().isValid && it.value().name == bandName) {
-                    stackKey = QString("X%1").arg(it.key());
-                    qDebug() << "  ↳ XVTR match:" << bandName << "->" << stackKey;
+                    if (it.value().order < 0) {
+                        unsupportedBandReason =
+                            QString("XVTR %1 has no setup order; cannot form Flex band= key")
+                                .arg(bandName);
+                    } else {
+                        stackKey = QString("X%1").arg(it.value().order);
+                        qDebug() << "  ↳ XVTR match:" << bandName << "->" << stackKey;
+                    }
                     break;
                 }
             }
         }
 
         if (stackKey.isEmpty()) {
-            // Unrecognized band — tune slice directly as a safety net.
-            qDebug() << "  ↳ unrecognized band" << bandName << "— tuning slice directly";
-            SliceModel* s = nullptr;
-            for (auto* sl : m_radioModel.slices()) {
-                if (sl->panId() == applet->panId()) { s = sl; break; }
+            if (unsupportedBandReason.isEmpty()) {
+                unsupportedBandReason =
+                    QString("Band %1 has no Flex display pan band= mapping").arg(bandName);
             }
-            if (!s) s = activeSlice();
-            if (s) {
-                if (!mode.isEmpty() && s->mode() != mode) s->setMode(mode);
-                TuneCenteringResult result;
-                if (auto* pan = m_radioModel.panadapter(s->panId())) {
-                    result.oldCenterMhz = pan->centerMhz();
-                    result.bandwidthMhz = pan->bandwidthMhz();
-                }
-                result.newCenterMhz = freqMhz;
-                result.followRevealTriggered = true;
-                result.hardCenterUsed = true;
-                logTunePolicyDecision("band-fallback", TuneIntent::AbsoluteJump,
-                                      s->frequency(), freqMhz, result);
-                s->tuneAndRecenter(freqMhz);
-            }
+            qWarning() << "MainWindow: refusing unsupported band change:"
+                       << unsupportedBandReason;
+            statusBar()->showMessage(unsupportedBandReason, 5000);
+            return;
         } else {
+            m_bandSettings.setCurrentBand(bandName);
             m_radioModel.sendCommand(
                 QString("display pan set %1 band=%2").arg(applet->panId()).arg(stackKey));
         }
