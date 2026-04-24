@@ -1396,6 +1396,12 @@ MainWindow::MainWindow(QWidget* parent)
         m_appletPanel->setMaxSlices(m_radioModel.maxSlices());
     });
 
+    // software_ver arrives after onConnectionStateChanged, so refresh the label
+    connect(&m_radioModel, &RadioModel::infoChanged, this, [this]() {
+        if (m_radioVersionLabel && !m_radioModel.version().isEmpty())
+            m_radioVersionLabel->setText(m_radioModel.version());
+    });
+
     // Propagate late-arriving SmartSDR+ subscription + dual-SCU diversity
     // eligibility to all existing VFOs. Both depend on radio info (license
     // subscription / model) that can arrive after a slice is created — in
