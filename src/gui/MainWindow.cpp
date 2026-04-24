@@ -2014,7 +2014,7 @@ MainWindow::MainWindow(QWidget* parent)
                          const QString& program) {
         statusBar()->showMessage(
             clientConnectionStatusMessage(handle, source, station, program),
-            10000);
+            3000);
     });
 
     // Apply saved master volume
