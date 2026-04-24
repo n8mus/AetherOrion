@@ -4402,7 +4402,7 @@ void MainWindow::buildMenuBar()
         vbox->addWidget(contribTitle);
 
         // Scrollable contributors list
-        auto* contribLabel = new QLabel("Jeremy (KK7GWY)<br>Claude &middot; Anthropic<br>rfoust<br>Ian (M7HNF)<br>VE3NEM<br>jensenpat<br>Dependabot");
+        auto* contribLabel = new QLabel("Jeremy (KK7GWY)<br>Claude &middot; Anthropic<br>rfoust<br>Ian (M7HNF)<br>VE3NEM<br>jensenpat<br>chibondking<br>Dependabot");
         contribLabel->setAlignment(Qt::AlignCenter);
         contribLabel->setStyleSheet("QLabel { color: #c8d8e8; font-size: 11px; }");
         contribLabel->setWordWrap(true);
