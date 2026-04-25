@@ -3,14 +3,21 @@
 #include "core/AppSettings.h"
 
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QCloseEvent>
 #include <QPushButton>
+#include <QSizeGrip>
 
 namespace AetherSDR {
 
 PanFloatingWindow::PanFloatingWindow(QWidget* parent)
-    : QWidget(parent, Qt::Window)
+    : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
 {
+    // Windows quirk: the constructor flag bitmask is sometimes ignored
+    // and the native frame still gets drawn.  Re-applying via setWindowFlags
+    // before show() forces the platform plugin to honour FramelessWindowHint
+    // on all Qt versions / widget hierarchies.
+    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     setMinimumSize(400, 300);
 
     m_layout = new QVBoxLayout(this);
@@ -34,6 +41,14 @@ void PanFloatingWindow::adoptApplet(PanadapterApplet* applet)
     // floating window without an intermediate nullptr/top-level state.
     // This avoids corrupting the main window's NSResponder chain on macOS.
     m_layout->addWidget(m_applet, 1);
+
+    // Bottom-right resize grip — frameless windows lose OS edge resize.
+    auto* gripRow = new QHBoxLayout;
+    gripRow->setContentsMargins(0, 0, 0, 0);
+    gripRow->addStretch(1);
+    gripRow->addWidget(new QSizeGrip(this), 0,
+                       Qt::AlignBottom | Qt::AlignRight);
+    m_layout->addLayout(gripRow);
 
     // Show dock icon in the applet's title bar
     m_applet->setFloatingState(true);

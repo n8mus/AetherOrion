@@ -5,9 +5,11 @@
 #include <QByteArray>
 #include <QCloseEvent>
 #include <QGuiApplication>
+#include <QHBoxLayout>
 #include <QMoveEvent>
 #include <QResizeEvent>
 #include <QScreen>
+#include <QSizeGrip>
 #include <QVBoxLayout>
 
 namespace AetherSDR {
@@ -20,8 +22,13 @@ constexpr int kDefaultH = 240;
 } // namespace
 
 FloatingContainerWindow::FloatingContainerWindow(QWidget* parent)
-    : QWidget(parent, Qt::Window)
+    : QWidget(parent, Qt::Window | Qt::FramelessWindowHint)
 {
+    // Windows quirk: the constructor flag bitmask is sometimes ignored
+    // and the native frame still gets drawn.  Re-applying via setWindowFlags
+    // before show() forces the platform plugin to honour FramelessWindowHint
+    // on all Qt versions / widget hierarchies.
+    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
     setAttribute(Qt::WA_DeleteOnClose, false);
     setAttribute(Qt::WA_QuitOnClose, false);
     setStyleSheet("QWidget { background: #08121d; }");
@@ -52,6 +59,15 @@ void FloatingContainerWindow::takeContainer(ContainerWidget* container)
         m_container->show();
         m_container->setDockMode(ContainerWidget::DockMode::Floating);
         setWindowTitle(m_container->title());
+
+        // Bottom-right resize grip — frameless windows lose OS edge resize.
+        // Append after the container so it sits at the bottom of the layout.
+        auto* gripRow = new QHBoxLayout;
+        gripRow->setContentsMargins(0, 0, 0, 0);
+        gripRow->addStretch(1);
+        gripRow->addWidget(new QSizeGrip(this), 0,
+                           Qt::AlignBottom | Qt::AlignRight);
+        m_layout->addLayout(gripRow);
     }
 }
 
