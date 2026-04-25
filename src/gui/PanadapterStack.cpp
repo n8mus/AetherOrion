@@ -593,6 +593,7 @@ void PanadapterStack::prepareShutdown()
     for (auto* fw : m_floatingWindows) {
         fw->saveWindowGeometry();
         fw->setShuttingDown(true);
+        fw->close();
     }
 }
 

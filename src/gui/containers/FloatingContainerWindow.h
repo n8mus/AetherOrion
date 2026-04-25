@@ -44,6 +44,10 @@ public:
     void setGeometryKey(const QString& key);
     QString geometryKey() const { return m_geometryKey; }
 
+    // Called by ContainerManager before the app exits.  Saves geometry,
+    // suppresses the dock-on-close behaviour, and closes the window.
+    void prepareShutdown();
+
     // Restore the window's geometry from the key, clamping to a
     // visible screen.  If no saved geometry exists, centres on the
     // anchor's current screen at a reasonable default size.  Safe to
@@ -68,6 +72,7 @@ private:
     QVBoxLayout*     m_layout{nullptr};
     QString          m_geometryKey;
     bool             m_restoring{false};
+    bool             m_shuttingDown{false};
     QTimer           m_saveTimer;
 };
 

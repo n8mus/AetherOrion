@@ -125,8 +125,20 @@ void FloatingContainerWindow::saveGeometryToKey() const
         m_geometryKey, saveGeometry().toBase64());
 }
 
+void FloatingContainerWindow::prepareShutdown()
+{
+    m_saveTimer.stop();
+    saveGeometryToKey();
+    m_shuttingDown = true;
+    close();
+}
+
 void FloatingContainerWindow::closeEvent(QCloseEvent* ev)
 {
+    if (m_shuttingDown) {
+        ev->accept();
+        return;
+    }
     // Close = dock.  Manager handles reparenting via dockRequested.
     if (m_container) {
         emit dockRequested(m_container);

@@ -270,6 +270,14 @@ void ContainerManager::dockContainer(const QString& id)
     saveState();
 }
 
+void ContainerManager::prepareShutdown()
+{
+    for (auto* win : m_floatingWindows) {
+        win->prepareShutdown();
+    }
+    m_floatingWindows.clear();
+}
+
 void ContainerManager::wireContainer(ContainerWidget* c)
 {
     connect(c, &ContainerWidget::floatRequested,

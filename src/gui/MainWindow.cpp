@@ -18,6 +18,7 @@
 #include "SpectrumOverlayMenu.h"
 #include "VfoWidget.h"
 #include "AppletPanel.h"
+#include "containers/ContainerManager.h"
 #include "RxApplet.h"
 #include "SMeterWidget.h"
 #include "TunerApplet.h"
@@ -3347,6 +3348,9 @@ void MainWindow::closeEvent(QCloseEvent* event)
 {
     m_shuttingDown = true;
     m_panStack->prepareShutdown();
+    if (m_appletPanel && m_appletPanel->containerManager()) {
+        m_appletPanel->containerManager()->prepareShutdown();
+    }
     auto& s = AppSettings::instance();
     s.setValue("MainWindowGeometry", saveGeometry().toBase64());
     s.setValue("MainWindowState",   saveState().toBase64());

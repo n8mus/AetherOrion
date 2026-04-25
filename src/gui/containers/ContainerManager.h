@@ -86,6 +86,10 @@ public:
     void floatContainer(const QString& id);
     void dockContainer(const QString& id);
 
+    // Save geometry and close all floating windows without triggering
+    // dock-back behaviour.  Call from MainWindow::closeEvent().
+    void prepareShutdown();
+
     // ── Persistence ──────────────────────────────────────────────
     //
     // State is stored as JSON under the AppSettings key
