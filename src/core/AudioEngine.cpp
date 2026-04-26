@@ -131,8 +131,9 @@ void AudioEngine::emitScopeFromInt16Stereo(const QByteArray& pcm,
 
 void AudioEngine::updateRxBufferStats()
 {
-    m_rxBufferBytes.store(m_rxBuffer.size());
-    m_rxBufferPeakBytes.store(std::max(m_rxBufferPeakBytes.load(), m_rxBuffer.size()));
+    const qsizetype total = m_rxBuffer.size() + m_radeRxBuffer.size();
+    m_rxBufferBytes.store(total);
+    m_rxBufferPeakBytes.store(std::max(m_rxBufferPeakBytes.load(), total));
 }
 
 AudioEngine::AudioEngine(QObject* parent)
@@ -333,9 +334,13 @@ AudioEngine::AudioEngine(QObject* parent)
                     const auto* rade = reinterpret_cast<const float*>(m_radeRxBuffer.constData());
                     const qsizetype radeSamples = radeTake / floatBytes;
                     for (qsizetype i = 0; i < radeSamples; ++i)
-                        out[i] = std::clamp(out[i] + rade[i], -1.0f, 1.0f);
+                        out[i] += rade[i];
                     m_radeRxBuffer.remove(0, radeTake);
                 }
+                // Single clamp pass after all sources are mixed.
+                const qsizetype totalSamples = len / floatBytes;
+                for (qsizetype i = 0; i < totalSamples; ++i)
+                    out[i] = std::clamp(out[i], -1.0f, 1.0f);
             }
 
             len = m_audioDevice->write(chunk);
@@ -2288,8 +2293,6 @@ void AudioEngine::generateWisdom(std::function<void(int,int,const std::string&)>
 void AudioEngine::setNr2Enabled(bool on)
 {
     if (m_nr2Enabled == on) return;
-    // RADE outputs decoded speech — client-side DSP has no effect
-    if (on && m_radeMode) return;
     std::lock_guard<std::recursive_mutex> lock(m_dspMutex);
     if (on) {
         // Disable all other NR modes — they're mutually exclusive
@@ -2340,7 +2343,6 @@ void AudioEngine::setNr4Enabled(bool on)
     if (m_nr4Enabled == on) return;
     std::lock_guard<std::recursive_mutex> lock(m_dspMutex);
     if (on) {
-        if (m_radeMode) return;
         if (m_nr2Enabled)  setNr2Enabled(false);
         if (m_rn2Enabled)  setRn2Enabled(false);
         if (m_bnrEnabled)  setBnrEnabled(false);
@@ -2393,8 +2395,6 @@ void AudioEngine::setNr4SuppressionStrength(float) {}
 void AudioEngine::setMnrEnabled(bool on)
 {
     if (m_mnrEnabled == on) return;
-    // RADE outputs decoded speech — client-side DSP has no effect
-    if (on && m_radeMode) return;
     std::lock_guard<std::recursive_mutex> lock(m_dspMutex);
 #ifdef __APPLE__
     if (on) {
@@ -2440,7 +2440,6 @@ float AudioEngine::mnrStrength() const
 void AudioEngine::setRn2Enabled(bool on)
 {
     if (m_rn2Enabled == on) return;
-    if (on && m_radeMode) return;
     std::lock_guard<std::recursive_mutex> lock(m_dspMutex);
     if (on) {
         // Disable all other NR modes — they're mutually exclusive
@@ -2471,7 +2470,6 @@ void AudioEngine::setRn2Enabled(bool on)
 void AudioEngine::setBnrEnabled(bool on)
 {
     if (m_bnrEnabled == on) return;
-    if (on && m_radeMode) return;
     std::lock_guard<std::recursive_mutex> lock(m_dspMutex);
     if (on) {
         // Mutual exclusion with all other NR modes
@@ -2642,7 +2640,6 @@ void AudioEngine::processBnr(const QByteArray& stereoPcm)
 void AudioEngine::setDfnrEnabled(bool on)
 {
     if (m_dfnrEnabled == on) return;
-    if (on && m_radeMode) return;
     std::lock_guard<std::recursive_mutex> lock(m_dspMutex);
     if (on) {
         // Mutual exclusion with all other NR modes
@@ -3349,18 +3346,6 @@ void AudioEngine::setRadeMode(bool on)
 {
     if (m_radeMode == on) return;
     m_radeMode = on;
-    // RADE outputs decoded speech — client-side DSP has no effect.
-    // Disable any active DSP when entering RADE mode.
-    if (on) {
-        if (m_nr2Enabled) setNr2Enabled(false);
-        if (m_rn2Enabled) setRn2Enabled(false);
-        if (m_nr4Enabled) setNr4Enabled(false);
-        if (m_bnrEnabled) setBnrEnabled(false);
-#ifdef HAVE_DFNR
-        if (m_dfnrEnabled) setDfnrEnabled(false);
-#endif
-    }
-
     // RADE TX: onTxAudioReady() emits txRawPcmReady (float32) then returns
     // early — the Opus voice TX path never runs. RADEEngine receives the
     // raw PCM, encodes it to a modem waveform, and emits it via
