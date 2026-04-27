@@ -174,7 +174,17 @@ constexpr double kRevealComfortEdgeMarginFrac = 0.18;
 constexpr double kSpectrumClickEdgeMarginFrac = 0.05;
 constexpr int kPanFollowAnimationDurationMs = 110;
 constexpr int kSliderShortcutLeaseMs = 2000;
+constexpr int kPanadapterSliceCapacityStatusMs = 4000;
 constexpr qint64 kXvtrWaterfallDecisionLogIntervalMs = 20000;
+
+int panCountForLayoutId(const QString& layoutId)
+{
+    static const QMap<QString, int> kPanCounts = {
+        {"1", 1}, {"2v", 2}, {"2h", 2}, {"2h1", 3}, {"12h", 3}, {"3v", 3},
+        {"2x2", 4}, {"4v", 4}, {"3h2", 5}, {"2x3", 6}, {"4h3", 7}, {"2x4", 8}
+    };
+    return kPanCounts.value(layoutId, 1);
+}
 
 QVector<XvtrPolicy::Transverter> xvtrPolicyBandsFrom(
     const QMap<int, RadioModel::XvtrInfo>& xvtrs)
@@ -4422,6 +4432,13 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         PanLayoutDialog dlg(maxPans, currentLayout, this);
         if (dlg.exec() == QDialog::Accepted && !dlg.selectedLayout().isEmpty()) {
             const QString layoutId = dlg.selectedLayout();
+            const int requestedPanCount = panCountForLayoutId(layoutId);
+            const int currentSliceCount = static_cast<int>(m_radioModel.slices().size());
+            if (requestedPanCount > activePanCount
+                    && currentSliceCount >= m_radioModel.maxSlices()) {
+                showPanadapterSliceCapacityMessage();
+                return true;
+            }
             auto& s = AppSettings::instance();
             s.setValue("PanadapterLayout", layoutId);
             s.save();
@@ -10226,11 +10243,7 @@ void MainWindow::applyPanLayout(const QString& layoutId)
 {
     if (!m_radioModel.isConnected()) return;
 
-    static const QMap<QString, int> kPanCounts = {
-        {"1", 1}, {"2v", 2}, {"2h", 2}, {"2h1", 3}, {"12h", 3}, {"3v", 3},
-        {"2x2", 4}, {"4v", 4}, {"3h2", 5}, {"2x3", 6}, {"4h3", 7}, {"2x4", 8}
-    };
-    const int needed = kPanCounts.value(layoutId, 1);
+    const int needed = panCountForLayoutId(layoutId);
     const int existing = m_panStack->count();
 
     if (needed < existing) {
@@ -10265,6 +10278,12 @@ void MainWindow::applyPanLayout(const QString& layoutId)
 
     // Create additional pans to reach the needed count.
     // Keep existing pan(s) alive — no tear-down, no dangling signals.
+    const int currentSliceCount = static_cast<int>(m_radioModel.slices().size());
+    if (currentSliceCount >= m_radioModel.maxSlices()) {
+        showPanadapterSliceCapacityMessage();
+        return;
+    }
+
     const int toCreate = needed - existing;
     auto panIds = std::make_shared<QStringList>();
 
@@ -10315,6 +10334,7 @@ void MainWindow::createPansSequentially(const QString& layoutId, int total,
             if (code != 0) {
                 qWarning() << "applyPanLayout: panafall create failed, code"
                            << Qt::hex << code << body;
+                showPanadapterSliceCapacityMessage();
                 return;
             }
             const auto kvs = CommandParser::parseKVs(body);
@@ -10340,6 +10360,20 @@ void MainWindow::createPansSequentially(const QString& layoutId, int total,
                 createPansSequentially(layoutId, total, panIds, created + 1);
             });
         });
+}
+
+void MainWindow::showPanadapterSliceCapacityMessage()
+{
+    const int limit = m_radioModel.maxSlices();
+    const QString model = m_radioModel.model().isEmpty()
+        ? QStringLiteral("This radio")
+        : m_radioModel.model();
+    statusBar()->showMessage(
+        QStringLiteral("Slice capacity is full; cannot add another panadapter (%1 supports %2 slice%3)")
+            .arg(model)
+            .arg(limit)
+            .arg(limit == 1 ? QString() : QStringLiteral("s")),
+        kPanadapterSliceCapacityStatusMs);
 }
 
 // ─── Band settings capture / restore ──────────────────────────────────────────
