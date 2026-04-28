@@ -238,16 +238,25 @@ void SerialPortController::loadSettings()
 
     m_ctsFn = strToInputFn(s.value("SerialCtsFunction", "None").toString());
     m_dsrFn = strToInputFn(s.value("SerialDsrFunction", "None").toString());
-    m_ctsActiveHigh = s.value("SerialCtsPolarity", "ActiveLow").toString() == "ActiveHigh";
-    m_dsrActiveHigh = s.value("SerialDsrPolarity", "ActiveLow").toString() == "ActiveHigh";
+    m_ctsActiveHigh = s.value("SerialCtsPolarity", "ActiveHigh").toString() == "ActiveHigh";
+    m_dsrActiveHigh = s.value("SerialDsrPolarity", "ActiveHigh").toString() == "ActiveHigh";
     m_paddleSwap = s.value("SerialPaddleSwap", "False").toString() == "True";
 
-    if (!port.isEmpty() && s.value("SerialAutoOpen", "False").toString() == "True") {
+    bool shouldOpen = s.value("SerialAutoOpen", "False").toString() == "True"
+                   || s.value("SerialPortOpen", "False").toString() == "True";
+
+    if (!port.isEmpty() && shouldOpen) {
         int baud = s.value("SerialBaudRate", "9600").toInt();
         int data = s.value("SerialDataBits", "8").toInt();
         int par  = s.value("SerialParity", "0").toInt();
         int stop = s.value("SerialStopBits", "1").toInt();
         open(port, baud, data, par, stop);
+    } else if (!shouldOpen && isOpen()) {
+        close();
+    } else {
+        // Port state unchanged — still refresh polling in case function
+        // assignments changed while the port was already open.
+        updatePolling();
     }
 }
 
@@ -285,6 +294,7 @@ void SerialPortController::saveSettings()
     s.setValue("SerialDsrPolarity", m_dsrActiveHigh ? "ActiveHigh" : "ActiveLow");
     s.setValue("SerialPaddleSwap", m_paddleSwap ? "True" : "False");
     s.setValue("SerialAutoOpen", isOpen() ? "True" : "False");
+    s.setValue("SerialPortOpen", isOpen() ? "True" : "False");
     s.save();
 }
 
