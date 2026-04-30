@@ -26,6 +26,12 @@ public:
     // modelFamily: "6x00" or "9600"
     void downloadAndStage(const QString& version, const QString& modelFamily);
 
+    // Stage firmware from an installer file the user has already downloaded.
+    // Accepts .msi (v4.2+), .exe (v4.1.x and earlier), or .ssdr (no extraction
+    // needed; passed straight through to staging). Version is parsed from the
+    // filename when present, otherwise stays empty until the radio confirms.
+    void stageFromLocalFile(const QString& installerPath, const QString& modelFamily);
+
     // Cancel in-progress download
     void cancel();
 
@@ -55,6 +61,15 @@ private:
     void onInstallerDownloadFinished();
     void verifyAndExtract();
 
+    // Format-specific extractors. Both produce a .ssdr file at outPath and
+    // emit progress/failed signals on the way.
+    bool extractFromInnoSetup(const QByteArray& data, const QString& outPath);
+    bool extractFromMsi(const QString& msiPath, const QString& outPath);
+
+    // Returns true if the version uses the WiX MSI installer (v4.2+) instead
+    // of the older InnoSetup .exe.
+    static bool versionUsesMsi(const QString& version);
+
     QNetworkAccessManager m_nam;
     QNetworkReply*  m_downloadReply{nullptr};
     QString         m_installerPath;
@@ -65,8 +80,12 @@ private:
     QString         m_stagedVersion;
     bool            m_cancelled{false};
 
-    static constexpr const char* INSTALLER_URL_FMT =
+    // v4.1.x and earlier: InnoSetup self-extracting .exe.
+    // v4.2+: WiX 6 MSI (OLE Compound File with embedded LZX-compressed CABs).
+    static constexpr const char* INSTALLER_URL_FMT_EXE =
         "https://smartsdr.flexradio.com/SmartSDR_v%1_Installer.exe";
+    static constexpr const char* INSTALLER_URL_FMT_MSI =
+        "https://smartsdr.flexradio.com/SmartSDR_v%1_x64.msi";
     static constexpr const char* MD5_URL_FMT =
         "https://edge.flexradio.com/www/offload/20251215133656/"
         "SmartSDR-v%1-Installer-MD5-Hash-File.txt";
