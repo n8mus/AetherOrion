@@ -1,4 +1,5 @@
 #include "gui/MainWindow.h"
+#include "gui/SliceColorManager.h"
 #include "core/AppSettings.h"
 #include "core/LogManager.h"
 #include "core/MacMicPermission.h"
@@ -243,6 +244,9 @@ int main(int argc, char* argv[])
 
     // Load XML settings (auto-migrates from QSettings on first run)
     AetherSDR::AppSettings::instance().load();
+
+    // Load slice color overrides (must be after AppSettings::load)
+    AetherSDR::SliceColorManager::instance().load();
 
     // Load per-module logging toggles (must be after AppSettings::load)
     AetherSDR::LogManager::instance().loadSettings();

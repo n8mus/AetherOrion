@@ -2,7 +2,7 @@
 #include "PhaseKnob.h"
 #include "ComboStyle.h"
 #include "GuardedSlider.h"
-#include "SliceColors.h"
+#include "SliceColorManager.h"
 #include "models/SliceModel.h"
 #include "models/TransmitModel.h"
 #include "core/AppSettings.h"
@@ -197,6 +197,12 @@ VfoWidget::VfoWidget(QWidget* parent)
     connect(&m_signalMeterAnimation, &QTimer::timeout, this, &VfoWidget::animateSignalMeter);
 
     buildUI();
+
+    connect(&SliceColorManager::instance(), &SliceColorManager::colorsChanged,
+            this, [this]() {
+        syncFromSlice();  // refreshes badge stylesheet
+        update();         // refreshes collapsed-mode painter
+    });
 }
 
 void VfoWidget::wheelEvent(QWheelEvent* ev)
@@ -2111,10 +2117,8 @@ void VfoWidget::paintEvent(QPaintEvent* event)
 
         // Slice letter badge
         int sliceId = m_slice ? m_slice->sliceId() : 0;
-        const char* badgeColor = (sliceId >= 0 && sliceId < kSliceColorCount)
-            ? kSliceColors[sliceId].hexActive : "#0070c0";
         QRect badgeRect(margin, yPos, badgeSize, badgeSize);
-        p.setBrush(QColor(badgeColor));
+        p.setBrush(SliceColorManager::instance().activeColor(sliceId));
         p.setPen(Qt::NoPen);
         p.drawRoundedRect(badgeRect, 3, 3);
 
@@ -2783,11 +2787,10 @@ void VfoWidget::syncFromSlice()
     int id = m_slice->sliceId();
     m_sliceBadge->setText(QString(QChar(id >= 0 && id < 8 ? letters[id] : '?')));
     // Color-code the slice badge to match the spectrum overlay colors
-    const char* badgeColor = (id >= 0 && id < kSliceColorCount)
-        ? kSliceColors[id].hexActive : "#0070c0";
     m_sliceBadge->setStyleSheet(
         QString("QLabel { background: %1; color: #000000; "
-                "border-radius: 3px; font-weight: bold; font-size: 11px; }").arg(badgeColor));
+                "border-radius: 3px; font-weight: bold; font-size: 11px; }")
+            .arg(SliceColorManager::instance().hexActive(id)));
     updateFreqLabel();
     updateFilterLabel();
 
