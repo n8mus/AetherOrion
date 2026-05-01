@@ -2224,8 +2224,10 @@ MainWindow::MainWindow(QWidget* parent)
         initialized = true;
     });
 
-    // software_ver arrives after onConnectionStateChanged, so refresh the label
+    // Radio info can arrive after onConnectionStateChanged, so refresh the labels.
     connect(&m_radioModel, &RadioModel::infoChanged, this, [this]() {
+        if (m_radioInfoLabel && !m_radioModel.model().isEmpty())
+            m_radioInfoLabel->setText(m_radioModel.model());
         if (m_radioVersionLabel && !m_radioModel.version().isEmpty())
             m_radioVersionLabel->setText(m_radioModel.version());
     });
