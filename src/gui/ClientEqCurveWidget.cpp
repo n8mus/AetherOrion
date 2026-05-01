@@ -156,6 +156,11 @@ std::vector<float> ClientEqCurveWidget::applyFractionalOctaveSmoothing(
     // bin i frequency = i * sampleRate / fftSize, where fftSize = 2*(N-1)
     const double binHz   = sampleRate / static_cast<double>((N - 1) * 2);
 
+    // Precompute ln(10)/10 so the inner-loop dB→linear conversion uses
+    // std::exp instead of std::pow(10, ...) — typically 3-4× faster.
+    // Equivalent: pow(10, x/10) == exp(x * ln(10) / 10).
+    constexpr double kLn10Over10 = 0.23025850929940457;
+
     std::vector<float> out(N, 0.0f);
     out[0] = binsDb[0];
     for (int i = 1; i < N; ++i) {
@@ -170,7 +175,7 @@ std::vector<float> ClientEqCurveWidget::applyFractionalOctaveSmoothing(
         double sumLin = 0.0;
         const int span = jHi - jLo + 1;
         for (int j = jLo; j <= jHi; ++j) {
-            sumLin += std::pow(10.0, static_cast<double>(binsDb[j]) / 10.0);
+            sumLin += std::exp(static_cast<double>(binsDb[j]) * kLn10Over10);
         }
         const double meanLin = sumLin / static_cast<double>(span);
         out[i] = static_cast<float>(10.0 * std::log10(meanLin + 1e-12));
