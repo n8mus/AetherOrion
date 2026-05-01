@@ -11918,6 +11918,8 @@ void MainWindow::floatAppletPanel()
     m_appletPanelFloatWindow = new QWidget(nullptr, Qt::Window);
     m_appletPanelFloatWindow->setWindowTitle("AetherSDR — Applet Panel");
     m_appletPanelFloatWindow->setAttribute(Qt::WA_DeleteOnClose, false);
+    m_appletPanelFloatWindow->setAttribute(Qt::WA_StyledBackground, true);
+    m_appletPanelFloatWindow->setStyleSheet(darkThemeStylesheet());
     auto* layout = new QVBoxLayout(m_appletPanelFloatWindow);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
