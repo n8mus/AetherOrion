@@ -3071,6 +3071,43 @@ MainWindow::MainWindow(QWidget* parent)
     wireEqEditOpen(m_appletPanel->clientEqTxApplet());
     wireEqEditOpen(m_appletPanel->clientEqRxApplet());
 
+    // Push TX low/high filter cutoffs to the EQ canvases as dashed yellow
+    // guide lines.  Subscribes to the *dedicated* txFilterCutoffChanged
+    // signal — NOT the omnibus phoneStateChanged which fires on every
+    // VOX/CW/mic-boost/dexp/etc. transmit-status update and would
+    // cascade unnecessary repaints into the audio path during TX.
+    auto pushTxFilterCutoffsToEq = [this](int lo, int hi) {
+        if (m_appletPanel && m_appletPanel->clientEqTxApplet())
+            m_appletPanel->clientEqTxApplet()->setTxFilterCutoffs(lo, hi);
+        if (m_clientEqEditor)
+            m_clientEqEditor->setTxFilterCutoffs(lo, hi);
+    };
+    {
+        const auto& tx = m_radioModel.transmitModel();
+        pushTxFilterCutoffsToEq(tx.txFilterLow(), tx.txFilterHigh());
+    }
+    connect(&m_radioModel.transmitModel(), &TransmitModel::txFilterCutoffChanged,
+            this, pushTxFilterCutoffsToEq);
+
+    // RX filter passband guide lines on the RX EQ canvas — fed by the
+    // currently-active RX slice.  filterLow / filterHigh on a slice are
+    // *offsets* (e.g. -3000..0 for LSB, 0..3000 for USB, -3000..3000 for
+    // AM); the EQ canvas plots in absolute audio-frequency.  Convert:
+    //   audio_high = max(|lo|, |hi|)
+    //   audio_low  = (lo and hi same sign / one zero) ? min(|lo|, |hi|) : 0
+    // Then push to the docked RX-bound applet + floating editor (if open).
+    // setActiveSlice() and SliceModel::filterChanged both call this lambda
+    // so the guides track both slice swaps and live filter drags.
+    pushRxFilterCutoffsToEq();
+    connect(&m_radioModel, &RadioModel::sliceAdded, this, [this](SliceModel* s) {
+        if (!s) return;
+        connect(s, &SliceModel::filterChanged, this,
+                [this, s](int /*lo*/, int /*hi*/) {
+            if (s->sliceId() == m_activeSliceId)
+                pushRxFilterCutoffsToEq();
+        });
+    });
+
     // ── Client Compressor applets: TX (#1661) + RX (Phase 7.3) ─────────────
     m_appletPanel->clientCompTxApplet()->setAudioEngine(m_audio);
     m_appletPanel->clientCompRxApplet()->setAudioEngine(m_audio);
@@ -3814,6 +3851,48 @@ ClientEqEditor* MainWindow::ensureClientEqEditor()
             }
             if (m_appletPanel->clientChainApplet())
                 m_appletPanel->clientChainApplet()->refreshFromEngine();
+        });
+        // Push current TX + RX filter cutoffs so the dashed guide lines
+        // render immediately when the editor opens — the cutoff-change
+        // wiring in the MainWindow ctor only fires on subsequent changes.
+        const auto& tx = m_radioModel.transmitModel();
+        m_clientEqEditor->setTxFilterCutoffs(tx.txFilterLow(), tx.txFilterHigh());
+        pushRxFilterCutoffsToEq();
+
+        // Cutoff-line drag → write to the radio.  TX is direct (audio
+        // domain == TransmitModel domain).  RX requires a mode-aware
+        // conversion back from audio-domain to slice filter offsets.
+        connect(m_clientEqEditor, &ClientEqEditor::cutoffsDragRequested,
+                this, [this](ClientEqApplet::Path path, int audioLo, int audioHi) {
+            if (path == ClientEqApplet::Path::Tx) {
+                auto& txm = m_radioModel.transmitModel();
+                if (audioLo != txm.txFilterLow())  txm.setTxFilterLow(audioLo);
+                if (audioHi != txm.txFilterHigh()) txm.setTxFilterHigh(audioHi);
+                return;
+            }
+            // RX: convert audio-domain Hz back to slice filter offsets
+            // based on the active slice's mode.
+            auto* s = activeSlice();
+            if (!s) return;
+            const QString mode = s->mode();
+            int lo = audioLo;
+            int hi = audioHi;
+            if (mode == "LSB" || mode == "DIGL") {
+                // Lower-sideband: filter offsets are negative; the audio
+                // low edge maps to the high (closest-to-zero) offset and
+                // vice versa.
+                lo = -audioHi;
+                hi = -audioLo;
+            } else if (mode == "AM" || mode == "SAM" || mode == "FM"
+                    || mode == "NFM" || mode == "DFM" || mode == "DSB") {
+                // Symmetric around carrier — only audio_high meaningfully
+                // controls bandwidth; audio_low is fixed at 0.
+                lo = -audioHi;
+                hi =  audioHi;
+            }
+            // USB / DIGU / FDV / CW / RTTY / others: audio domain matches
+            // slice domain directly — pass through.
+            s->setFilterWidth(lo, hi);
         });
     }
     return m_clientEqEditor;
@@ -7689,6 +7768,30 @@ SliceModel* MainWindow::activeSlice() const
     return m_radioModel.slice(m_activeSliceId);
 }
 
+void MainWindow::pushRxFilterCutoffsToEq()
+{
+    int audioLow = 0;
+    int audioHigh = 0;
+    if (auto* s = activeSlice()) {
+        const int lo = s->filterLow();
+        const int hi = s->filterHigh();
+        const int absLo = std::abs(lo);
+        const int absHi = std::abs(hi);
+        // Same sign (or one zero): one-sided passband — audio range
+        // is [min(|lo|, |hi|), max(|lo|, |hi|)].  This covers SSB
+        // (one of lo/hi is 0) and CW (lo/hi both same sign around pitch).
+        // Opposite signs: symmetric around carrier (AM/FM/SAM) — audio
+        // baseband starts at 0 and runs to max(|lo|, |hi|).
+        const bool sameSign = (lo >= 0 && hi >= 0) || (lo <= 0 && hi <= 0);
+        audioLow  = sameSign ? std::min(absLo, absHi) : 0;
+        audioHigh = std::max(absLo, absHi);
+    }
+    if (m_appletPanel && m_appletPanel->clientEqRxApplet())
+        m_appletPanel->clientEqRxApplet()->setRxFilterCutoffs(audioLow, audioHigh);
+    if (m_clientEqEditor)
+        m_clientEqEditor->setRxFilterCutoffs(audioLow, audioHigh);
+}
+
 const char* MainWindow::tuneIntentName(TuneIntent intent)
 {
     switch (intent) {
@@ -7857,6 +7960,11 @@ void MainWindow::setActiveSliceInternal(int sliceId, bool revealOffscreen)
     // (m_updatingFromModel is set in the activeChanged handler).
     if (sliceId != prevId && !m_updatingFromModel)
         s->setActive(true);
+
+    // Update RX EQ filter-cutoff guides whenever the active slice swaps —
+    // the new slice may have a different mode / filter shape.
+    if (sliceId != prevId)
+        pushRxFilterCutoffsToEq();
 
     // Active slice changed → restart dwell window for the new active slice
     if (sliceId != prevId && m_bsAutoSaveTimer) {
