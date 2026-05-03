@@ -344,7 +344,7 @@ void ClientChainWidget::paintEvent(QPaintEvent*)
 
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
-    p.fillRect(rect(), QColor("#08121d"));
+    p.fillRect(rect(), QColor("#0f0f1a"));
 
     if (m_boxes.isEmpty()) return;
 
