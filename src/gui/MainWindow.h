@@ -243,6 +243,8 @@ private:
     void commandSwrSweepFrequency(double freqMhz, int settleMs);
     void updateSwrSweepOverlay(double currentFreqMhz = -1.0);
     void setSwrSweepInputsLocked(bool locked);
+    void clearSwrSweepForBandChange(int sliceId, const QString& panId,
+                                    const QString& newBandName);
     SliceModel* swrSweepTargetSlice(int requestedSliceId = -1) const;
 
     // Core objects
@@ -494,6 +496,8 @@ private:
         bool tgxlRestoreTimedOut{false};
         QString finalReason;
         QString sourceLabel;
+        QString originalBandName;
+        bool preserveBandSwitchOnFinish{false};
         bool appletPanelWasEnabled{true};
         bool panStackWasEnabled{true};
     };
