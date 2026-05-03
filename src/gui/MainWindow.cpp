@@ -4118,7 +4118,7 @@ void MainWindow::changeEvent(QEvent* event)
 
     if (event->type() != QEvent::WindowStateChange
         || !m_minimalMode
-        || m_exitingMinimalModeFromWindowState) {
+        || m_exitingMinimalMode) {
         return;
     }
 
@@ -4126,8 +4126,16 @@ void MainWindow::changeEvent(QEvent* event)
     if (!(state & (Qt::WindowMaximized | Qt::WindowFullScreen)))
         return;
 
-    m_exitingMinimalModeFromWindowState = true;
-    QTimer::singleShot(0, this, &MainWindow::exitMinimalModeFromWindowStateChange);
+    // WM/keyboard/double-click maximized us while in minimal mode.  Defer
+    // the exit so we don't tear down geometry mid-event-dispatch; the
+    // re-entry guard prevents a second changeEvent (from showNormal inside
+    // toggleMinimalMode) from re-scheduling.
+    m_exitingMinimalMode = true;
+    QTimer::singleShot(0, this, [this]() {
+        if (m_minimalMode)
+            toggleMinimalMode(false);
+        m_exitingMinimalMode = false;
+    });
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
@@ -6149,7 +6157,7 @@ void MainWindow::buildUI()
         }
     });
     connect(m_titleBar, &TitleBar::minimalModeWindowedExitRequested, this, [this]() {
-        exitMinimalModeToWindowedMode(true);
+        toggleMinimalMode(false);
     });
 
     m_splitter = new QSplitter(Qt::Horizontal, this);
@@ -9661,33 +9669,6 @@ void MainWindow::setFramelessWindow(bool on)
         m_appletPanel->containerManager()->setFramelessMode(on);
 }
 
-void MainWindow::exitMinimalModeToWindowedMode(bool saveMinimalGeometry)
-{
-    if (!m_minimalMode)
-        return;
-
-    showNormal();
-
-    if (m_minimalModeAction) {
-        QSignalBlocker b(m_minimalModeAction);
-        m_minimalModeAction->setChecked(false);
-    }
-
-    m_skipMinimalModeGeometrySave = !saveMinimalGeometry;
-    toggleMinimalMode(false);
-    m_skipMinimalModeGeometrySave = false;
-
-    showNormal();
-}
-
-void MainWindow::exitMinimalModeFromWindowStateChange()
-{
-    if (m_minimalMode)
-        exitMinimalModeToWindowedMode(false);
-
-    m_exitingMinimalModeFromWindowState = false;
-}
-
 void MainWindow::toggleMinimalMode(bool on)
 {
     m_minimalMode = on;
@@ -9731,8 +9712,25 @@ void MainWindow::toggleMinimalMode(bool on)
             restoreGeometry(geom);
 
     } else {
-        // Save minimal geometry
-        if (!m_skipMinimalModeGeometrySave)
+        // Sync the View-menu action so non-action entry points (the
+        // title-bar maximize button, WM-driven maximize via changeEvent)
+        // leave the menu checkbox in the right state.  Blocker prevents
+        // toggled→toggleMinimalMode recursion.
+        if (m_minimalModeAction) {
+            QSignalBlocker b(m_minimalModeAction);
+            m_minimalModeAction->setChecked(false);
+        }
+
+        // If the WM/double-click maximized or fullscreened us before we
+        // got here, the current geometry is the maximized rect — not a
+        // useful "minimal mode" geometry to persist.  Un-maximize first
+        // and skip the save.  The normal Ctrl+M / maximize-button paths
+        // arrive at minimal width with no abnormal state and save as usual.
+        const bool abnormalState =
+            windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
+        if (abnormalState)
+            showNormal();
+        else
             s.setValue("MinimalModeGeometry", saveGeometry().toBase64());
 
         // Reparent applet panel back into the splitter and restore layout
@@ -9763,6 +9761,10 @@ void MainWindow::toggleMinimalMode(bool on)
             s.value("FullModeGeometry", "").toByteArray());
         if (!geom.isEmpty())
             restoreGeometry(geom);
+
+        // Belt-and-suspenders: if FullModeGeometry encoded a state, ensure
+        // we land windowed.
+        showNormal();
     }
 
     s.setValue("MinimalModeEnabled", on ? "True" : "False");
