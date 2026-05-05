@@ -1,6 +1,7 @@
 #include "RadioModel.h"
 #include "core/CommandParser.h"
 #include "core/AppSettings.h"
+#include "core/CwTrace.h"
 #include "core/LogManager.h"
 #include "core/StreamStatus.h"
 #include "core/UdpRegistrationPolicy.h"
@@ -729,7 +730,8 @@ QString RadioModel::audioCompressionParam() const
     return isWan() ? "opus" : "none";
 }
 
-void RadioModel::sendCwKey(bool down)
+void RadioModel::sendCwKey(bool down, const QString& debugSource,
+                           quint64 debugTraceId, quint64 debugSourceMs)
 {
     const bool prev = m_cwKeyActive;
     m_cwKeyActive = down;
@@ -738,14 +740,18 @@ void RadioModel::sendCwKey(bool down)
     // `cw ptt 1` the radio queues key events but doesn't transmit when
     // break_in=0 (the default on most user setups).  Pairing PTT with
     // KEY keys reliably regardless of break-in mode.
-    if (down && !prev) sendNetCwCommand(QStringLiteral("cw ptt 1"));
-    sendNetCwCommand(QString("cw key %1").arg(down ? 1 : 0));
-    if (!down && prev) sendNetCwCommand(QStringLiteral("cw ptt 0"));
+    if (down && !prev)
+        sendNetCwCommand(QStringLiteral("cw ptt 1"), debugSource, debugTraceId, debugSourceMs);
+    sendNetCwCommand(QString("cw key %1").arg(down ? 1 : 0),
+                     debugSource, debugTraceId, debugSourceMs);
+    if (!down && prev)
+        sendNetCwCommand(QStringLiteral("cw ptt 0"), debugSource, debugTraceId, debugSourceMs);
     if (prev != down)
         emit cwKeyDownChanged(down);
 }
 
-void RadioModel::sendCwPaddle(bool dit, bool dah)
+void RadioModel::sendCwPaddle(bool dit, bool dah, const QString& debugSource,
+                              quint64 debugTraceId, quint64 debugSourceMs)
 {
     // The radio's CW protocol does NOT accept a 2-arg paddle form like
     // `cw key dit dah` — FlexLib only ever sends `cw key 1` or `cw key 0`
@@ -754,19 +760,23 @@ void RadioModel::sendCwPaddle(bool dit, bool dah)
     // works when the local iambic keyer is disabled.  When the keyer IS
     // running it intercepts upstream and uses sendCwPtt + sendCwKeyEdge
     // directly, bypassing this method.
-    sendCwKey(dit || dah);
+    sendCwKey(dit || dah, debugSource, debugTraceId, debugSourceMs);
 }
 
-void RadioModel::sendCwPtt(bool on)
+void RadioModel::sendCwPtt(bool on, const QString& debugSource,
+                           quint64 debugTraceId, quint64 debugSourceMs)
 {
-    sendNetCwCommand(on ? QStringLiteral("cw ptt 1") : QStringLiteral("cw ptt 0"));
+    sendNetCwCommand(on ? QStringLiteral("cw ptt 1") : QStringLiteral("cw ptt 0"),
+                     debugSource, debugTraceId, debugSourceMs);
 }
 
-void RadioModel::sendCwKeyEdge(bool down)
+void RadioModel::sendCwKeyEdge(bool down, const QString& debugSource,
+                               quint64 debugTraceId, quint64 debugSourceMs)
 {
     const bool prev = m_cwKeyActive;
     m_cwKeyActive = down;
-    sendNetCwCommand(QString("cw key %1").arg(down ? 1 : 0));
+    sendNetCwCommand(QString("cw key %1").arg(down ? 1 : 0),
+                     debugSource, debugTraceId, debugSourceMs);
     if (prev != down)
         emit cwKeyDownChanged(down);
 }
@@ -775,16 +785,13 @@ void RadioModel::sendCwKeyEdge(bool down)
 
 QByteArray RadioModel::buildNetCwPacket(const QByteArray& payload)
 {
-    // VITA-49 header (28 bytes) + raw ASCII command payload, no trailing
-    // padding.  FlexLib's NetCWStream.AddTXData ships the payload buffer at
-    // its exact tx_data.Length — so a 57-byte command goes out in an 85-byte
-    // datagram even though packet_size rounds up to a 4-byte boundary.  The
-    // radio uses recv()'s datagram length, not packet_size, to delimit the
-    // command string; trailing zero bytes cause the parser to reject the
-    // packet (no key/PTT change observed and silent error 0x50001000 on TCP).
+    // VITA-49 header (28 bytes) + ASCII command payload.  Working Maestro
+    // captures show the payload null-padded to a 32-bit word boundary; keep
+    // the datagram length consistent with the VRT packet_size field.
     const int payloadBytes = payload.size();
+    const int paddedPayloadBytes = (payloadBytes + 3) & ~3;
     const int packetWords = static_cast<int>(std::ceil(payloadBytes / 4.0) + 7); // 7 header words
-    const int packetBytes = 28 + payloadBytes;  // header + payload, NO padding
+    const int packetBytes = 28 + paddedPayloadBytes;
 
     QByteArray pkt(packetBytes, '\0');
     auto* w = reinterpret_cast<quint32*>(pkt.data());
@@ -811,26 +818,54 @@ QByteArray RadioModel::buildNetCwPacket(const QByteArray& payload)
     return pkt;
 }
 
-void RadioModel::sendNetCwCommand(const QString& baseCmd)
+void RadioModel::sendNetCwCommand(const QString& baseCmd, const QString& debugSource,
+                                  quint64 debugTraceId, quint64 debugSourceMs)
 {
     if (m_netCwStreamId == 0) {
         // No netcw stream — fall back to TCP immediate
-        sendCmd(baseCmd.contains("cw key") ?
-            QString(baseCmd).replace("cw key", "cw key immediate") : baseCmd);
+        const QString fallbackCmd = baseCmd.contains("cw key")
+            ? QString(baseCmd).replace("cw key", "cw key immediate")
+            : baseCmd;
+        if (lcCw().isDebugEnabled()) {
+            const quint64 now = cwTraceNowMs();
+            qCDebug(lcCw).noquote().nospace()
+                << "CW netcw fallback trace=" << debugTraceId
+                << " t=" << now << "ms"
+                << " sinceSourceMs=" << (debugSourceMs ? static_cast<qint64>(now - debugSourceMs) : -1)
+                << " source=" << (debugSource.isEmpty() ? QStringLiteral("unknown") : debugSource)
+                << " cmd=\"" << fallbackCmd << "\"";
+        }
+        sendCmd(fallbackCmd);
         return;
     }
 
     // Build the full command with timing metadata and dedup index
-    // FlexLib format: "cw key 1 time=0x<hex_ms> index=<N> client_handle=0x<handle>"
-    quint64 timeMs = static_cast<quint64>(
-        QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFF);
+    // FlexLib format: "cw key 1 time=0x<hex_ms> index=<N> client_handle=0x<handle>".
+    // The time value is a 16-bit relative millisecond counter, not an epoch
+    // timestamp.  Flex clients reset it after a short idle gap; the radio
+    // accepts 0x0000 as a timing resync marker.
+    constexpr qint64 kNetCwIdleResetMs = 3000;
+    quint16 timeMs = 0;
+    if (!m_netCwClock.isValid()
+        || m_netCwLastSendMs < 0
+        || (m_netCwClock.elapsed() - m_netCwLastSendMs) > kNetCwIdleResetMs) {
+        if (m_netCwClock.isValid())
+            m_netCwClock.restart();
+        else
+            m_netCwClock.start();
+        m_netCwLastSendMs = 0;
+    } else {
+        const qint64 elapsed = m_netCwClock.elapsed();
+        timeMs = static_cast<quint16>(elapsed & 0xFFFF);
+        m_netCwLastSendMs = elapsed;
+    }
     int index = m_netCwIndex++;
 
     // FlexLib formats hex values UPPERCASE (C# ToString("X")), and the
     // radio's status messages do too (e.g. `S23A59BDF|...`) — the netcw
     // parser appears to be case-sensitive on `client_handle`.  Match that
     // by formatting both hex values uppercase explicitly.
-    const QString tsHex = QString("%1").arg(timeMs, 8, 16, QChar('0')).toUpper();
+    const QString tsHex = QString("%1").arg(timeMs, 4, 16, QChar('0')).toUpper();
     const QString chHex = QString("%1").arg(clientHandle(), 0, 16).toUpper();
     QString fullCmd = QString("%1 time=0x%2 index=%3 client_handle=0x%4")
         .arg(baseCmd, tsHex, QString::number(index), chHex);
@@ -847,35 +882,67 @@ void RadioModel::sendNetCwCommand(const QString& baseCmd)
     QByteArray packet1 = buildNetCwPacket(payload);
     QByteArray packet2 = buildNetCwPacket(payload);
     QByteArray packet3 = buildNetCwPacket(payload);
+    const quint64 scheduledMs = cwTraceNowMs();
+    const QString source = debugSource.isEmpty() ? QStringLiteral("unknown") : debugSource;
 
-    QMetaObject::invokeMethod(m_panStream, [this, packet0]() {
+    if (lcCw().isDebugEnabled()) {
+        qCDebug(lcCw).noquote().nospace()
+            << "CW netcw schedule trace=" << debugTraceId
+            << " t=" << scheduledMs << "ms"
+            << " sinceSourceMs=" << (debugSourceMs ? static_cast<qint64>(scheduledMs - debugSourceMs) : -1)
+            << " source=" << source
+            << " stream=0x" << QString::number(m_netCwStreamId, 16).toUpper()
+            << " index=" << index
+            << " time=0x" << tsHex
+            << " cmd=\"" << baseCmd << "\""
+            << " payloadBytes=" << payload.size()
+            << " packetBytes=" << packet0.size()
+            << " udpCopies=4 tcpBackstop=1";
+    }
+
+    auto logUdpSend = [debugTraceId, scheduledMs, source](int copy, int delayMs, int bytes) {
+        if (!lcCw().isDebugEnabled())
+            return;
+        const quint64 now = cwTraceNowMs();
+        qCDebug(lcCw).noquote().nospace()
+            << "CW netcw udp-send trace=" << debugTraceId
+            << " t=" << now << "ms"
+            << " source=" << source
+            << " copy=" << copy
+            << " delayMs=" << delayMs
+            << " actualDelayMs=" << static_cast<qint64>(now - scheduledMs)
+            << " timerSlipMs=" << (static_cast<qint64>(now - scheduledMs) - delayMs)
+            << " bytes=" << bytes;
+    };
+
+    QMetaObject::invokeMethod(m_panStream, [this, packet0, logUdpSend]() {
+        logUdpSend(0, 0, packet0.size());
         m_panStream->sendToRadio(packet0);
     }, Qt::QueuedConnection);
 
-    QTimer::singleShot(5, this, [this, packet1]() {
-        QMetaObject::invokeMethod(m_panStream, [this, packet1]() {
+    QTimer::singleShot(5, this, [this, packet1, logUdpSend]() {
+        QMetaObject::invokeMethod(m_panStream, [this, packet1, logUdpSend]() {
+            logUdpSend(1, 5, packet1.size());
             m_panStream->sendToRadio(packet1);
         }, Qt::QueuedConnection);
     });
-    QTimer::singleShot(10, this, [this, packet2]() {
-        QMetaObject::invokeMethod(m_panStream, [this, packet2]() {
+    QTimer::singleShot(10, this, [this, packet2, logUdpSend]() {
+        QMetaObject::invokeMethod(m_panStream, [this, packet2, logUdpSend]() {
+            logUdpSend(2, 10, packet2.size());
             m_panStream->sendToRadio(packet2);
         }, Qt::QueuedConnection);
     });
-    QTimer::singleShot(15, this, [this, packet3]() {
-        QMetaObject::invokeMethod(m_panStream, [this, packet3]() {
+    QTimer::singleShot(15, this, [this, packet3, logUdpSend]() {
+        QMetaObject::invokeMethod(m_panStream, [this, packet3, logUdpSend]() {
+            logUdpSend(3, 15, packet3.size());
             m_panStream->sendToRadio(packet3);
         }, Qt::QueuedConnection);
     });
 
-    // No TCP fallback when netcw is up.  Radio v4.1.5 rejects every CW
-    // command sent over TCP with 0x50001000 ("command syntax error") —
-    // both the netcw form and `cw key immediate` form — so the fallback
-    // was producing log noise without doing useful work.  The four
-    // redundant UDP sends above are the reliability mechanism.  If
-    // netcw stream creation failed at startup, the early-return path
-    // above falls back to `cw key immediate` over TCP for that case
-    // (no-netcw firmware), which is a separate scenario.
+    // FlexLib sends the same decorated netcw command over TCP after the UDP
+    // copies.  With the 16-bit timestamp format above, the radio can dedupe
+    // by index=N and the TCP path provides a reliable delivery backstop.
+    sendCmd(fullCmd);
 }
 
 void RadioModel::cwAutoTune(int sliceId, bool intermittent)
@@ -1530,6 +1597,8 @@ void RadioModel::registerAsGuiClient(const QString& clientId)
                                 if (code == 0) {
                                     m_netCwStreamId = body.trimmed().toUInt(nullptr, 16);
                                     m_netCwIndex = 1;
+                                    m_netCwClock.invalidate();
+                                    m_netCwLastSendMs = -1;
                                     qCDebug(lcProtocol) << "RadioModel: netcw stream created, id:"
                                              << Qt::hex << m_netCwStreamId;
                                 } else {
@@ -1732,6 +1801,8 @@ void RadioModel::onDisconnected()
     m_rxAudio = {};
     m_netCwStreamId = 0;
     m_netCwIndex = 1;
+    m_netCwClock.invalidate();
+    m_netCwLastSendMs = -1;
     m_lineoutGain = 50;
     m_headphoneGain = 50;
 
