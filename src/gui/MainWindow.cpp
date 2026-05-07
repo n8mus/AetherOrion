@@ -2799,6 +2799,28 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&m_pgxlConn, &PgxlConnection::connected, this, [this]() {
         qDebug() << "PGXL direct connection established, version:" << m_pgxlConn.version();
     });
+    // Radio amplifier status → AmpApplet telemetry (fallback path).
+    // The radio proxies PGXL telemetry fields (id, vac, meffa, temp, state) in its
+    // amplifier status messages, so the applet keeps updating even when the direct
+    // PGXL TCP connection isn't established.  When direct TCP IS connected, that
+    // path is faster and higher-precision (the radio rebroadcast may round/lag),
+    // so we skip the radio fallback to avoid display jitter from two paths
+    // alternately writing slightly-different values.
+    connect(&m_radioModel, &RadioModel::ampTelemetryUpdated,
+            this, [this](const QMap<QString, QString>& kvs) {
+        if (m_pgxlConn.isConnected()) return;
+        auto* amp = m_appletPanel->ampApplet();
+        if (kvs.contains("temp"))
+            amp->setTemp(kvs["temp"].toFloat());
+        if (kvs.contains("id"))
+            amp->setDrainCurrent(kvs["id"].toFloat());
+        if (kvs.contains("vac"))
+            amp->setMainsVoltage(kvs["vac"].toInt());
+        if (kvs.contains("state"))
+            amp->setState(kvs["state"]);
+        if (kvs.contains("meffa"))
+            amp->setMeff(kvs["meffa"]);
+    });
     // OPERATE button → PGXL standby/operate command via radio amplifier API
     connect(m_appletPanel->ampApplet(), &AmpApplet::operateToggled, this, [this](bool on) {
         if (!m_radioModel.ampHandle().isEmpty())
