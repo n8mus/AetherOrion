@@ -94,6 +94,17 @@ void PanadapterModel::applyPanStatus(const QMap<QString, QString>& kvs)
             emit wideChanged(m_wideActive);
         }
     }
+    if (kvs.contains("fps")) {
+        bool ok = false;
+        const int fps = kvs["fps"].toInt(&ok);
+        if (ok) {
+            if (fps != m_fps) {
+                m_fps = fps;
+                emit fpsChanged(m_fps);
+            }
+            emit fpsReported(fps);
+        }
+    }
     if (kvs.contains("ant_list")) {
         QStringList ants = kvs["ant_list"].split(',', Qt::SkipEmptyParts);
         if (ants != m_antList) {
@@ -120,6 +131,18 @@ void PanadapterModel::applyPanStatus(const QMap<QString, QString>& kvs)
 
 void PanadapterModel::applyWaterfallStatus(const QMap<QString, QString>& kvs)
 {
+    if (kvs.contains("line_duration")) {
+        bool ok = false;
+        const int ms = kvs["line_duration"].toInt(&ok);
+        if (ok) {
+            if (ms != m_waterfallLineDuration) {
+                m_waterfallLineDuration = ms;
+                emit waterfallLineDurationChanged(m_waterfallLineDuration);
+            }
+            emit waterfallLineDurationReported(ms);
+        }
+    }
+
     // Waterfall status shares center/bandwidth with pan — sync if present
     if (kvs.contains("center") || kvs.contains("bandwidth")) {
         bool changed = false;
