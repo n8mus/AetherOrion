@@ -1228,12 +1228,17 @@ void RadioModel::onConnected()
         if (m_wanConn) {
             // On WAN: wait for client ip response before sending client gui.
             // The radio needs time after wan validate to accept GUI registration.
+            // multiFLEX conflict on WAN is caught pre-connection via licensedClients.
             sendCmd("client ip", [this, clientId](int, const QString& body) {
                 qCDebug(lcProtocol) << "RadioModel: client ip ->" << body.trimmed();
                 registerAsGuiClient(clientId);
             });
         } else {
-            registerAsGuiClient(clientId);
+            // On LAN: peek at radio/client status before sending client gui so we
+            // can detect a multiFLEX conflict regardless of what discovery provided.
+            peekForMultiFlexConflictThen([this, clientId] {
+                registerAsGuiClient(clientId);
+            });
         }
     });
 }
@@ -1278,6 +1283,91 @@ void RadioModel::disconnectPendingClientsThen(std::function<void()> continuation
     };
 
     (*step)();
+}
+
+void RadioModel::peekForMultiFlexConflictThen(std::function<void()> continuation)
+{
+    m_multiFlexContinuation = continuation;
+
+    // Evict stale entries pre-populated from discovery or a previous session.
+    // We rebuild the map from scratch using only what the radio confirms via
+    // sub client all below, so we never show phantom handles in the dialog.
+    const quint32 ours = clientHandle();
+    for (auto it = m_clientInfoMap.begin(); it != m_clientInfoMap.end(); ) {
+        it = (it.key() != ours) ? m_clientInfoMap.erase(it) : std::next(it);
+    }
+    m_clientStations.clear();
+
+    // Subscribe to radio and client topics early — before client gui — to get
+    // mf_enable and the live connected-client list directly from the radio.
+    // 400 ms is enough for the radio's status burst to arrive on a LAN path.
+    sendCmd("sub radio all", [this](int, const QString&) {
+        sendCmd("sub client all", [this](int, const QString&) {
+            QTimer::singleShot(400, this, [this] {
+                const quint32 ours2 = clientHandle();
+                bool hasOthers = false;
+                for (auto it = m_clientInfoMap.cbegin(); it != m_clientInfoMap.cend(); ++it) {
+                    if (it.key() != ours2) {
+                        hasOthers = true;
+                        break;
+                    }
+                }
+
+                // If the map is still empty (only our own handle or nothing) after
+                // waiting for the burst, the radio either hasn't sent any client
+                // status yet or the burst arrived after the window closed.  Log so
+                // field reports of missed conflicts are diagnosable.  The connection
+                // proceeds — the alternative is a hang, which is worse than a miss.
+                if (m_clientInfoMap.isEmpty() || (m_clientInfoMap.size() == 1 && m_clientInfoMap.contains(ours2)))
+                    qCWarning(lcProtocol) << "RadioModel: peek window closed with no client status received —"
+                                            " conflict detection may have been missed (busy radio or lossy LAN)";
+
+                if (!m_multiFlexEnabled && hasOthers) {
+                    qCDebug(lcProtocol) << "RadioModel: multiFLEX disabled, other clients present — pausing connection";
+                    emit multiFlexConflictDetected();
+                    return;
+                }
+
+                // No conflict — proceed with registration.
+                if (m_multiFlexContinuation) {
+                    auto cont = std::move(m_multiFlexContinuation);
+                    m_multiFlexContinuation = nullptr;
+                    cont();
+                }
+            });
+        });
+    });
+}
+
+void RadioModel::resolveMultiFlexConflict(quint32 handle)
+{
+    // Move the continuation out so peekForMultiFlexConflictThen can safely
+    // re-assign m_multiFlexContinuation without trampling over it.
+    auto continuation = std::move(m_multiFlexContinuation);
+    m_multiFlexContinuation = nullptr;
+
+    const QString cmd = QString("client disconnect 0x%1").arg(handle, 0, 16);
+    qCDebug(lcProtocol) << "RadioModel: resolving multiFLEX conflict, disconnecting" << Qt::hex << handle;
+    sendCmd(cmd, [this, continuation = std::move(continuation)](int code, const QString& body) mutable {
+        if (code != 0)
+            qCWarning(lcProtocol) << "RadioModel: conflict client disconnect failed:" << body.trimmed();
+        // After eviction, re-run the full peek rather than jumping straight to the
+        // continuation. This catches any remaining clients (e.g., two sessions, or
+        // a stale handle that hadn't been cleaned up yet) and re-shows the dialog if
+        // needed, preventing phantom slices from a partially-disconnected session.
+        QTimer::singleShot(250, this, [this, continuation = std::move(continuation)]() mutable {
+            peekForMultiFlexConflictThen(std::move(continuation));
+        });
+    });
+}
+
+void RadioModel::cancelMultiFlexConflict()
+{
+    m_multiFlexContinuation = nullptr;
+    m_intentionalDisconnect = true;
+    QMetaObject::invokeMethod(m_connection, [conn = m_connection] {
+        conn->disconnectFromRadio();
+    });
 }
 
 void RadioModel::handleForcedClientDisconnect()
