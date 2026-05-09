@@ -34,9 +34,16 @@ public:
     // through the menu bar instead).
     void setCloseButtonVisible(bool visible);
 
+    // Sync the pin button's pressed state.  The pin button is only
+    // visible while the container is in floating mode (mirrors the
+    // float-button visibility in setFloatingState()).
+    void setAlwaysOnTopState(bool on);
+    bool alwaysOnTopState() const { return m_alwaysOnTop; }
+
 signals:
     void floatToggleClicked();
     void closeClicked();
+    void alwaysOnTopToggled(bool on);
     void dragStartRequested(const QPoint& globalPos);
 
 protected:
@@ -45,12 +52,14 @@ protected:
 
 private:
     QLabel*      m_titleLabel{nullptr};
+    QPushButton* m_pinBtn{nullptr};
     QPushButton* m_floatBtn{nullptr};
     QPushButton* m_closeBtn{nullptr};
     QPoint       m_pressPos;
     bool         m_pressed{false};
     bool         m_closeAllowed{true};   // false = explicitly disabled (sidebar)
     bool         m_isFloating{false};
+    bool         m_alwaysOnTop{false};
 };
 
 } // namespace AetherSDR

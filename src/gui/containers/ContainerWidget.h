@@ -104,6 +104,11 @@ signals:
     // but may choose to destroy the container instead.
     void closeRequested();
 
+    // Emitted when the titlebar's pin button toggles.  Only fires
+    // while the container is in floating mode (the pin is hidden
+    // otherwise).  Manager applies the hint and persists the choice.
+    void alwaysOnTopToggled(bool on);
+
     // Fired after setContainerVisible() changes state.
     void visibilityChanged(bool visible);
 

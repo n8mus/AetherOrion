@@ -1,4 +1,5 @@
 #include "ContainerManager.h"
+#include "ContainerTitleBar.h"
 #include "FloatingContainerWindow.h"
 #include "core/AppSettings.h"
 
@@ -37,6 +38,15 @@ QString geometryKeyFor(const QString& id)
     QString safe = id;
     safe.replace('/', '_');
     return QStringLiteral("ContainerGeometry_%1").arg(safe);
+}
+
+// Parallel helper for the per-container "always on top" preference
+// (issue #2430).  Same '/' sanitisation as geometryKeyFor().
+QString alwaysOnTopKeyFor(const QString& id)
+{
+    QString safe = id;
+    safe.replace('/', '_');
+    return QStringLiteral("ContainerAlwaysOnTop_%1").arg(safe);
 }
 
 } // namespace
@@ -234,6 +244,16 @@ void ContainerManager::floatContainer(const QString& id)
     m_floatingWindows.insert(id, win);
     win->setWindowTitle(c->title());
     win->restoreAndEnsureVisible(meta.originalParent);
+
+    // Apply the persisted always-on-top preference *after*
+    // restoreAndEnsureVisible(): toggling Qt::WindowStaysOnTopHint
+    // recreates the native window, which would otherwise clobber the
+    // geometry we just restored.
+    const bool aot = AppSettings::instance()
+        .value(alwaysOnTopKeyFor(id), false).toBool();
+    if (aot) win->setAlwaysOnTop(true);
+    if (auto* tb = c->titleBar()) tb->setAlwaysOnTopState(aot);
+
     win->show();
     saveState();
 }
@@ -302,6 +322,8 @@ void ContainerManager::wireContainer(ContainerWidget* c)
             this, &ContainerManager::onDockRequested);
     connect(c, &ContainerWidget::closeRequested,
             this, &ContainerManager::onCloseRequested);
+    connect(c, &ContainerWidget::alwaysOnTopToggled,
+            this, &ContainerManager::onAlwaysOnTopToggled);
 }
 
 void ContainerManager::onFloatRequested()
@@ -322,6 +344,17 @@ void ContainerManager::onCloseRequested()
     if (!c) return;
     c->setContainerVisible(false);
     saveState();
+}
+
+void ContainerManager::onAlwaysOnTopToggled(bool on)
+{
+    auto* c = qobject_cast<ContainerWidget*>(sender());
+    if (!c) return;
+    const QString id = c->id();
+    AppSettings::instance().setValue(alwaysOnTopKeyFor(id), on);
+    if (auto* win = m_floatingWindows.value(id, nullptr)) {
+        win->setAlwaysOnTop(on);
+    }
 }
 
 void ContainerManager::onFloatingWindowDock(ContainerWidget* c)

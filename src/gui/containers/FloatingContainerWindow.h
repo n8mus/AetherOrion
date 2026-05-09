@@ -52,6 +52,12 @@ public:
     // main-window frameless setting.  Preserves geometry and visibility.
     void setFramelessMode(bool on);
 
+    // Toggle Qt::WindowStaysOnTopHint at runtime — see issue #2430.
+    // Same recreate-the-native-window dance as setFramelessMode():
+    // snapshot geometry + visibility, flip the bit, restore.
+    void setAlwaysOnTop(bool on);
+    bool isAlwaysOnTop() const { return m_alwaysOnTop; }
+
     // Restore the window's geometry from the key, clamping to a
     // visible screen.  If no saved geometry exists, centres on the
     // anchor's current screen at a reasonable default size.  Safe to
@@ -77,6 +83,7 @@ private:
     QString          m_geometryKey;
     bool             m_restoring{false};
     bool             m_shuttingDown{false};
+    bool             m_alwaysOnTop{false};
     QTimer           m_saveTimer;
 };
 

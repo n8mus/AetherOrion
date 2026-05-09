@@ -31,6 +31,8 @@ ContainerWidget::ContainerWidget(const QString& id, const QString& title,
             this, &ContainerWidget::onTitleBarFloatToggle);
     connect(m_titleBar, &ContainerTitleBar::closeClicked,
             this, &ContainerWidget::onTitleBarClose);
+    connect(m_titleBar, &ContainerTitleBar::alwaysOnTopToggled,
+            this, &ContainerWidget::alwaysOnTopToggled);
     connect(m_titleBar, &ContainerTitleBar::dragStartRequested,
             this, &ContainerWidget::onTitleBarDragStart);
 }
