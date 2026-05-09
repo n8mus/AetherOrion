@@ -5909,6 +5909,10 @@ void MainWindow::buildMenuBar()
                 this, [this] { QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->startConnection(); }); });
         connect(dlg, &DxClusterDialog::freedvStopRequested,
                 this, [this] { QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->stopConnection(); }); });
+        connect(dlg, &DxClusterDialog::freedvMessageChanged,
+                this, [this](const QString& msg) {
+            QMetaObject::invokeMethod(m_freedvClient, [this, msg] { m_freedvClient->updateMessage(msg); });
+        });
 #ifdef HAVE_RADE
         connect(dlg, &DxClusterDialog::freedvReportingToggled,
                 this, [this](bool on) {
