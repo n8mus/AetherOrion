@@ -9,6 +9,7 @@
 #include <QLayout>
 #include <QStringList>
 #include <QVBoxLayout>
+#include <QPointer>
 #include <QTimer>
 #include <QWindow>
 
@@ -193,6 +194,40 @@ void PanadapterStack::equalizeSizes()
 
 void PanadapterStack::rearrangeLayout(const QString& layoutId)
 {
+    // Dock any floating pans first.  m_pans always contains every applet
+    // including those currently in a PanFloatingWindow (floatPanadapter
+    // never removes from m_pans), so the reparent loop below would yank
+    // a floating applet out of its native window via setParent(nullptr),
+    // bypassing the GPU-reset path that float/dock use.  The QRhiWidget
+    // would stay bound to the floating window's HWND/NSView — the next
+    // render produces a black surface and the next input event into it
+    // crashes (#2495).  Stale entries would also remain in
+    // m_floatingWindows, permanently blocking future float requests.
+    QList<QPointer<SpectrumWidget>> rebound;
+    if (!m_floatingWindows.isEmpty()) {
+        const QList<QString> floatingIds = m_floatingWindows.keys();
+        for (const QString& panId : floatingIds) {
+            PanFloatingWindow* fw = m_floatingWindows.take(panId);
+            if (!fw) continue;
+            fw->saveWindowGeometry();
+            PanadapterApplet* applet = fw->applet();
+            if (auto* sw = applet ? applet->spectrumWidget() : nullptr) {
+                sw->hide();
+                sw->resetGpuResources();
+                rebound.append(sw);
+            }
+            applet = fw->takeApplet();
+            fw->hide();
+            fw->deleteLater();
+            if (applet) {
+                applet->setFloatingState(false);
+                applet->spectrumWidget()->setFloating(false);
+            }
+            emit panDocked(panId);
+        }
+        saveFloatingState();
+    }
+
     // Collect applets in order
     QList<PanadapterApplet*> applets = m_pans.values();
     if (applets.isEmpty()) return;
@@ -325,8 +360,18 @@ void PanadapterStack::rearrangeLayout(const QString& layoutId)
             m_splitter->addWidget(a);
     }
 
-    // Defer equalize until the new splitter has been laid out by Qt
-    QTimer::singleShot(0, this, [this]() { equalizeSizes(); });
+    // Defer equalize until the new splitter has been laid out by Qt.
+    // Re-show + refresh GPU surfaces for any spectrum widgets that came
+    // out of a floating window, so they bind to the new top-level window
+    // before the first render (mirrors the dockPanadapter() refresh dance).
+    QTimer::singleShot(0, this, [this, rebound]() {
+        for (SpectrumWidget* sw : rebound) {
+            if (!sw) continue;
+            sw->show();
+            refreshAfterReparent(sw);
+        }
+        equalizeSizes();
+    });
 }
 
 void PanadapterStack::removeAll()
@@ -745,16 +790,47 @@ void PanadapterStack::setFramelessMode(bool on)
 void PanadapterStack::prepareShutdown()
 {
     saveFloatingState();
-    for (auto* applet : m_pans) {
-        if (auto* sw = applet ? applet->spectrumWidget() : nullptr) {
+
+    // Explicitly delete floating windows rather than calling close().
+    // close() without WA_DeleteOnClose only hides the window, leaving it alive
+    // as a Qt::Window child of MainWindow.  When MainWindow's QWidget::~QWidget()
+    // later tears down its QRhi, Qt fires the QRhiWidgetPrivate cleanup callbacks
+    // for those still-parented-but-hidden floating windows in an order that can
+    // invalidate QRhiWidgetPrivate before the callback returns → crash at 0x1e2.
+    // Deleting fw explicitly runs QRhiWidget::~QRhiWidget() → removeCleanupCallback
+    // while the QRhi is still valid, so no stale callbacks remain when MainWindow
+    // tears down (#2495 exit crash on macOS).
+    const QList<QString> floatingIds = m_floatingWindows.keys();
+    for (const QString& panId : floatingIds) {
+        PanFloatingWindow* fw = m_floatingWindows.take(panId);
+        if (!fw) continue;
+        fw->saveWindowGeometry();
+        if (PanadapterApplet* applet = fw->applet()) {
+            if (SpectrumWidget* sw = applet->spectrumWidget()) {
+                sw->hide();
+                sw->resetGpuResources();
+            }
+        }
+        m_pans.remove(panId);
+        delete fw;
+    }
+
+    // Explicitly delete docked applets so ~QRhiWidget() runs (and calls
+    // removeCleanupCallback) while MainWindow's QRhi is still alive.
+    // If we leave applets alive, Qt's destructor chain for QWidget destroys
+    // the QRhi *before* ~QObject()::deleteChildren() deletes the child
+    // SpectrumWidgets — QRhi::runCleanup() then fires against QRhiWidgetPrivate
+    // objects that are still live but have internal Qt fields in a stale state
+    // → crash at $0_cleanup +24 on exit (#2495 macOS).
+    const QList<QString> dockedIds = m_pans.keys();
+    for (const QString& panId : dockedIds) {
+        PanadapterApplet* applet = m_pans.take(panId);
+        if (!applet) continue;
+        if (SpectrumWidget* sw = applet->spectrumWidget()) {
             sw->hide();
             sw->resetGpuResources();
         }
-    }
-    for (auto* fw : m_floatingWindows) {
-        fw->saveWindowGeometry();
-        fw->setShuttingDown(true);
-        fw->close();
+        delete applet;
     }
 }
 
