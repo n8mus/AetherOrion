@@ -462,6 +462,7 @@ set(CORE_SOURCES
     src/core/NvidiaBnrFilter.cpp
     src/core/DeepFilterFilter.cpp
     src/core/RADEEngine.cpp
+    src/core/AsyncLogWriter.cpp
     src/core/LogManager.cpp
     src/core/ShortcutManager.cpp
     src/core/SupportBundle.cpp
@@ -1275,11 +1276,15 @@ add_executable(ole_compound_file_test
     tests/ole_compound_file_test.cpp
     src/core/OleCompoundFile.cpp
     src/core/CabExtractor.cpp
+    src/core/AsyncLogWriter.cpp
     src/core/LogManager.cpp
     src/core/AppSettings.cpp
 )
 target_include_directories(ole_compound_file_test PRIVATE src)
 target_link_libraries(ole_compound_file_test PRIVATE Qt6::Core mspack_static)
+if(UNIX)
+    target_link_libraries(ole_compound_file_test PRIVATE pthread)
+endif()
 
 add_executable(xvtr_policy_test
     tests/xvtr_policy_test.cpp
@@ -1328,11 +1333,15 @@ target_link_libraries(cwx_panel_test PRIVATE
 add_executable(meter_model_test
     tests/meter_model_test.cpp
     src/models/MeterModel.cpp
+    src/core/AsyncLogWriter.cpp
     src/core/LogManager.cpp
     src/core/AppSettings.cpp
 )
 target_include_directories(meter_model_test PRIVATE src)
 target_link_libraries(meter_model_test PRIVATE Qt6::Core)
+if(UNIX)
+    target_link_libraries(meter_model_test PRIVATE pthread)
+endif()
 set_target_properties(meter_model_test PROPERTIES AUTOMOC ON)
 
 add_executable(memory_recall_policy_test
@@ -1346,11 +1355,15 @@ add_executable(transmit_model_apd_test
     tests/transmit_model_apd_test.cpp
     src/models/TransmitModel.cpp
     src/core/ClientQuindarTone.cpp
+    src/core/AsyncLogWriter.cpp
     src/core/LogManager.cpp
     src/core/AppSettings.cpp
 )
 target_include_directories(transmit_model_apd_test PRIVATE src)
 target_link_libraries(transmit_model_apd_test PRIVATE Qt6::Core Qt6::Test)
+if(UNIX)
+    target_link_libraries(transmit_model_apd_test PRIVATE pthread)
+endif()
 set_target_properties(transmit_model_apd_test PROPERTIES AUTOMOC ON)
 
 # Help guide search tests - needs QApplication + Widgets.
@@ -1384,10 +1397,14 @@ add_executable(transmit_model_test
     src/models/TransmitModel.cpp
     src/core/ClientQuindarTone.cpp
     src/core/AppSettings.cpp
+    src/core/AsyncLogWriter.cpp
     src/core/LogManager.cpp
 )
 target_include_directories(transmit_model_test PRIVATE src)
 target_link_libraries(transmit_model_test PRIVATE Qt6::Core)
+if(UNIX)
+    target_link_libraries(transmit_model_test PRIVATE pthread)
+endif()
 
 # Container system Phase 1 tests — needs QApplication + Widgets.
 add_executable(container_widget_test
