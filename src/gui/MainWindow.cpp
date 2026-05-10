@@ -7481,22 +7481,32 @@ void MainWindow::buildUI()
     m_connStatusLabel->hide();
 
     // ── Left section ─────────────────────────────────────────────────────
-    // +PAN icon: mini spectrum with + overlay
+    // +PAN icon: jagged FFT-spectrum trace with multiple sharp peaks
+    // (matching the SSDR visual language) plus a "+" overlay.
     {
         QPixmap pm(36, 28);
         pm.fill(Qt::transparent);
         QPainter pp(&pm);
         pp.setRenderHint(QPainter::Antialiasing);
-        // Spectrum line — flat noise floor with two signal peaks
-        pp.setPen(QPen(QColor(255, 255, 255, 128), 1.8));
+
+        const QColor stroke(255, 255, 255, 210);
+
+        // Polyline: noise floor at y=22, multiple peaks of varying height,
+        // with extra detail between peaks for the "real FFT" texture.
+        pp.setPen(QPen(stroke, 1.6));
         const QPointF pts[] = {
-            {0,22}, {4,21}, {7,20}, {9,14}, {10,7}, {11,14}, {13,20},
-            {16,21}, {18,20}, {20,10}, {21,4}, {22,10}, {24,20},
-            {27,21}, {30,22}
+            { 0, 22}, { 1, 21}, { 2, 22}, { 3, 19}, { 4, 22},   // floor + small peak
+            { 5, 21}, { 6, 18}, { 7, 12}, { 8, 17}, { 9, 22},   // tall peak
+            {10, 21}, {11, 22}, {12, 16}, {13, 22},             // medium peak
+            {14, 21}, {15, 19}, {16, 22},                       // ripple
+            {17, 20}, {18, 12}, {19,  4}, {20, 11}, {21, 21},   // tallest peak
+            {22, 22}, {23, 21}, {24, 17}, {25, 22},             // medium peak
+            {26, 21}, {27, 22}, {28, 18}, {29, 22}, {30, 22}    // small peak + floor
         };
-        pp.drawPolyline(pts, 15);
-        // + sign in upper-right
-        pp.setPen(QPen(QColor(255, 255, 255, 200), 2.2));
+        pp.drawPolyline(pts, sizeof(pts) / sizeof(pts[0]));
+
+        // "+" sign in upper-right.
+        pp.setPen(QPen(stroke, 2.2));
         pp.drawLine(30, 4, 30, 14);   // vertical
         pp.drawLine(25, 9, 35, 9);    // horizontal
         pp.end();
