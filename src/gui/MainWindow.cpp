@@ -1188,6 +1188,8 @@ MainWindow::MainWindow(QWidget* parent)
                 p->setQuindarActive(active);
         }
     });
+    connect(&m_radioModel, &RadioModel::interlockNotificationRequested,
+            this, &MainWindow::showPanadapterInterlockNotification);
 
     m_networkDiagnosticsHistory = new NetworkDiagnosticsHistory(&m_radioModel, m_audio, this);
 
@@ -11671,6 +11673,22 @@ SpectrumWidget* MainWindow::spectrumForSlice(SliceModel* s) const
     return spectrum();  // fallback to active pan
 }
 
+void MainWindow::showPanadapterInterlockNotification(const QString& message)
+{
+    SliceModel* target = nullptr;
+    for (auto* s : m_radioModel.slices()) {
+        if (s && s->isTxSlice()) {
+            target = s;
+            break;
+        }
+    }
+    if (!target)
+        target = activeSlice();
+
+    if (auto* sw = spectrumForSlice(target))
+        sw->showInterlockNotification(message, 5000);
+}
+
 // ─── Pan layout application ───────────────────────────────────────────────────
 
 // ─── Keyboard Shortcuts ───────────────────────────────────────────────────────
@@ -13464,6 +13482,7 @@ void MainWindow::activateRADE(int sliceId)
         qWarning() << "MainWindow: failed to start RADE engine";
         return;
     }
+    m_radioModel.setDigitalVoiceTxSlice(sliceId);
 
     // RADE sends VITA-49 modem audio directly (like TCI), so it needs its own
     // dax_tx stream regardless of platform.  On Windows the ExternalDaxRouteOnly
@@ -13593,6 +13612,7 @@ void MainWindow::deactivateRADE()
     }
 
     m_audio->setRadeMode(false);
+    m_radioModel.setDigitalVoiceTxSlice(-1);
     m_audio->clearTxAccumulators();  // flush stale RADE modem data
     m_appletPanel->phoneCwApplet()->setRadeActive(false);
     // For hardware mics, reset to full gain — the radio controls hardware levels.
