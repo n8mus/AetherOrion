@@ -14826,15 +14826,9 @@ void MainWindow::onSpectrumReadyForSHistory(quint32 streamId, const QVector<floa
         if (!bufPtr) { bufPtr = std::make_shared<AetherSDR::SpectrogramBuffer>(); }
         bufPtr->push(bins, pan->centerMhz(), pan->bandwidthMhz());
 
-        // SpotHub Display tab → Signal History → "Edge Threshold" slider.
-        // Negative = disabled (use historical 6 dB edge); >= 0 enables slope-
-        // based edge walk at noise floor + this many dB.  Default 3 dB.
-        const float softEdgeDb = AppSettings::instance()
-            .value("SHistorySoftEdgeDb", "3.0").toFloat();
         const auto detected =
             AetherSDR::detectVoiceSignals(bins, pan->centerMhz(), pan->bandwidthMhz(),
-                                          voiceRanges, noiseFloor, sliceMode,
-                                          softEdgeDb);
+                                          voiceRanges, noiseFloor, sliceMode);
         auto& entries = m_sHistoryData[panId];
         for (const auto& sig : detected) {
             bool found = false;

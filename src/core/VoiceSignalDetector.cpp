@@ -21,10 +21,10 @@ namespace {
     constexpr float kThresholdDb = 6.0f;
 
     // Minimum peak above the EMA floor for a region to be REPORTED.
-    // A region can be found at 6 dB but only shown when its peak is ≥ 8 dB —
+    // A region can be found at 6 dB but only shown when its peak is ≥ 13 dB —
     // this filters broad noise bumps that barely exceed the boundary threshold
     // while retaining weak-but-genuine voice signals that have a clear peak.
-    constexpr float kMinPeakAboveFloorDb = 10.0f;
+    constexpr float kMinPeakAboveFloorDb = 13.0f;
 
     // Percentile used for noise floor.  10th is more robust on crowded bands.
     constexpr int kNoisePctile = 10;
@@ -50,8 +50,7 @@ QVector<DetectedVoiceSignal> detectVoiceSignals(
     double bandwidthMhz,
     const QVector<QPair<double, double>>& voiceRangesMhz,
     float rollingNoiseFloorDbm,
-    const QString& sliceMode,
-    float softEdgeDb)
+    const QString& sliceMode)
 {
     QVector<DetectedVoiceSignal> results;
     const int N = binsDbm.size();
@@ -171,48 +170,46 @@ QVector<DetectedVoiceSignal> detectVoiceSignals(
                 return;
             }
             const double segWidthHz = (hi - lo + 1) * hzPerBin;
+            // For all voice-width signals (not QRM/wideband) place the marker
+            // at the peak bin.  USB voice energy is concentrated on the left
+            // (near the carrier); LSB on the right.  The peak bin therefore
+            // naturally lands on the carrier side without any edge-walk
+            // heuristic, and it marks the visually brightest point of the
+            // signal on the waterfall — the most intuitive reference for the
+            // operator.  The fill extension (kFillHz) can push the 6 dB edge
+            // 200–400 Hz past the actual signal, which the peak bin avoids.
+            // QRM/wideband paths are unaffected (they use their own placement).
+            const int peakBin = static_cast<int>(peakIt - binsDbm.constBegin());
+            const double rawFreqMhz = startMhz + (peakBin + 0.5) / N * bandwidthMhz;
             double fMhz;
             if (segWidthHz < kVoiceMinHz) {
-                // Narrow carrier / QRM tone: use peak bin for accuracy.
-                const int peakBin = static_cast<int>(peakIt - binsDbm.constBegin());
-                fMhz = startMhz + (peakBin + 0.5) / N * bandwidthMhz;
+                // Narrow carrier / QRM tone: use raw peak bin — QRM tones live
+                // anywhere and kHz snapping would misplace them.
+                fMhz = rawFreqMhz;
             } else {
-                int edge = isUsb ? lo : hi;
-                if (softEdgeDb >= 0.0f) {
-                    // Slope-based edge walk.  Starting from the 6 dB region
-                    // boundary, walk outward (toward the carrier) on raw
-                    // unfilled bins using the softer noiseFloor+softEdgeDb
-                    // threshold.  Require kStopBins consecutive sub-threshold
-                    // bins to terminate so isolated noise gaps in the voice
-                    // rolloff don't end the walk prematurely.  Then roll back
-                    // to the last above-threshold bin so the reported edge
-                    // sits at the lowest visible voice energy — typically
-                    // 100–200 Hz nearer to the carrier than the 6 dB edge.
-                    const float softThr = noiseFloor + softEdgeDb;
-                    constexpr int kStopBins = 3;
-                    int below = 0;
-                    int b     = edge;
-                    while (true) {
-                        const int next = isUsb ? b - 1 : b + 1;
-                        if (next < 0 || next >= N) { break; }
-                        if (binsDbm[next] < softThr) {
-                            ++below;
-                            if (below >= kStopBins) {
-                                edge = isUsb ? (b + (kStopBins - 1))
-                                             : (b - (kStopBins - 1));
-                                edge = std::clamp(edge, 0, N - 1);
-                                break;
-                            }
-                        } else {
-                            below = 0;
-                        }
-                        b = next;
-                    }
-                    if (below < kStopBins) {
-                        edge = std::clamp(b, 0, N - 1);
-                    }
+                // Voice-width: snap toward the carrier side.
+                // USB carriers are to the LEFT (lower frequency) of the energy
+                // peak, so we floor to the kHz below; LSB carriers are to the
+                // RIGHT, so we ceil.  Ham operators operate on round kHz values,
+                // and the peak typically sits 300–1200 Hz inside the passband,
+                // so the 1200 Hz guard catches the common case correctly.
+                //
+                // Known limitation: if peak energy lands >1000 Hz above a
+                // kHz-aligned USB carrier (e.g. wide TX EQ, peak at +1500 Hz),
+                // floor snaps to the kHz just below the peak rather than the
+                // carrier's kHz, and the 500 Hz snapOff passes the guard —
+                // resulting in a 1 kHz high report.  A passband-bias approach
+                // fixes that range but breaks peaks <700 Hz from the carrier,
+                // which is the more common case on typical SSB audio.
+                const double snapped = isUsb
+                    ? std::floor(rawFreqMhz * 1000.0) / 1000.0
+                    : std::ceil (rawFreqMhz * 1000.0) / 1000.0;
+                const double snapOffHz = std::abs(rawFreqMhz - snapped) * 1.0e6;
+                if (snapOffHz <= 1200.0) {
+                    fMhz = snapped;
+                } else {
+                    fMhz = std::round(rawFreqMhz * 10000.0) / 10000.0; // 100 Hz
                 }
-                fMhz = startMhz + (edge + 0.5) / N * bandwidthMhz;
             }
             qCDebug(lcSHistory,
                 "  DETECTED: %.4f MHz  %s  peak=%.1f dBm (%s)  width=%.0f Hz%s",

@@ -2434,34 +2434,6 @@ void DxClusterDialog::buildDisplayTab(QTabWidget* tabs)
         });
         shGrid->addLayout(qrmRow, shr++, 1);
 
-        // Edge Threshold — softer noise-above-floor cutoff used by the slope
-        // edge walk to refine the carrier-side mode edge.  Lower values pull
-        // the marker closer to the carrier (more aggressive).  Steps in
-        // 0.5 dB increments via a 10× int slider.
-        const int edgeDbInt = static_cast<int>(std::lround(
-            AppSettings::instance().value("SHistorySoftEdgeDb", "3.0").toFloat() * 10.0f));
-        shGrid->addWidget(new QLabel("Edge Threshold:"), shr, 0);
-        auto* edgeRow = new QHBoxLayout;
-        auto* edgeSlider = new GuardedSlider(Qt::Horizontal);
-        edgeSlider->setRange(10, 100);  // 1.0–10.0 dB in 0.1 dB units
-        edgeSlider->setSingleStep(5);   // snap-feel: 0.5 dB notches
-        edgeSlider->setValue(std::clamp(edgeDbInt, 10, 100));
-        edgeSlider->setToolTip(
-            "Threshold above noise floor for the slope edge walk that\n"
-            "refines the SHistory carrier-side edge.  Lower = closer to\n"
-            "the carrier but more sensitive to noise.  Default 3.0 dB.");
-        auto* edgeValue = new QLabel(QString::number(edgeSlider->value() / 10.0, 'f', 1) + " dB");
-        edgeValue->setFixedWidth(56);
-        edgeValue->setAlignment(Qt::AlignRight);
-        edgeRow->addWidget(edgeSlider);
-        edgeRow->addWidget(edgeValue);
-        connect(edgeSlider, &QSlider::valueChanged, this, [edgeValue, save](int v) {
-            const double db = v / 10.0;
-            edgeValue->setText(QString::number(db, 'f', 1) + " dB");
-            save("SHistorySoftEdgeDb", QString::number(db, 'f', 1));
-        });
-        shGrid->addLayout(edgeRow, shr++, 1);
-
         // Marker colour swatches — mirrors the DXCC swatch pattern in the
         // left column.  Two pickers: Signals (voice) and QRM.
         QColor signalsColor(AppSettings::instance()
