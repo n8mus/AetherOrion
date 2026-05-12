@@ -74,6 +74,10 @@ signals:
     void afGainChanged(int value);
     // Emitted when the user changes the tuning step size (Hz).
     void stepSizeChanged(int hz);
+    // Emitted when Auto SQL tracking is toggled.
+    void sqlAutoChanged(bool on);
+    // Emitted when the radio reports a squelch state change (for spectrum line).
+    void squelchStateChanged(bool on, int level);
 
 #ifdef HAVE_RADE
     // Emitted when user selects/deselects RADE digital voice mode
@@ -174,10 +178,20 @@ private:
     QSlider*     m_afSlider{nullptr};
     QSlider*     m_panSlider{nullptr};
 
-    // Squelch
+    // Squelch — 3-way cycle: Off → Manual → Auto → Off.
+    // Click m_sqlBtn cycles through the modes; the button label and style
+    // change with the mode ("SQL"/"AUTO"; base/green/amber).  Auto mode
+    // emits sqlAutoChanged(true) so MainWindow's spectrum-side algorithm
+    // takes over driving the squelch level; Manual mode uses the slider.
+    enum class SqlMode : uint8_t { Off, Manual, Auto };
     QPushButton* m_sqlBtn{nullptr};
     QSlider*     m_sqlSlider{nullptr};
+    SqlMode      m_sqlMode{SqlMode::Off};
     bool         m_savedSquelchOn{false};
+
+    void applySqlModeVisuals();
+    void cycleSqlMode();
+    void setSqlMode(SqlMode m, bool propagateToRadio);
 
 
     // RIT
