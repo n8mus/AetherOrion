@@ -6855,8 +6855,15 @@ void MainWindow::buildMenuBar()
     m_profilesMenu = menuBar()->addMenu("&Profiles");
     auto* profileMgrAct = m_profilesMenu->addAction("Profile Manager...");
     connect(profileMgrAct, &QAction::triggered, this, [this] {
-        ProfileManagerDialog dlg(&m_radioModel, this);
-        dlg.exec();
+        if (!m_profileManagerDialog) {
+            auto* dlg = new ProfileManagerDialog(&m_radioModel, this);
+            dlg->setAttribute(Qt::WA_DeleteOnClose);
+            dlg->setFramelessMode(framelessWindowEnabled());
+            m_profileManagerDialog = dlg;
+        }
+        m_profileManagerDialog->show();
+        m_profileManagerDialog->raise();
+        m_profileManagerDialog->activateWindow();
     });
     auto* profileImportExportAct = m_profilesMenu->addAction("Import/Export Profiles...");
     connect(profileImportExportAct, &QAction::triggered, this, [this] {
@@ -11380,6 +11387,8 @@ void MainWindow::setFramelessWindow(bool on)
         dlg->setFramelessMode(on);
     if (auto* dlg = qobject_cast<MemoryDialog*>(m_memoryDialog))
         dlg->setFramelessMode(on);
+    if (m_profileManagerDialog)
+        m_profileManagerDialog->setFramelessMode(on);
 #ifdef HAVE_MIDI
     if (auto* dlg = qobject_cast<MidiMappingDialog*>(m_midiDialog)) {
         dlg->setFramelessMode(on);
