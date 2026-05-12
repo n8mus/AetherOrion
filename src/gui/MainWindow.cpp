@@ -6365,6 +6365,16 @@ void MainWindow::buildMenuBar()
                 &MainWindow::applySHistoryEnabled);
         connect(dlg, &DxClusterDialog::sHistoryQrmToggled, this,
                 &MainWindow::applySHistoryQrmEnabled);
+        connect(dlg, &DxClusterDialog::smartSpotOpacityChanged, this,
+                [this](int pct) {
+            for (auto* a : m_panStack->allApplets())
+                a->spectrumWidget()->setSmartSpotFilterOpacity(pct);
+        });
+        connect(dlg, &DxClusterDialog::smartSpotDelayChanged, this,
+                [this](int seconds) {
+            for (auto* a : m_panStack->allApplets())
+                a->spectrumWidget()->setSmartSpotFilterDelayS(seconds);
+        });
         connect(dlg, &DxClusterDialog::connectRequested,
                 this, [this](const QString& host, quint16 port, const QString& call) {
             QMetaObject::invokeMethod(m_dxCluster, [=] { m_dxCluster->connectToCluster(host, port, call); });
@@ -7051,6 +7061,26 @@ void MainWindow::buildMenuBar()
                 applet->spectrumWidget()->setPropForecast(-1, -1, -1);
             }
         }
+    });
+
+    auto* smartSpotAct = viewMenu->addAction("Smart Spot Filtering");
+    smartSpotAct->setCheckable(true);
+    smartSpotAct->setToolTip(
+        "Dim SSB spots that have no detected voice signal within ±1 kHz.\n"
+        "Spots on active frequencies remain at full brightness;\n"
+        "unoccupied spots fade to 20% opacity (default, adjustable in\n"
+        "SpotHub → Display → Signal History).  CW and digital spots\n"
+        "are unaffected.  Requires Signal History to be enabled.");
+    m_smartSpotFilterEnabled =
+        AppSettings::instance().value("SmartSpotFilterEnabled", "False").toString() == "True";
+    smartSpotAct->setChecked(m_smartSpotFilterEnabled);
+    connect(smartSpotAct, &QAction::toggled, this, [this](bool on) {
+        m_smartSpotFilterEnabled = on;
+        if (on) m_smartSpotFilterEnabledMs = QDateTime::currentMSecsSinceEpoch();
+        for (auto* a : m_panStack->allApplets())
+            a->spectrumWidget()->setSmartSpotFilter(on, m_smartSpotFilterEnabledMs);
+        AppSettings::instance().setValue("SmartSpotFilterEnabled", on ? "True" : "False");
+        AppSettings::instance().save();
     });
 
     auto* fpsMetersAct = viewMenu->addAction("FPS Meters");
@@ -9982,6 +10012,13 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(&m_radioModel, &RadioModel::antListChanged,
             menu, &SpectrumOverlayMenu::setAntennaList);
     menu->setAntennaList(m_radioModel.antennaList());
+
+    // Apply smart spot filter state to this (possibly new) panadapter
+    sw->setSmartSpotFilter(m_smartSpotFilterEnabled, m_smartSpotFilterEnabledMs);
+    sw->setSmartSpotFilterOpacity(
+        AppSettings::instance().value("SmartSpotFilterOpacity", 80).toInt());
+    sw->setSmartSpotFilterDelayS(
+        AppSettings::instance().value("SmartSpotFilterDelayS", 30).toInt());
 
     // Apply current prop forecast state to this (possibly new) panadapter
     if (m_propForecast) {

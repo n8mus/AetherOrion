@@ -126,6 +126,8 @@ signals:
     // owns the live apply + persistence path.
     void sHistoryEnabledToggled(bool on);
     void sHistoryQrmToggled(bool on);
+    void smartSpotOpacityChanged(int pct);
+    void smartSpotDelayChanged(int seconds);
 
 private:
     void buildClusterTab(QTabWidget* tabs);

@@ -383,6 +383,8 @@ private:
     QTimer* m_sHistoryExpireTimer{nullptr};
     bool    m_sHistoryEnabled{false};
     bool    m_sHistoryQrmEnabled{false};
+    bool    m_smartSpotFilterEnabled{false};
+    qint64  m_smartSpotFilterEnabledMs{0};
     // Single apply path used by the SpotHub Display tab toggles (no
     // View-menu duplicate).  Updates the member flag, persists via
     // AppSettings, pushes to all spectrum widgets, and clears the data

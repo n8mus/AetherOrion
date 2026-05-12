@@ -5204,6 +5204,20 @@ void SpectrumWidget::setTnfMarkers(const QVector<TnfMarker>& markers)
 
 void SpectrumWidget::setSpotMarkers(const QVector<SpotMarker>& markers)
 {
+    // Prune confirmed-spot cache to only entries still present in the new list.
+    if (!m_spotConfirmedMs.isEmpty()) {
+        QHash<QString, qint64> pruned;
+        pruned.reserve(markers.size());
+        for (const auto& m : markers) {
+            const QString key = m.callsign + QChar('@') +
+                                QString::number(qRound(m.freqMhz * 1000.0));
+            auto it = m_spotConfirmedMs.find(key);
+            if (it != m_spotConfirmedMs.end())
+                pruned.insert(key, it.value());
+        }
+        m_spotConfirmedMs = std::move(pruned);
+    }
+
     const bool visualChange = !spotMarkersVisuallyEqual(m_spotMarkers, markers);
     m_spotMarkers = markers;
     if (!visualChange) {
@@ -5456,6 +5470,21 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
     }
     if (allMarkers.isEmpty()) return;
 
+    // Smart Spot Filter: cache S-History voice frequencies for O(n) per spot.
+    // Hoist the current timestamp once — used for warmup check and per-spot
+    // confirmation cache, avoiding repeated syscalls at frame rate.
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const qint64 smartFilterWarmupMs = static_cast<qint64>(m_smartSpotFilterDelayS) * 1000;
+    const bool smartFilterReady = m_smartSpotFilter &&
+        (nowMs - m_smartSpotFilterEnabledMs) >= smartFilterWarmupMs;
+    QVector<double> sHistVoiceFreqs;
+    if (smartFilterReady) {
+        for (const auto& sh : m_sHistoryMarkers) {
+            if (sh.source != QStringLiteral("QRM"))
+                sHistVoiceFreqs.append(sh.freqMhz);
+        }
+    }
+
     QFont spotFont = p.font();
     spotFont.setPixelSize(m_spotFontSize);
     spotFont.setBold(true);
@@ -5520,6 +5549,42 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
             continue;
         }
 
+        // Determine draw opacity.
+        // QRM markers: always 30%.  Smart-filter unmatched/expired spots: user-configurable (default 20%).  Normal: 100%.
+        const bool isQrm = (spot.source == QStringLiteral("QRM"));
+        bool dimForFilter = false;
+        if (!isQrm && smartFilterReady && !sHistVoiceFreqs.isEmpty()) {
+            // Only apply to voice/SSB spots; leave CW/digital at full opacity.
+            const QString mu = spot.mode.toUpper();
+            const bool isDigital = mu.contains("CW")   || mu.contains("FT")  ||
+                                   mu.contains("JS8")  || mu.contains("PSK") ||
+                                   mu.contains("RTTY") || mu.contains("WSPR");
+            if (!isDigital) {
+                constexpr double kMatchMhz = 0.001; // ±1 kHz of detected signal start
+                constexpr qint64 kConfirmGraceMs = 120000; // 2 min grace after last confirmation
+                const QString spotKey = spot.callsign + QChar('@') +
+                                        QString::number(qRound(spot.freqMhz * 1000.0));
+                bool matched = false;
+                for (double shFreq : sHistVoiceFreqs) {
+                    if (std::abs(spot.freqMhz - shFreq) <= kMatchMhz) {
+                        matched = true;
+                        break;
+                    }
+                }
+                if (matched) {
+                    m_spotConfirmedMs[spotKey] = nowMs;
+                } else {
+                    const qint64 lastConfirmed = m_spotConfirmedMs.value(spotKey, 0);
+                    if (nowMs - lastConfirmed < kConfirmGraceMs)
+                        matched = true; // still within grace period
+                }
+                dimForFilter = !matched;
+            }
+        }
+        const double dimOpacity = 1.0 - m_smartSpotFilterOpacity / 100.0;
+        const double drawOpacity = isQrm ? 0.3 : (dimForFilter ? dimOpacity : 1.0);
+        if (drawOpacity < 1.0) p.setOpacity(drawOpacity);
+
         // Draw vertical tick line from bottom of spectrum up to the label
         if (m_spotShowLines) {
             p.setPen(QPen(QColor(col.red(), col.green(), col.blue(), 120), 1, Qt::DotLine));
@@ -5529,15 +5594,14 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
         placed.append(labelRect);
         m_spotClickRects.append({labelRect, spot.freqMhz, mIdx});
 
-        // QRM markers draw at 30% opacity (70% transparent)
-        const bool isQrm = (spot.source == QStringLiteral("QRM"));
-        if (isQrm) { p.setOpacity(0.3); }
-
         // Background pill — local Override Background color wins when on
         // (#768).  When off, fall through to the protocol-supplied
         // `background_color` field if the spot carries one (#2550).  The
         // #AARRGGBB form encodes alpha directly so no separate opacity
         // multiplier is applied — the upstream tool's choice is honored.
+        // Opacity for QRM markers / smart-filter dimming is set above
+        // (drawOpacity block) so the pill participates in the same
+        // opacity as the label.
         if (m_spotOverrideBg) {
             int bgAlpha = m_spotBgOpacity * 255 / 100;
             QColor bgCol = m_spotBgColor;
@@ -5559,7 +5623,7 @@ void SpectrumWidget::drawSpotMarkers(QPainter& p, const QRect& specRect)
         p.setPen(col);
         p.drawText(labelRect, Qt::AlignCenter, label);
 
-        if (isQrm) { p.setOpacity(1.0); }
+        if (drawOpacity < 1.0) p.setOpacity(1.0);
         ++mIdx;
     }
 

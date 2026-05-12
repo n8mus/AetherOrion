@@ -2495,6 +2495,54 @@ void DxClusterDialog::buildDisplayTab(QTabWidget* tabs)
         shGrid->addWidget(new QLabel("Snap to Step:"), shr, 0);
         shGrid->addWidget(snapToggle, shr++, 1, Qt::AlignLeft);
 
+        // Smart Spot Filter — Opacity (0–100, where 100 = fully invisible).
+        const int ssOpacity = AppSettings::instance()
+            .value("SmartSpotFilterOpacity", 80).toInt();
+        shGrid->addWidget(new QLabel("Filter Opacity:"), shr, 0);
+        auto* ssOpRow = new QHBoxLayout;
+        auto* ssOpSlider = new GuardedSlider(Qt::Horizontal);
+        ssOpSlider->setRange(0, 100);
+        ssOpSlider->setValue(std::clamp(ssOpacity, 0, 100));
+        ssOpSlider->setToolTip(
+            "Opacity applied to DX spots that have no matching S-History\n"
+            "voice detection.  0 = fully visible, 100 = fully invisible.\n"
+            "Default 80 (20% opacity).");
+        auto* ssOpValue = new QLabel(QString("%1%").arg(ssOpSlider->value()));
+        ssOpValue->setFixedWidth(40);
+        ssOpValue->setAlignment(Qt::AlignRight);
+        ssOpRow->addWidget(ssOpSlider);
+        ssOpRow->addWidget(ssOpValue);
+        connect(ssOpSlider, &QSlider::valueChanged, this, [this, ssOpValue, save](int v) {
+            ssOpValue->setText(QString("%1%").arg(v));
+            save("SmartSpotFilterOpacity", QString::number(v));
+            emit smartSpotOpacityChanged(v);
+        });
+        shGrid->addLayout(ssOpRow, shr++, 1);
+
+        // Smart Spot Filter — Delay before hiding (0–120 s).
+        const int ssDelay = AppSettings::instance()
+            .value("SmartSpotFilterDelayS", 30).toInt();
+        shGrid->addWidget(new QLabel("Filter Delay:"), shr, 0);
+        auto* ssDelRow = new QHBoxLayout;
+        auto* ssDelSlider = new GuardedSlider(Qt::Horizontal);
+        ssDelSlider->setRange(0, 120);
+        ssDelSlider->setValue(std::clamp(ssDelay, 0, 120));
+        ssDelSlider->setToolTip(
+            "How long to wait after Smart Spot Filtering is enabled\n"
+            "before dimming unmatched spots.  Gives S-History time to\n"
+            "populate.  Default 30 s.");
+        auto* ssDelValue = new QLabel(QString("%1 s").arg(ssDelSlider->value()));
+        ssDelValue->setFixedWidth(40);
+        ssDelValue->setAlignment(Qt::AlignRight);
+        ssDelRow->addWidget(ssDelSlider);
+        ssDelRow->addWidget(ssDelValue);
+        connect(ssDelSlider, &QSlider::valueChanged, this, [this, ssDelValue, save](int v) {
+            ssDelValue->setText(QString("%1 s").arg(v));
+            save("SmartSpotFilterDelayS", QString::number(v));
+            emit smartSpotDelayChanged(v);
+        });
+        shGrid->addLayout(ssDelRow, shr++, 1);
+
         rightCol->addLayout(shGrid);
         rightCol->addStretch();
     }

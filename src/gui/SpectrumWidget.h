@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <QHash>
 #include <QWidget>
 #include <QPushButton>
 #include <QVector>
@@ -352,6 +354,20 @@ public:
     bool showSHistory() const         { return m_showSHistory; }
     void setShowSHistoryQrm(bool on) { m_showSHistoryQrm = on; update(); }
     bool showSHistoryQrm() const      { return m_showSHistoryQrm; }
+    // Smart Spot Filtering: dim SSB/voice spots whose frequency is not within
+    // ±1 kHz of a live S-History detection.  Once matched, a spot stays at full
+    // opacity for 2 minutes after its last confirmation.  CW/digital spots are
+    // always shown at full opacity regardless of this setting.
+    void setSmartSpotFilter(bool on, qint64 enabledMs = 0) {
+        if (on && !m_smartSpotFilter)
+            m_smartSpotFilterEnabledMs = (enabledMs > 0) ? enabledMs
+                                                         : QDateTime::currentMSecsSinceEpoch();
+        m_smartSpotFilter = on;
+        update();
+    }
+    bool smartSpotFilter() const     { return m_smartSpotFilter; }
+    void setSmartSpotFilterOpacity(int pct) { m_smartSpotFilterOpacity = std::clamp(pct, 0, 100); update(); }
+    void setSmartSpotFilterDelayS(int s)    { m_smartSpotFilterDelayS  = std::max(0, s); }
     // When on, click-to-tune on a SHistory/QRM marker rounds the target to
     // the nearest multiple of stepSize().  Compensates for the inherent
     // detector edge-bin imprecision (typically 100–300 Hz off carrier).
@@ -795,6 +811,11 @@ private:
     bool m_showSHistory{false};
     bool m_showSHistoryQrm{false};
     bool m_sHistorySnapToStep{false};
+    bool   m_smartSpotFilter{false};
+    qint64 m_smartSpotFilterEnabledMs{0};
+    int    m_smartSpotFilterOpacity{80};
+    int    m_smartSpotFilterDelayS{30};
+    QHash<QString, qint64> m_spotConfirmedMs; // key = callsign@freqKHz → last confirmed ms
     QVector<SpotMarker> m_sHistoryMarkers;
     int  m_spotFontSize{16};
     int  m_spotMaxLevels{3};
