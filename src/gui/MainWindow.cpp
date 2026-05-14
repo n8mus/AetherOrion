@@ -13786,6 +13786,8 @@ void MainWindow::activateRADE(int sliceId)
                     vfo, &VfoWidget::setRadeSnr);
             connect(m_radeEngine, &RADEEngine::freqOffsetChanged,
                     vfo, &VfoWidget::setRadeFreqOffset);
+            connect(m_radeEngine, &RADEEngine::eooCallsignReceived,
+                    vfo, &VfoWidget::setRadeCallsign, Qt::QueuedConnection);
         }
     }
 
