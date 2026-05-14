@@ -80,6 +80,7 @@
 #include "core/DvkWavTransfer.h"
 #include "AmpApplet.h"
 #include "MeterApplet.h"
+#include "PersistentDialog.h"
 #include "ProfileManagerDialog.h"
 #include "ProfileImportExportDialog.h"
 #include "SupportDialog.h"
@@ -6910,15 +6911,7 @@ void MainWindow::buildMenuBar()
     m_profilesMenu = menuBar()->addMenu("&Profiles");
     auto* profileMgrAct = m_profilesMenu->addAction("Profile Manager...");
     connect(profileMgrAct, &QAction::triggered, this, [this] {
-        if (!m_profileManagerDialog) {
-            auto* dlg = new ProfileManagerDialog(&m_radioModel, this);
-            dlg->setAttribute(Qt::WA_DeleteOnClose);
-            dlg->setFramelessMode(framelessWindowEnabled());
-            m_profileManagerDialog = dlg;
-        }
-        m_profileManagerDialog->show();
-        m_profileManagerDialog->raise();
-        m_profileManagerDialog->activateWindow();
+        showOrRaisePersistent(m_profileManagerDialog, &m_radioModel);
     });
     auto* profileImportExportAct = m_profilesMenu->addAction("Import/Export Profiles...");
     connect(profileImportExportAct, &QAction::triggered, this, [this] {
@@ -11585,8 +11578,10 @@ void MainWindow::setFramelessWindow(bool on)
         dlg->setFramelessMode(on);
     if (auto* dlg = qobject_cast<MemoryDialog*>(m_memoryDialog))
         dlg->setFramelessMode(on);
-    if (m_profileManagerDialog)
-        m_profileManagerDialog->setFramelessMode(on);
+    // Profile Import/Export hasn't been migrated to PersistentDialog yet
+    // (#2605 follow-up), so it still needs an explicit cast.  Profile
+    // Manager IS on PersistentDialog and propagates via m_persistentDialogs
+    // below.
     if (m_profileImportExportDialog)
         m_profileImportExportDialog->setFramelessMode(on);
 #ifdef HAVE_MIDI
@@ -11602,6 +11597,18 @@ void MainWindow::setFramelessWindow(bool on)
     }
     if (m_aetherialStrip)
         m_aetherialStrip->setFramelessMode(on);
+    // Propagate to every PersistentDialog-derived dialog created via
+    // showOrRaisePersistent().  QPointer entries auto-null on dialog close
+    // (WA_DeleteOnClose); prune those as we go so the list doesn't grow
+    // monotonically.
+    for (auto it = m_persistentDialogs.begin(); it != m_persistentDialogs.end(); ) {
+        if (PersistentDialog* dlg = it->data()) {
+            dlg->setFramelessMode(on);
+            ++it;
+        } else {
+            it = m_persistentDialogs.erase(it);
+        }
+    }
     setEditorFramelessMode(m_clientEqEditor, on);
     setEditorFramelessMode(m_clientCompEditor, on);
     setEditorFramelessMode(m_clientGateEditor, on);
