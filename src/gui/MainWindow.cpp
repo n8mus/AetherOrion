@@ -13789,6 +13789,13 @@ void MainWindow::activateRADE(int sliceId)
         }
     }
 
+    // Store far-end callsign received in EOO frame for display / future use.
+    connect(m_radeEngine, &RADEEngine::eooCallsignReceived,
+            this, [this](const QString& callsign) {
+                m_lastRadeRxCallsign = callsign;
+                qCDebug(lcRade) << "RADE EOO callsign received:" << callsign;
+            });
+
     // FreeDV Reporter: station reporting when the user has opted in.
     if (AppSettings::instance().value("FreeDvAutoReport", "False").toString() == "True")
         startFreeDvReporting(sliceId);
@@ -13822,6 +13829,7 @@ void MainWindow::deactivateRADE()
     if (m_radioModel.transmitModel().micSelection() != "PC") {
         m_audio->setPcMicGain(100);
     }
+    m_lastRadeRxCallsign.clear();
 
     if (m_radeEngine) {
         disconnect(m_audio, &AudioEngine::txRawPcmReady,
@@ -13832,6 +13840,8 @@ void MainWindow::deactivateRADE()
                    m_radeEngine, nullptr);
         disconnect(m_radeEngine, &RADEEngine::rxSpeechReady,
                    m_audio, nullptr);
+        disconnect(m_radeEngine, &RADEEngine::eooCallsignReceived,
+                   this, nullptr);
         if (m_radeDaxStreamId) {
             // Only send stream remove if TCI has no active clients. If TCI is
             // connected it may have borrowed this stream — removing it would
@@ -13943,6 +13953,8 @@ void MainWindow::startFreeDvReporting(int sliceId)
                 m_freedvClient, &FreeDvClient::updateRxSnr, Qt::QueuedConnection);
         connect(m_radeEngine, &RADEEngine::syncChanged,
                 m_freedvClient, &FreeDvClient::updateRxSynced, Qt::QueuedConnection);
+        connect(m_radeEngine, &RADEEngine::eooCallsignReceived,
+                m_freedvClient, &FreeDvClient::updateRxCallsign, Qt::QueuedConnection);
     }
     if (SliceModel* radeSlice = m_radioModel.slice(sliceId)) {
         connect(radeSlice, &SliceModel::frequencyChanged,
@@ -13960,8 +13972,9 @@ void MainWindow::stopFreeDvReporting(int sliceId)
 
     disconnect(m_freedvMoxConn);
     if (m_radeEngine) {
-        disconnect(m_radeEngine, &RADEEngine::snrChanged,   m_freedvClient, nullptr);
-        disconnect(m_radeEngine, &RADEEngine::syncChanged,  m_freedvClient, nullptr);
+        disconnect(m_radeEngine, &RADEEngine::snrChanged,           m_freedvClient, nullptr);
+        disconnect(m_radeEngine, &RADEEngine::syncChanged,          m_freedvClient, nullptr);
+        disconnect(m_radeEngine, &RADEEngine::eooCallsignReceived,  m_freedvClient, nullptr);
     }
     if (auto* radeSlice = m_radioModel.slice(sliceId))
         disconnect(radeSlice, &SliceModel::frequencyChanged, m_freedvClient, nullptr);
