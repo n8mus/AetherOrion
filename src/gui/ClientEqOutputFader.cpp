@@ -1,7 +1,12 @@
 #include "ClientEqOutputFader.h"
 
+#include <QEvent>
+#include <QFocusEvent>
+#include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QLinearGradient>
+#include <QLocale>
 #include <QMouseEvent>
 #include <QPaintEvent>
 #include <QPainter>
@@ -58,14 +63,92 @@ ClientEqOutputFader::ClientEqOutputFader(QWidget* parent) : QWidget(parent)
 
     root->addStretch(1);
 
-    m_valueLabel = new QLabel;
-    m_valueLabel->setAlignment(Qt::AlignCenter);
-    m_valueLabel->setStyleSheet(
-        "QLabel { color: #d7e7f2; font-size: 10px; font-weight: bold;"
-        " background: transparent; border: none; }");
-    root->addWidget(m_valueLabel);
+    // Inline-editable value at the bottom of the fader.  Click to focus,
+    // type a dB value, Enter or focus-out to commit (clamped to range).
+    // Looks identical to a label until focused; subtle inset + cyan
+    // border on focus indicates edit mode (matches ClientCompKnob).
+    m_valueEdit = new QLineEdit;
+    m_valueEdit->setAlignment(Qt::AlignCenter);
+    m_valueEdit->setFrame(false);
+    m_valueEdit->setStyleSheet(
+        "QLineEdit { color: #d7e7f2; font-size: 10px; font-weight: bold;"
+        " background: transparent; border: 1px solid transparent;"
+        " border-radius: 2px; padding: 0;"
+        " selection-background-color: #0070c0; }"
+        "QLineEdit:focus { background: #0a0a18; border: 1px solid #00b4d8; }");
+    m_valueEdit->installEventFilter(this);
+    root->addWidget(m_valueEdit);
+
+    connect(m_valueEdit, &QLineEdit::returnPressed, this, [this] {
+        commitValueEdit();
+        m_valueEdit->clearFocus();
+    });
+    connect(m_valueEdit, &QLineEdit::editingFinished, this, [this] {
+        commitValueEdit();
+    });
 
     refreshValueLabel();
+}
+
+void ClientEqOutputFader::commitValueEdit()
+{
+    if (!m_valueEdit) return;
+    static thread_local bool s_committing = false;
+    if (s_committing) return;
+    s_committing = true;
+    const QString raw = m_valueEdit->text().trimmed();
+    bool ok = false;
+    double v = QLocale().toDouble(raw, &ok);
+    if (!ok) {
+        QString cleaned;
+        cleaned.reserve(raw.size());
+        for (QChar c : raw) {
+            if (c.isDigit() || c == QChar('.') || c == QChar('-')
+                || c == QChar('+') || c == QChar('e') || c == QChar('E'))
+                cleaned.append(c);
+        }
+        v = cleaned.toDouble(&ok);
+    }
+    if (ok) {
+        const float db = std::clamp(static_cast<float>(v),
+                                    kGainMinDb, kGainMaxDb);
+        m_gain = dbToLinear(db);
+        refreshValueLabel();
+        emit gainChanged(m_gain);
+        update();
+    } else {
+        refreshValueLabel();
+    }
+    s_committing = false;
+}
+
+bool ClientEqOutputFader::eventFilter(QObject* obj, QEvent* ev)
+{
+    if (obj == m_valueEdit) {
+        if (ev->type() == QEvent::Wheel) {
+            wheelEvent(static_cast<QWheelEvent*>(ev));
+            return true;
+        }
+        if (ev->type() == QEvent::KeyPress) {
+            auto* ke = static_cast<QKeyEvent*>(ev);
+            if (ke->key() == Qt::Key_Escape) {
+                QSignalBlocker b(m_valueEdit);
+                refreshValueLabel();
+                m_valueEdit->clearFocus();
+                return true;
+            }
+        }
+        if (ev->type() == QEvent::FocusIn) {
+            // Show bare number on focus so the user types just digits.
+            QSignalBlocker b(m_valueEdit);
+            const float db = linearToDb(m_gain);
+            m_valueEdit->setText(QString::number(db, 'f', 1));
+            m_valueEdit->selectAll();
+        } else if (ev->type() == QEvent::FocusOut) {
+            refreshValueLabel();
+        }
+    }
+    return QWidget::eventFilter(obj, ev);
 }
 
 void ClientEqOutputFader::setGainLinear(float linear)
@@ -85,11 +168,13 @@ void ClientEqOutputFader::setPeakLinear(float peakLinear)
 
 void ClientEqOutputFader::refreshValueLabel()
 {
+    if (!m_valueEdit || m_valueEdit->hasFocus()) return;
     const float db = linearToDb(m_gain);
+    QSignalBlocker b(m_valueEdit);
     if (db <= kGainMinDb + 0.05f) {
-        m_valueLabel->setText("-inf");
+        m_valueEdit->setText("-inf");
     } else {
-        m_valueLabel->setText(QString::asprintf("%+.1f dB", db));
+        m_valueEdit->setText(QString::asprintf("%+.1f dB", db));
     }
 }
 
