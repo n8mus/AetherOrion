@@ -3,6 +3,7 @@
 #include "VfoWidget.h"
 #include "SliceColors.h"
 #include "SliceColorManager.h"
+#include "SliceLabel.h"
 #include <QVariantAnimation>
 
 #ifdef AETHER_GPU_SPECTRUM
@@ -2003,6 +2004,16 @@ static QColor sliceColor(int sliceId, bool active) {
     return SliceColorManager::instance().dimColor(sliceId);
 }
 
+// Variant that respects the SliceLetterDisplay mode (#2606): when set to
+// RadioIndexed, the colour follows the radio-provided per-client letter
+// rather than the global slice id so the slice marker / passband colour
+// keeps pace with the badge above the VFO.
+static QColor sliceColorForOverlay(const SpectrumWidget::SliceOverlay& so) {
+    const int colourIdx = SliceLabel::displayColorIndex(so.sliceId, so.perClientLetter);
+    if (so.isActive) return SliceColorManager::instance().activeColor(colourIdx);
+    return SliceColorManager::instance().dimColor(colourIdx);
+}
+
 // ─── Multi-slice overlay management ──────────────────────────────────────────
 
 int SpectrumWidget::overlayIndex(int sliceId) const
@@ -2071,6 +2082,18 @@ void SpectrumWidget::setSliceOverlayFreq(int sliceId, double freqMhz)
             if (so.freqMhz == freqMhz) return;  // unchanged — no repaint needed
             so.freqMhz = freqMhz;
             markOverlayDirty();  // repaint so markers reflect the new frequency (#1272)
+            return;
+        }
+    }
+}
+
+void SpectrumWidget::setSliceOverlayLetter(int sliceId, const QString& letter)
+{
+    for (auto& so : m_sliceOverlays) {
+        if (so.sliceId == sliceId) {
+            if (so.perClientLetter == letter) return;
+            so.perClientLetter = letter;
+            markOverlayDirty();
             return;
         }
     }
@@ -2732,7 +2755,9 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
             if (!m_offScreenRects[oi].isNull() &&
                 m_offScreenRects[oi].contains(QPoint(mx, y))) {
                 const auto& so = m_sliceOverlays[oi];
-                const QChar letter = QChar('A' + (so.sliceId % kSliceColorCount));
+                // Follow display mode so menu labels match the pill above (#2606).
+                const QString letter =
+                    SliceLabel::unicodeForm(so.sliceId, so.perClientLetter);
                 QMenu menu(this);
                 menu.addAction(QString("Close Slice %1").arg(letter), this,
                     [this, id = so.sliceId]{ emit sliceCloseRequested(id); });
@@ -2873,12 +2898,18 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
                 menu.addSeparator();
                 int closestSlice = -1;
                 int closestDist = INT_MAX;
+                QString closestLetter;
                 for (const auto& so : m_sliceOverlays) {
                     int dist = std::abs(mx - mhzToX(so.freqMhz));
-                    if (dist < closestDist) { closestDist = dist; closestSlice = so.sliceId; }
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestSlice = so.sliceId;
+                        closestLetter = so.perClientLetter;
+                    }
                 }
                 if (closestSlice >= 0) {
-                    const QChar letter = QChar('A' + (closestSlice & 3));
+                    const QString letter =
+                        SliceLabel::unicodeForm(closestSlice, closestLetter);
                     menu.addAction(QString("Close Slice %1").arg(letter), this,
                         [this, closestSlice]{ emit sliceCloseRequested(closestSlice); });
                 }
@@ -6407,7 +6438,7 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
     auto drawOne = [&](const SliceOverlay& so) {
         if (so.freqMhz < startMhz || so.freqMhz > endMhz) return;
 
-        const QColor col = sliceColor(so.sliceId, so.isActive);
+        const QColor col = sliceColorForOverlay(so);
         const int freqLineBottom = m_extendedFrequencyLine ? wfRect.bottom() : specRect.bottom();
         const double fLoMhz = so.freqMhz + so.filterLowHz / 1.0e6;
         const double fHiMhz = so.freqMhz + so.filterHighHz / 1.0e6;
@@ -6735,8 +6766,13 @@ void SpectrumWidget::drawOffScreenSlices(QPainter& p, const QRect& specRect)
         if (so.freqMhz >= startMhz && so.freqMhz <= endMhz) continue;
 
         const bool isRight = (so.freqMhz > endMhz);
-        const QColor col = sliceColor(so.sliceId, so.isActive);
-        const QChar letter = QChar('A' + (so.sliceId % kSliceColorCount));
+        const QColor col = sliceColorForOverlay(so);
+        // Letter on the off-screen pill follows the same display mode as
+        // the marker colour: per-client letter (with Unicode subscript)
+        // in RadioIndexed mode, global letter in Global mode (#2606).
+        QString letter = SliceLabel::unicodeForm(so.sliceId, so.perClientLetter);
+        if (letter.isEmpty())
+            letter = QString(QChar('A' + (so.sliceId % kSliceColorCount)));
 
         long long hz = static_cast<long long>(std::round(so.freqMhz * 1e6));
         int mhzPart = static_cast<int>(hz / 1000000);
