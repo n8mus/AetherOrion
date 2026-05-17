@@ -513,8 +513,13 @@ Ax25HfPacketDecodeDialog::Ax25HfPacketDecodeDialog(AudioEngine* audio,
     auto* root = new QVBoxLayout(bodyWidget());
     root->setSpacing(10);
 
+    // Em-dash is — (U+2014).  Don't use the byte-escape \xE2\x80\x94 form
+    // here — inside QStringLiteral the literal expands to a UTF-16 (u"...")
+    // string where each \xXX is a single char16_t code unit, not a byte of a
+    // multi-byte UTF-8 sequence.  Three separate code units (0x00E2, 0x0080,
+    // 0x0094) render as "â" + two control glyphs, which is what shipped.
     auto* experimentalBanner = new QLabel(
-        QStringLiteral("<b>Experimental \xE2\x80\x94 AX.25 modem bring-up.</b> "
+        QStringLiteral("<b>Experimental — AX.25 modem bring-up.</b> "
                        "300 baud HF RX/TX is active; 1200 baud VHF remains "
                        "receive-focused while timing work continues."),
         bodyWidget());
