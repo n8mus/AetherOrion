@@ -1549,6 +1549,25 @@ if(UNIX)
 endif()
 set_target_properties(async_log_writer_test PROPERTIES AUTOMOC ON)
 
+add_executable(perf_telemetry_test
+    tests/perf_telemetry_test.cpp
+    src/core/PerfTelemetry.cpp
+    # LogManager.cpp owns the lcPerf Q_LOGGING_CATEGORY definition (per
+    # Principle III consolidation, #2770); LogManager has AsyncLogWriter
+    # as a member which transitively needs AppSettings, so all three .cpp
+    # files come along to satisfy the ctor/dtor chain at link time.
+    src/core/LogManager.cpp
+    src/core/AsyncLogWriter.cpp
+    src/core/AppSettings.cpp
+)
+target_include_directories(perf_telemetry_test PRIVATE src)
+target_link_libraries(perf_telemetry_test PRIVATE Qt6::Core)
+if(UNIX)
+    target_link_libraries(perf_telemetry_test PRIVATE pthread)
+endif()
+set_target_properties(perf_telemetry_test PROPERTIES AUTOMOC ON)
+add_test(NAME perf_telemetry_test COMMAND perf_telemetry_test)
+
 add_executable(memory_recall_policy_test
     tests/memory_recall_policy_test.cpp
     src/core/MemoryRecallPolicy.cpp
