@@ -71,32 +71,53 @@ void MqttApplet::buildUI()
     header->setStyleSheet("QLabel { color: #c8d8e8; font-size: 11px; font-weight: bold; }");
     vbox->addWidget(header);
 
-    // Broker settings grid
+    // Broker settings grid.  Accessibility hints (objectName +
+    // accessibleName + accessibleDescription) help macOS Passwords,
+    // Windows Authenticator, and KDE Wallet associate user/pass fields
+    // when offering autofill.  No-op on platforms / password managers
+    // that don't read the accessibility tree.
     auto* grid = new QGridLayout;
     grid->setSpacing(2);
     grid->setContentsMargins(0, 0, 0, 0);
 
+    setObjectName(QStringLiteral("mqttLoginForm"));
+    setAccessibleName(tr("MQTT broker connection"));
+
     auto& s = AppSettings::instance();
 
     auto addRow = [&](int row, const QString& label, QLineEdit*& edit,
-                      const QString& key, const QString& def, bool password = false) {
+                      const QString& key, const QString& def,
+                      const QString& objName, const QString& a11yName,
+                      const QString& a11yDesc, bool password = false) {
         auto* lbl = new QLabel(label);
         lbl->setStyleSheet(kLabelStyle);
         grid->addWidget(lbl, row, 0);
         edit = new QLineEdit(s.value(key, def).toString());
         edit->setStyleSheet(kEditStyle);
         if (password) { edit->setEchoMode(QLineEdit::Password); }
+        if (!objName.isEmpty())  edit->setObjectName(objName);
+        if (!a11yName.isEmpty()) edit->setAccessibleName(a11yName);
+        if (!a11yDesc.isEmpty()) edit->setAccessibleDescription(a11yDesc);
         grid->addWidget(edit, row, 1);
     };
 
-    addRow(0, "Host:", m_hostEdit, "MqttHost", "localhost");
-    addRow(1, "Port:", m_portEdit, "MqttPort", "1883");
-    addRow(2, "User:", m_userEdit, "MqttUser", "");
+    addRow(0, "Host:", m_hostEdit, "MqttHost", "localhost",
+           QStringLiteral("mqttHost"), tr("MQTT broker host"),
+           tr("Hostname or IP address of the MQTT broker"));
+    addRow(1, "Port:", m_portEdit, "MqttPort", "1883",
+           QStringLiteral("mqttPort"), tr("MQTT broker port"),
+           tr("TCP port for the MQTT broker (1883 plaintext, 8883 TLS)"));
+    addRow(2, "User:", m_userEdit, "MqttUser", "",
+           QStringLiteral("mqttUsername"), tr("MQTT broker username"),
+           tr("Username for MQTT broker authentication"));
     // Password is not stored in AppSettings (see GHSA-mmqp-cm4w-cvpp).
-    // addRow with an empty default leaves the QLineEdit empty; we
-    // populate it asynchronously from the keychain below, and migrate
-    // any legacy plaintext value found in AppSettings on first launch.
-    addRow(3, "Pass:", m_passEdit, QStringLiteral("MqttPass_unused"), QString(), true);
+    // addRow with an empty default + sentinel key leaves the QLineEdit
+    // empty; we populate it asynchronously from the keychain below, and
+    // migrate any legacy plaintext value found in AppSettings on first
+    // launch.
+    addRow(3, "Pass:", m_passEdit, QStringLiteral("MqttPass_unused"), QString(),
+           QStringLiteral("mqttPassword"), tr("MQTT broker password"),
+           tr("Password for MQTT broker authentication"), true);
     loadPasswordFromKeychain();
 
     auto* topicLbl = new QLabel("Topics:");
