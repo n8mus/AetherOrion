@@ -5951,11 +5951,18 @@ void MainWindow::handleFlexControlButton(int button, int action)
             s->setAgcMode(modes[(idx + 1) % 4]);
         }
     } else if (actionName == "VolumeUp") {
-        if (auto* s = activeSlice())
-            s->setAudioGain(std::min(100.0f, s->audioGain() + 5.0f));
+        // Route to master volume to match SmartSDR behavior (#2921).
+        const int current = AppSettings::instance().value("MasterVolume", "100").toInt();
+        const int next = std::clamp(current + 5, 0, 100);
+        if (m_titleBar)
+            m_titleBar->setMasterVolume(next);
+        applyMasterVolume(next);
     } else if (actionName == "VolumeDown") {
-        if (auto* s = activeSlice())
-            s->setAudioGain(std::max(0.0f, s->audioGain() - 5.0f));
+        const int current = AppSettings::instance().value("MasterVolume", "100").toInt();
+        const int next = std::clamp(current - 5, 0, 100);
+        if (m_titleBar)
+            m_titleBar->setMasterVolume(next);
+        applyMasterVolume(next);
     } else if (actionControlsWheel) {
         m_flexWheelMode = requestedWheelMode;
         setFlexControlHardwareIndicator(button);
@@ -6027,10 +6034,14 @@ void MainWindow::applyFlexControlWheelAction(const QString& actionId, int steps)
             s->setXit(true, hz);
         }
     } else if (actionId == "WheelVolume") {
-        if (auto* s = activeSlice()) {
-            const float gain = s->audioGain() + steps * 2.0f;
-            s->setAudioGain(std::clamp(gain, 0.0f, 100.0f));
-        }
+        // Route to master volume to match SmartSDR behavior (#2921).
+        // Identical body to WheelMasterAf below; see #2986 for the
+        // consolidation follow-up tracking removal of one of these.
+        const int current = AppSettings::instance().value("MasterVolume", "100").toInt();
+        const int next = std::clamp(current + steps * 2, 0, 100);
+        if (m_titleBar)
+            m_titleBar->setMasterVolume(next);
+        applyMasterVolume(next);
     } else if (actionId == "WheelMasterAf") {
         const int current = AppSettings::instance().value("MasterVolume", "100").toInt();
         const int next = std::clamp(current + steps * 2, 0, 100);
