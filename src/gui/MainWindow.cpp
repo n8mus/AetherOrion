@@ -14105,6 +14105,7 @@ void MainWindow::activateRADE(int sliceId)
             break;
         }
     }
+    const QString prevMode = s->mode();
     s->setMode(mode);
     if (mode == "DIGL")
         s->setFilterWidth(-3500, 0);
@@ -14138,7 +14139,10 @@ void MainWindow::activateRADE(int sliceId)
         ok = m_radeEngine->start();
     }, Qt::BlockingQueuedConnection);
     if (!ok) {
-        qWarning() << "MainWindow: failed to start RADE engine";
+        qCWarning(lcRade) << "MainWindow: RADE engine failed to start — restoring slice state";
+        deactivateRADE();
+        if (auto* sl = m_radioModel.slice(sliceId))
+            sl->setMode(prevMode);
         return;
     }
     m_radioModel.setDigitalVoiceTxSlice(sliceId);
