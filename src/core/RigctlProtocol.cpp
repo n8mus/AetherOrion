@@ -821,17 +821,26 @@ QString RigctlProtocol::cmdSetSplitVfo(const QString& args)
     auto* rxSlice = currentSlice();
     if (!rxSlice) return rprt(-8);
 
+    // Edge-only reclaim: only move TX back to our RX slice on a genuine
+    // split→non-split *transition*, never on a steady-state poll.  Hamlib
+    // loggers (VARA/VARAC/N1MM) poll `set_split_vfo 0 VFOA` every few
+    // seconds; each CAT channel binds to a fixed slice, so reassigning TX
+    // to this channel's slice on every poll (the prior !isTxSlice() guard
+    // only suppressed the already-TX case) means the moment the user moves
+    // TX to another slice, the next poll on a non-TX channel re-seizes it
+    // — TX visibly ping-pongs back to this channel's slice within ~2 s.
+    // Acting only on the 1→0 edge (or the same-pass race below) lets a
+    // logger that never toggles split leave the user's TX choice alone.
+    const bool wasEnabled = (m_lastSplitEnable == 1);
+    const bool firstReport = (m_lastSplitEnable < 0);
+    m_lastSplitEnable = enable ? 1 : 0;
+
     if (!enable) {
         m_pendingSplitEnable = false;
         m_pendingTxSlice = nullptr;
         m_pendingSplitFreqMHz = 0.0;
         m_pendingSplitMode.clear();
-        // Disable split — return TX to the RX slice (idempotent).
-        // Hamlib clients (VARA/VARAC/N1MM) poll this every ~3s; without the
-        // isTxSlice() guard the radio gets bombarded with `slice set N tx=1`
-        // commands, which appears to interfere with radio-side TX state
-        // tracking and causes spurious unkey after ~1s during PTT.
-        //
+
         // m_pendingTxSliceChange catches the race where set_split_vfo 1 and
         // set_split_vfo 0 arrive in the same onClientData() pass: the queued
         // setTxSlice(true) for the TX slice hasn't fired yet, so isTxSlice()
@@ -839,8 +848,14 @@ QString RigctlProtocol::cmdSetSplitVfo(const QString& args)
         // command would be a no-op and the other slice would become TX.
         const bool wasPending = m_pendingTxSliceChange;
         m_pendingTxSliceChange = false;
-        if (!rxSlice->isTxSlice() || wasPending)
-            rxSlice->setTxSlice(true);
+
+        // Reclaim TX only on a real 1→0 transition or the same-pass race.
+        // Steady-state polls (already-disabled split, first-report-after-
+        // connect) leave the user's TX badge alone.
+        if ((wasEnabled && !firstReport) || wasPending) {
+            if (!rxSlice->isTxSlice() || wasPending)
+                rxSlice->setTxSlice(true);
+        }
         return rprt(0);
     }
 
