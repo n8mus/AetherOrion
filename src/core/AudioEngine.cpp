@@ -2288,7 +2288,7 @@ QVector<AudioEngine::TxChainStage> AudioEngine::txChainStages() const
 
 bool AudioEngine::isTxBypassed() const
 {
-    return !m_txBypassSnapshot.isEmpty();
+    return m_txBypassActive;
 }
 
 void AudioEngine::setTxBypassed(bool on)
@@ -2381,12 +2381,13 @@ void AudioEngine::setTxBypassed(bool on)
         m_txBypassSnapshot.clear();
     }
 
+    m_txBypassActive = on;
     emit txBypassChanged(on);
 }
 
 bool AudioEngine::isRxBypassed() const
 {
-    return !m_rxBypassSnapshot.isEmpty();
+    return m_rxBypassActive;
 }
 
 void AudioEngine::setRxBypassed(bool on)
@@ -2471,6 +2472,7 @@ void AudioEngine::setRxBypassed(bool on)
         m_rxBypassSnapshot.clear();
     }
 
+    m_rxBypassActive = on;
     emit rxBypassChanged(on);
 }
 
