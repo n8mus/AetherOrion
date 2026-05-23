@@ -2650,6 +2650,10 @@ MainWindow::MainWindow(QWidget* parent)
         // Skip if this pan already has an applet
         if (m_panStack->panadapter(pan->panId())) {
             if (auto* sw = m_panStack->spectrum(pan->panId())) {
+                auto* menu = sw->overlayMenu();
+                menu->setPanId(pan->panId());
+                menu->setRadioModel(&m_radioModel);
+                menu->setRadioCapabilities(m_radioModel.capabilities());
                 connect(pan, &PanadapterModel::infoChanged,
                         sw, &SpectrumWidget::setFrequencyRange);
                 connect(pan, &PanadapterModel::levelChanged,
@@ -10612,6 +10616,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     menu->setPanId(applet->panId());
     menu->setMemories(m_radioModel.memories());
     menu->setRadioModel(&m_radioModel);
+    menu->setRadioCapabilities(m_radioModel.capabilities());
 
     // Antenna list → this overlay menu (per-pan, mirrors VfoWidget pattern) (#1260)
     connect(&m_radioModel, &RadioModel::antListChanged,
@@ -11490,6 +11495,16 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         auto& s = AppSettings::instance();
         s.setValue(sw->settingsKey("DisplayRfGain"), QString::number(gain));
         s.save();
+    });
+    connect(menu, &SpectrumOverlayMenu::loopAToggled,
+            this, [this, applet](bool on) {
+        m_radioModel.sendCommand(
+            QString("display pan set %1 loopa=%2").arg(applet->panId()).arg(on ? 1 : 0));
+    });
+    connect(menu, &SpectrumOverlayMenu::loopBToggled,
+            this, [this, applet](bool on) {
+        m_radioModel.sendCommand(
+            QString("display pan set %1 loopb=%2").arg(applet->panId()).arg(on ? 1 : 0));
     });
     connect(menu, &SpectrumOverlayMenu::swrSweepStartRequested,
             this, &MainWindow::startSwrSweep);
