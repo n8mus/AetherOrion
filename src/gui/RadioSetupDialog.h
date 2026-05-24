@@ -15,6 +15,7 @@ class QPushButton;
 class QComboBox;
 class QCheckBox;
 class QVBoxLayout;
+class QTableWidget;
 
 namespace AetherSDR {
 
@@ -70,9 +71,26 @@ private:
     QWidget* buildUsbCablesTab();
     QWidget* buildPeripheralsTab();
     QWidget* buildUiEnhancementsTab();
+    // Phase 2 of GHSA-wfx7-w6p8-4jr2 (#2951) — Pinned Certificates list
+    // (host, sha256 fingerprint, pinned date) with per-row Forget and a
+    // Forget All button. Backed by WanCertCache in WanConnection.cpp.
+    QWidget* buildSmartLinkTab();
+
+public:
+    // Public so MainWindow can refresh the table from outside this
+    // dialog when an accept-after-mismatch flow rewrites the pin
+    // cache. No-op if the SmartLink tab hasn't been built yet
+    // (m_pinnedCertsTable == nullptr).
+    void     refreshPinnedCertsTable();
+
+private:
 #ifdef HAVE_SERIALPORT
     QWidget* buildSerialTab();
 #endif
+
+    // SmartLink Pinned Certs UI handle (#2951). Forward-declared at
+    // file scope above; full type comes from <QTableWidget> in the cpp.
+    QTableWidget* m_pinnedCertsTable{nullptr};
 
     RadioModel*  m_model;
     AudioEngine* m_audio{nullptr};
