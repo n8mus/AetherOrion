@@ -9,11 +9,15 @@
 #include "models/RadioModel.h"
 #include "models/SliceModel.h"
 #include "models/TransmitModel.h"
+#include "Theme.h"
 #include "core/AppSettings.h"
 
 #include <QDateTime>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
+#include <QStyle>
+#include <QStyleOptionSlider>
 #include <QTimer>
 #include <QLabel>
 #include <QSlider>
@@ -87,7 +91,16 @@ private:
     int m_resetVal;
 };
 
-// ResetSlider with a small center-mark dot painted on the groove.
+// ResetSlider whose fill anchors from the centre outward — for L/R pan
+// and L/R balance controls where the meaningful zero is the midpoint,
+// not the left edge.  Also paints a small centre-mark dot on the groove
+// so the operator can see the neutral position at a glance.
+//
+// The default Qt stylesheet sub-page rule paints (0 → handle) which
+// reads wrong for centre-anchored controls.  We over-paint that region
+// here: erase the unwanted half of the sub-page with groove colour, then
+// add the desired (centre → handle) fill in accent colour.  Clipping
+// excludes the handle pixel disc so the overpaint never bleeds into it.
 class CenterMarkSlider : public ResetSlider {
 public:
     explicit CenterMarkSlider(int resetVal, Qt::Orientation o, QWidget* parent = nullptr)
@@ -97,9 +110,35 @@ protected:
         ResetSlider::paintEvent(ev);
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
-        int cx = width() / 2;
-        int cy = height() / 2;
+
+        auto& tm = AetherSDR::ThemeManager::instance();
+        const int cx = width() / 2;
+        const int cy = height() / 2;
+        const int grooveY = cy - 2;
+
+        QStyleOptionSlider opt;
+        initStyleOption(&opt);
+        const QRect handleRect = style()->subControlRect(
+            QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
+        const int handleCx = handleRect.center().x();
+
+        QPainterPath clip;
+        clip.addRect(rect());
+        QPainterPath handlePath;
+        handlePath.addEllipse(handleRect.adjusted(-1, -1, 1, 1));
+        p.setClipPath(clip.subtracted(handlePath));
+
         p.setPen(Qt::NoPen);
+        if (handleCx < cx) {
+            p.setBrush(tm.color("color.background.1"));
+            p.drawRect(QRect(0, grooveY, handleCx, 4));
+            p.setBrush(tm.color("color.accent"));
+            p.drawRect(QRect(handleCx, grooveY, cx - handleCx, 4));
+        } else {
+            p.setBrush(tm.color("color.background.1"));
+            p.drawRect(QRect(0, grooveY, cx, 4));
+        }
+
         p.setBrush(QColor("#608090"));
         p.drawEllipse(QPointF(cx, cy), 2.5, 2.5);
     }
@@ -193,12 +232,6 @@ static const QString kModeBtn =
     "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 3px; }"
     "QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #0090e0; }"
     "QPushButton:hover { border: 1px solid #0090e0; }";
-
-static const QString kSliderStyle =
-    "QSlider::groove:horizontal { background: #1a2a3a; height: 4px; border-radius: 2px; }"
-    "QSlider::handle:horizontal { background: #c8d8e8; width: 12px; margin: -4px 0; border-radius: 6px; }"
-    "QSlider::groove:vertical { background: #1a2a3a; width: 4px; border-radius: 2px; }"
-    "QSlider::handle:vertical { background: #c8d8e8; height: 12px; margin: 0 -4px; border-radius: 6px; }";
 
 static const QString kLabelStyle =
     "QLabel { background: transparent; border: none; color: #8aa8c0; font-size: 13px; }";
@@ -780,7 +813,7 @@ void VfoWidget::buildTabContent()
         m_afGainSlider->setAccessibleName("AF gain");
         m_afGainSlider->setAccessibleDescription("Audio output volume for this slice");
         m_afGainSlider->setRange(0, 100);
-        m_afGainSlider->setStyleSheet(kSliderStyle);
+        applyPrimarySliderStyle(m_afGainSlider);
         gainRow->addWidget(m_afGainSlider, 1);
         auto* afVal = new QLabel("0");
         afVal->setStyleSheet(kLabelStyle);
@@ -802,7 +835,7 @@ void VfoWidget::buildTabContent()
         m_sqlSlider->setAccessibleName("Squelch threshold");
         m_sqlSlider->setRange(0, 100);
         m_sqlSlider->setValue(20);
-        m_sqlSlider->setStyleSheet(kSliderStyle);
+        applyPrimarySliderStyle(m_sqlSlider);
         sqlRow->addWidget(m_sqlSlider, 1);
         m_sqlValueLbl = new QLabel("20");
         m_sqlValueLbl->setStyleSheet(kLabelStyle);
@@ -826,7 +859,7 @@ void VfoWidget::buildTabContent()
         m_agcTSlider->setAccessibleName("AGC threshold");
         m_agcTSlider->setRange(0, 100);
         m_agcTSlider->setValue(65);
-        m_agcTSlider->setStyleSheet(kSliderStyle);
+        applyPrimarySliderStyle(m_agcTSlider);
         agcRow->addWidget(m_agcTSlider, 1);
         m_agcValueLbl = new QLabel("65");
         m_agcValueLbl->setStyleSheet(kLabelStyle);
@@ -854,7 +887,7 @@ void VfoWidget::buildTabContent()
         m_panSlider = new CenterMarkSlider(50, Qt::Horizontal);
         m_panSlider->setRange(0, 100);
         m_panSlider->setValue(50);
-        m_panSlider->setStyleSheet(kSliderStyle);
+        applyPrimarySliderStyle(m_panSlider);
         panRow->addWidget(m_panSlider, 1);
         auto* panR = new QLabel("R");
         panR->setStyleSheet(kLabelStyle);
@@ -898,7 +931,7 @@ void VfoWidget::buildTabContent()
         m_escPhaseSlider->setAccessibleName("ESC phase");
         m_escPhaseSlider->setRange(0, 72);   // 0–360° in 5° steps
         m_escPhaseSlider->setValue(0);
-        m_escPhaseSlider->setStyleSheet(kSliderStyle);
+        applyPrimarySliderStyle(m_escPhaseSlider);
         escTopRow->addWidget(m_escPhaseSlider, 1);
         m_escPhaseLbl = new QLabel("0\u00B0");
         m_escPhaseLbl->setStyleSheet(kLabelStyle);
@@ -923,7 +956,7 @@ void VfoWidget::buildTabContent()
         m_escGainSlider->setAccessibleName("ESC gain");
         m_escGainSlider->setRange(0, 200);   // 0.0 – 2.0
         m_escGainSlider->setValue(100);       // default 1.0
-        m_escGainSlider->setStyleSheet(kSliderStyle);
+        applyPrimarySliderStyle(m_escGainSlider);
         gainCol->addWidget(m_escGainSlider, 1);
         auto* gainLbl = new QLabel("G");
         gainLbl->setStyleSheet(kLabelStyle);
@@ -1150,7 +1183,7 @@ void VfoWidget::buildTabContent()
 
             m_dspLevelSlider = new GuardedSlider(Qt::Horizontal);
             m_dspLevelSlider->setRange(0, 100);
-            m_dspLevelSlider->setStyleSheet(kSliderStyle);
+            applyPrimarySliderStyle(m_dspLevelSlider);
             lvlHb->addWidget(m_dspLevelSlider, 1);
 
             m_dspLevelValue = new QLabel("0");
@@ -1217,7 +1250,7 @@ void VfoWidget::buildTabContent()
             m_apfSlider->setAccessibleDescription("CW audio peaking filter bandwidth");
             m_apfSlider->setRange(0, 100);
             m_apfSlider->setValue(50);
-            m_apfSlider->setStyleSheet(kSliderStyle);
+            applyPrimarySliderStyle(m_apfSlider);
             m_apfSlider->setToolTip("Adjusts APF bandwidth. Higher values narrow the peak for better CW selectivity.");
             apfVb->addWidget(m_apfSlider, 1);
             m_apfValueLbl = new QLabel("50");

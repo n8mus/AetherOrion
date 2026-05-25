@@ -73,16 +73,27 @@ inline QString appStylesheetTemplate()
             alternate-background-color: {{color.background.1}};
         }
         QListWidget::item:selected { background-color: {{color.accent}}; color: #000; }
+        QSlider {
+            border: none;
+            background: transparent;
+        }
         QSlider::groove:horizontal {
             height: 4px;
-            background: {{color.border.strong}};
+            background: {{color.background.1}};
+            border: none;
+            border-radius: 2px;
+        }
+        QSlider::sub-page:horizontal {
+            background: {{color.accent}};
+            border: none;
             border-radius: 2px;
         }
         QSlider::handle:horizontal {
-            width: 14px; height: 14px;
-            margin: -5px 0;
-            background: {{color.accent}};
-            border-radius: 7px;
+            width: 12px; height: 12px;
+            margin: -4px 0;
+            background: {{color.text.primary}};
+            border: none;
+            border-radius: 6px;
         }
         QMenuBar { background-color: {{color.background.0}}; }
         QMenuBar::item:selected { background-color: {{color.background.1}}; }
@@ -117,6 +128,42 @@ inline void applyAppTheme(QWidget* widget)
 inline QString darkThemeStylesheet()
 {
     return ThemeManager::instance().resolve(appStylesheetTemplate());
+}
+
+// Canonical primary slider style — sub-page fill (Wave-style value
+// indicator) + plain light handle (Vfo-style, no border, no hover).
+// Pre-consolidation the codebase had eight near-duplicate stylesheet
+// constants; this helper is the single source of truth.
+//
+// The `accentToken` parameter controls the sub-page fill colour.  Default
+// is `color.accent` (cyan).  Pass `color.accent.warning` for sliders that
+// live in transmit-adjacent panels (StripFinalOutputPanel,
+// StripWaveformPanel) where amber signals TX-related state.
+inline QString primarySliderStyleTemplate(const QString& accentToken = QStringLiteral("color.accent"))
+{
+    return QStringLiteral(
+        "QSlider { border: none; background: transparent; }"
+        "QSlider::groove:horizontal { height: 4px; background: {{color.background.1}}; border: none; border-radius: 2px; }"
+        "QSlider::sub-page:horizontal { background: {{%1}}; border: none; border-radius: 2px; }"
+        "QSlider::add-page:horizontal { background: {{color.background.1}}; border: none; border-radius: 2px; }"
+        "QSlider::handle:horizontal { width: 12px; height: 12px; margin: -4px 0;"
+        " background: {{color.text.primary}}; border: none; border-radius: 6px; }"
+        "QSlider::groove:vertical { width: 4px; background: {{color.background.1}}; border: none; border-radius: 2px; }"
+        "QSlider::sub-page:vertical { background: {{%1}}; border: none; border-radius: 2px; }"
+        "QSlider::add-page:vertical { background: {{color.background.1}}; border: none; border-radius: 2px; }"
+        "QSlider::handle:vertical { width: 12px; height: 12px; margin: 0 -4px;"
+        " background: {{color.text.primary}}; border: none; border-radius: 6px; }"
+    ).arg(accentToken);
+}
+
+// Apply the canonical primary slider style to `slider` and register it
+// for free live re-theme on theme changes.  Use this in place of every
+// previous `slider->setStyleSheet(kSliderStyle)` call.
+inline void applyPrimarySliderStyle(QWidget* slider,
+                                    const QString& accentToken = QStringLiteral("color.accent"))
+{
+    if (!slider) return;
+    ThemeManager::instance().applyStyleSheet(slider, primarySliderStyleTemplate(accentToken));
 }
 
 } // namespace AetherSDR
