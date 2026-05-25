@@ -12,6 +12,8 @@
 #include <QVariant>
 #include <QVector>
 
+class QWidget;
+
 namespace AetherSDR {
 
 // Token-based theming subsystem (RFC #3076 Phase 1+2).
@@ -98,6 +100,39 @@ public:
     // depending on whether the token is scalar or gradient.
     QString  resolve(const QString& stylesheetTemplate) const;
 
+    // Apply a stylesheet template to a widget AND record the
+    // (widget → tokens referenced) reverse-map.  Phase 5's inspector
+    // uses this map to answer "which tokens paint this widget?" when
+    // the operator clicks during inspect mode.
+    //
+    // Additionally: widgets registered through applyStyleSheet get free
+    // live theme switching — the manager listens to themeChanged and
+    // re-applies the recorded template (with newly resolved values) so
+    // stylesheet-painted widgets respond to theme changes without any
+    // per-call-site wiring.
+    //
+    // The recorded entry is removed automatically when the widget is
+    // destroyed (via QObject::destroyed signal connection), so no
+    // dangling pointers.
+    void applyStyleSheet(QWidget* widget, const QString& stylesheetTemplate);
+
+    // Stop tracking a widget — its recorded stylesheet template is
+    // dropped and it no longer re-paints on themeChanged.  Useful for
+    // widgets that want to take over stylesheet management themselves
+    // after an initial themed apply.
+    void clearWidgetTracking(QWidget* widget);
+
+    // Inspector lookup: tokens referenced by the widget's last-applied
+    // stylesheet template.  Empty list if the widget was never themed
+    // through applyStyleSheet().
+    QStringList tokensForWidget(const QWidget* widget) const;
+
+    // Stateless helper exposing the same token-extraction regex used
+    // by applyStyleSheet().  Tooling (audit scripts, the Phase 5
+    // editor's inspector preview) can call this to list every token
+    // a template references without actually applying the stylesheet.
+    static QStringList extractReferencedTokens(const QString& stylesheetTemplate);
+
     // Theme management.
     QStringList availableThemes() const;        // built-in + user-dir themes
     QString     activeTheme() const;
@@ -110,12 +145,23 @@ public:
 signals:
     // Fired whenever the active theme changes.  Every widget that reads
     // tokens connects here and calls update() / re-applies its stylesheet.
+    // Stylesheet-painted widgets registered through applyStyleSheet() are
+    // re-themed automatically; paint-code consumers connect themselves.
     void themeChanged();
+
+private slots:
+    // Cleanup hook — fired when a widget tracked through applyStyleSheet
+    // is destroyed.  Removes its entry from the reverse-map.
+    void onTrackedWidgetDestroyed(QObject* obj);
 
 private:
     ThemeManager();
     ~ThemeManager() override = default;
     Q_DISABLE_COPY_MOVE(ThemeManager)
+
+    // Re-apply every tracked widget's stylesheet template with freshly
+    // resolved token values.  Wired to themeChanged in the constructor.
+    void reapplyAllTrackedStyleSheets();
 
     // Discover available themes on construction: scan :/themes/ for
     // built-ins, ~/.config/AetherSDR/themes/ for user themes.
@@ -136,6 +182,14 @@ private:
     // (typed via Q_DECLARE_METATYPE below).
     QHash<QString, QVariant> m_tokens;
     QString m_activeTheme;
+
+    // Reverse-map: widget instance → (template, tokens-it-references).
+    // Populated by applyStyleSheet, drained by onTrackedWidgetDestroyed.
+    struct TrackedWidget {
+        QString     stylesheetTemplate;
+        QStringList tokens;
+    };
+    QHash<QWidget*, TrackedWidget> m_trackedWidgets;
 };
 
 } // namespace AetherSDR
