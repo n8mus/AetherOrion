@@ -146,6 +146,13 @@ ThemeManager& ThemeManager::instance()
 
 ThemeManager::ThemeManager()
 {
+    // Explicit metatype registration so qMetaTypeId<ThemeGradient>() and
+    // direct userType comparisons resolve correctly even before the first
+    // QVariant::fromValue<ThemeGradient>() call.  Q_DECLARE_METATYPE in
+    // the header sets up the template machinery, but explicit registration
+    // here makes saveCurrentThemeAs()'s type check timing-independent.
+    qRegisterMetaType<ThemeGradient>("AetherSDR::ThemeGradient");
+
     seedBuiltinDefaults();
     scanAvailableThemes();
 
@@ -158,11 +165,19 @@ ThemeManager::ThemeManager()
     const QString saved = AppSettings::instance()
                               .value("ActiveTheme", "Default Dark").toString();
     if (!setActiveTheme(saved)) {
-        // Fall through to compiled-in defaults — UI still works, no theme
-        // loaded.  Most commonly hit on a fresh install before the resource
-        // bundle is in place.
-        qCWarning(lcGui) << "ThemeManager: failed to load theme" << saved
-                          << "— using compiled-in defaults";
+        // Saved theme is gone (most commonly: user saved a custom theme
+        // via the editor and later removed the file out-of-band).  Don't
+        // limp along on seedBuiltinDefaults() — its scalar-only token set
+        // lacks the waterfall.colormap gradients and the operator gets a
+        // baffling all-grayscale waterfall.  Fall back to "Default Dark"
+        // explicitly so the bundled JSON loads and every token is populated.
+        qCWarning(lcGui) << "ThemeManager: saved theme" << saved
+                          << "is unavailable — falling back to Default Dark";
+        if (!setActiveTheme(QStringLiteral("Default Dark"))) {
+            qCWarning(lcGui) << "ThemeManager: Default Dark also failed to load"
+                              << "— UI will render with compiled-in defaults"
+                              << "(rebuild resources?)";
+        }
     }
 }
 
@@ -183,6 +198,7 @@ void ThemeManager::seedBuiltinDefaults()
     m_tokens.insert("color.background.2",        QString("#304050"));
     m_tokens.insert("color.background.3",        QString("#506070"));
     m_tokens.insert("color.background.tx",       QString("#3a2a0e"));
+    m_tokens.insert("color.background.success",  QString("#006040"));
     m_tokens.insert("color.background.spectrum", QString("#000000"));
 
     // Accents
@@ -272,8 +288,21 @@ void ThemeManager::scanAvailableThemes()
     // other platforms via QStandardPaths.  Loaded only if the directory
     // exists — Phase 1 doesn't create it (Phase 5's editor does on first
     // save).
-    const QString userDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)
-                                + QStringLiteral("/themes");
+    //
+    // Built-in names are RESERVED — user-dir files with a colliding name
+    // are skipped with a warning rather than allowed to shadow the
+    // bundled theme.  Otherwise a stale user-dir copy of "Default Dark"
+    // saved before a schema change (e.g. the Phase 3 waterfall colormap
+    // restructure that broke flat → nested gradient layout) silently
+    // overrides the corrected bundled version and produces baffling
+    // partial-render bugs.  Users wanting a tweaked version should Save
+    // As under a new name through the editor.
+    // Use GenericConfigLocation + "/AetherSDR" so the path is ~/.config/AetherSDR/themes,
+    // not the double-nested ~/.config/AetherSDR/AetherSDR/themes that
+    // AppConfigLocation produces when both org and app names are "AetherSDR".
+    // Matches the convention AppSettings and the log dir already use.
+    const QString userDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+                                + QStringLiteral("/AetherSDR/themes");
     QDir d(userDir);
     if (d.exists()) {
         const auto entries = d.entryList({"*.json"}, QDir::Files);
@@ -286,7 +315,16 @@ void ThemeManager::scanAvailableThemes()
             f.close();
             if (err.error != QJsonParseError::NoError || !doc.isObject()) continue;
             const QString name = doc.object().value("name").toString();
-            if (!name.isEmpty()) m_themePaths.insert(name, full);
+            if (name.isEmpty()) continue;
+            const auto existing = m_themePaths.constFind(name);
+            if (existing != m_themePaths.constEnd()
+                && existing.value().startsWith(QStringLiteral(":/themes/"))) {
+                qCWarning(lcGui) << "ThemeManager: ignoring user-dir theme"
+                                 << full << "— name collides with built-in"
+                                 << name << "(use Save As under a new name)";
+                continue;
+            }
+            m_themePaths.insert(name, full);
         }
     }
 }
@@ -350,6 +388,137 @@ bool ThemeManager::setActiveTheme(const QString& name)
     if (!loadThemeFromPath(it.value())) return false;
     m_activeTheme = name;
     AppSettings::instance().setValue("ActiveTheme", name);
+    AppSettings::instance().save();
+    emit themeChanged();
+    return true;
+}
+
+QStringList ThemeManager::allTokenKeys() const
+{
+    QStringList keys = m_tokens.keys();
+    keys.sort(Qt::CaseInsensitive);
+    return keys;
+}
+
+void ThemeManager::setColor(const QString& token, const QColor& color)
+{
+    if (!color.isValid()) return;
+    // Live-edit path stores the QColor as a hex string so cssFragment() /
+    // resolve() pick it up the same way they pick up freshly-loaded tokens.
+    // Skip the emit if nothing actually changed (avoids burning a re-paint
+    // cycle on a no-op edit).
+    const QString hex = color.name();
+    const auto it = m_tokens.constFind(token);
+    if (it != m_tokens.constEnd() && it.value().toString() == hex) return;
+    m_tokens.insert(token, QVariant(hex));
+    emit themeChanged();
+}
+
+void ThemeManager::setSizing(const QString& token, int value)
+{
+    const auto it = m_tokens.constFind(token);
+    if (it != m_tokens.constEnd() && it.value().toInt() == value) return;
+    m_tokens.insert(token, QVariant(value));
+    emit themeChanged();
+}
+
+bool ThemeManager::saveCurrentThemeAs(const QString& newThemeName)
+{
+    if (newThemeName.trimmed().isEmpty()) return false;
+
+    // Round-trip-safe flat dotted-key serialization.  The bundled themes
+    // organize tokens into nested objects for human readability, but the
+    // earlier deep-walk version of this code had two bugs that lost data
+    // when it tried to reproduce that layout:
+    //
+    //   * Prefix-conflict — a scalar like `color.accent` collided with
+    //     nested children like `color.accent.bright`; whichever was
+    //     processed second clobbered the first.
+    //   * Gradient tokens were silently skipped via a fragile
+    //     canConvert<ThemeGradient>() check (false negatives observed
+    //     under some metatype-registration timings).
+    //
+    // The flat output below is a strict subset of what flattenTokens()
+    // accepts (`{"tokens": {"color.background.0": "#0f0f1a", ...}}`):
+    // each dotted key becomes a literal JSON key inside `tokens`.  Less
+    // pretty than the bundled themes, but every token round-trips
+    // perfectly with zero conflict surface.  Future-Phase-5 polish can
+    // group these into the bundled nested layout once the editor is
+    // doing more than dump-and-reload.
+    QJsonObject tokensObj;
+    const int gradMetaId = qMetaTypeId<ThemeGradient>();
+    for (auto it = m_tokens.constBegin(); it != m_tokens.constEnd(); ++it) {
+        const QVariant& v = it.value();
+        const int ut = v.userType();
+        QJsonValue leaf;
+        if (ut == QMetaType::QString)      leaf = v.toString();
+        else if (ut == QMetaType::Int)     leaf = v.toInt();
+        else if (ut == QMetaType::Double)  leaf = v.toDouble();
+        else if (ut == QMetaType::Bool)    leaf = v.toBool();
+        else if (ut == gradMetaId) {
+            const ThemeGradient g = v.value<ThemeGradient>();
+            QJsonObject gj;
+            gj.insert("type", g.type == ThemeGradient::Radial
+                                ? QStringLiteral("radial-gradient")
+                                : QStringLiteral("linear-gradient"));
+            gj.insert("angle", g.angle);
+            if (g.type == ThemeGradient::Radial) {
+                gj.insert("centerX", g.center.x());
+                gj.insert("centerY", g.center.y());
+                gj.insert("radius",  g.radius);
+            }
+            QJsonArray stops;
+            for (const auto& s : g.stops) {
+                QJsonObject sj;
+                sj.insert("at",    s.at);
+                sj.insert("color", s.color.name());
+                stops.append(sj);
+            }
+            gj.insert("stops", stops);
+            leaf = gj;
+        }
+        else {
+            qCWarning(lcGui) << "ThemeManager::saveCurrentThemeAs: skipping token"
+                             << it.key() << "with unsupported metatype" << ut;
+            continue;
+        }
+        tokensObj.insert(it.key(), leaf);
+    }
+    QJsonObject root = tokensObj;
+
+    QJsonObject doc;
+    doc.insert("schemaVersion", 1);
+    doc.insert("name",          newThemeName);
+    doc.insert("author",        QStringLiteral("AetherSDR user"));
+    doc.insert("version",       QStringLiteral("1.0"));
+    doc.insert("description",   QStringLiteral("Created via the Theme Editor."));
+    doc.insert("tokens",        root);
+
+    // Mirror scanAvailableThemes — GenericConfigLocation + "/AetherSDR"
+    // keeps the saved theme alongside the existing user-dir layout
+    // (singular path, not the double-nested AppConfigLocation form).
+    const QString userDir = QStandardPaths::writableLocation(
+                                QStandardPaths::GenericConfigLocation)
+                            + QStringLiteral("/AetherSDR/themes");
+    QDir().mkpath(userDir);
+    const QString path = userDir + QLatin1Char('/')
+                       + newThemeName + QStringLiteral(".json");
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        qCWarning(lcGui) << "ThemeManager: saveCurrentThemeAs failed to open"
+                         << path << f.errorString();
+        return false;
+    }
+    f.write(QJsonDocument(doc).toJson(QJsonDocument::Indented));
+    f.close();
+
+    // Register the new theme in the path map so availableThemes() picks it
+    // up immediately, then make it the active theme (loads cleanly from
+    // the file we just wrote, so the on-disk shape doubles as a validation
+    // check).
+    m_themePaths.insert(newThemeName, path);
+    m_activeTheme = newThemeName;
+    AppSettings::instance().setValue("ActiveTheme", newThemeName);
     AppSettings::instance().save();
     emit themeChanged();
     return true;

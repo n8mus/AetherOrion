@@ -95,6 +95,7 @@
 #include "ShortcutDialog.h"
 #include "MultiFlexDialog.h"
 #include "HelpDialog.h"
+#include "ThemeEditorDialog.h"
 #include "WhatsNewDialog.h"
 #include "models/SliceModel.h"
 #include "models/MeterModel.h"
@@ -7989,10 +7990,28 @@ void MainWindow::buildMenuBar()
     };
     rebuildThemeMenu();
     // Rebuild whenever the active theme changes (covers in-app theme
-    // switches re-checking the right entry, and Phase-5 user-theme
-    // additions appearing in the list once the editor lands).
+    // switches re-checking the right entry, and Phase-5 user themes
+    // saved from the editor below appearing in the list immediately).
     QObject::connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
                      themeMenu, rebuildThemeMenu);
+
+    // Theme Editor (Phase 5 PR 1) — modeless dialog for live-editing
+    // the active theme's colour tokens.  Sits as a sibling of the
+    // Theme submenu above (which switches between saved themes);
+    // the editor is for authoring a new one.  Open-on-demand; only
+    // one instance at a time, cleaned up via WA_DeleteOnClose.
+    auto* themeEditorAct = viewMenu->addAction("Theme Editor…");
+    connect(themeEditorAct, &QAction::triggered, this, [this] {
+        if (!m_themeEditorDialog) {
+            m_themeEditorDialog = new ThemeEditorDialog(this);
+            m_themeEditorDialog->setAttribute(Qt::WA_DeleteOnClose);
+            connect(m_themeEditorDialog, &QObject::destroyed, this,
+                    [this] { m_themeEditorDialog = nullptr; });
+        }
+        m_themeEditorDialog->show();
+        m_themeEditorDialog->raise();
+        m_themeEditorDialog->activateWindow();
+    });
 
     auto* singleClickTuneAct = viewMenu->addAction("Single-Click to Tune");
     singleClickTuneAct->setCheckable(true);
@@ -9234,8 +9253,12 @@ void MainWindow::buildUI()
     // CNN signal classifier — load model from next to the executable or ~/.config/AetherSDR/
     {
         const QString exeDir  = QCoreApplication::applicationDirPath();
+        // GenericConfigLocation + "/AetherSDR" matches the AppSettings convention
+        // and avoids the double-nested ~/.config/AetherSDR/AetherSDR/ path that
+        // AppConfigLocation produces when both org and app names are "AetherSDR".
         const QString cfgDir  = QStandardPaths::writableLocation(
-                                    QStandardPaths::AppConfigLocation);
+                                    QStandardPaths::GenericConfigLocation)
+                              + QStringLiteral("/AetherSDR");
         const QString modelFile = QStringLiteral("signal_classifier.onnx");
         QString modelPath;
         if (QFile::exists(exeDir + QLatin1Char('/') + modelFile)) {
@@ -12891,7 +12914,19 @@ void MainWindow::enableNr2WithWisdom()
         dlg->setWindowTitle("AetherSDR — FFTW Wisdom");
         if (frameless)
             dlg->setWindowFlag(Qt::FramelessWindowHint, true);
-        dlg->setWindowModality(Qt::ApplicationModal);
+        // Modeless — wisdom generation can take minutes; locking the
+        // operator out of the radio for that whole window was a worse UX
+        // than letting them keep operating while the worker thread runs
+        // in the background.  The thread is already off the GUI thread
+        // (see QThread::create below); progress callbacks marshal back
+        // via QMetaObject::invokeMethod and the Cancel path is wired
+        // through QDialog::rejected.
+        dlg->setWindowModality(Qt::NonModal);
+        // Tool window flag so the dialog floats above the main window
+        // without claiming a separate taskbar entry, and stays visible
+        // when the operator clicks back to the main UI.
+        dlg->setWindowFlag(Qt::Tool, true);
+        dlg->setAttribute(Qt::WA_ShowWithoutActivating, true);
         dlg->setMinimumWidth(500);
         dlg->setStyleSheet(AetherSDR::ThemeManager::instance().resolve("QDialog { background: #050710; }"
             "QLabel { color: {{color.text.secondary}}; background: transparent; }"
