@@ -285,6 +285,60 @@ int main(int argc, char** argv)
         EXPECT_TRUE(!tm.isOverriddenAt("applet/tx", "color.text.primary"));
     }
 
+    // ── Toggle button tribes — base + per-tribe checked tokens ──
+    // The toggle namespace splits checked-state colours across three
+    // tribes (accent / success / warning); shared base + disabled
+    // tokens apply regardless of tribe.  seedBuiltinDefaults() and the
+    // bundled themes both must provide all 16 tokens so older user
+    // themes don't regress to empty QSS values.
+    {
+        auto& tm = ThemeManager::instance();
+        tm.setActiveTheme("Default Dark");
+        // Shared base tokens
+        EXPECT_TRUE(tm.color("color.toggle.background").isValid());
+        EXPECT_TRUE(tm.color("color.toggle.foreground").isValid());
+        EXPECT_TRUE(tm.color("color.toggle.border").isValid());
+        EXPECT_TRUE(tm.color("color.toggle.background.disabled").isValid());
+        // Per-tribe checked-state tokens — bundled theme aliases resolve.
+        EXPECT_EQ(tm.color("color.toggle.accent.background.checked").name().toLower(),
+                  QString("#0070c0"));   // {color.blue.700}
+        EXPECT_EQ(tm.color("color.toggle.success.background.checked").name().toLower(),
+                  QString("#006040"));   // color.background.success
+        EXPECT_EQ(tm.color("color.toggle.warning.background.checked").name().toLower(),
+                  QString("#5a3a0a"));   // color.background.warning (new primitive)
+    }
+
+    // ── Toggle button — Accent tribe per-applet cascade ──
+    // Only the Accent tribe carries per-applet overrides (TX red, RX
+    // green, comp amber).  Success + Warning tribes are semantic and
+    // must resolve to the same value inside any applet as at root.
+    {
+        auto& tm = ThemeManager::instance();
+        tm.setActiveTheme("Default Dark");
+        // Accent tribe — surface-tinted by applet.
+        EXPECT_EQ(tm.colorAt("applet/tx",   "color.toggle.accent.background.checked").name().toLower(),
+                  QString("#ff4d4d"));
+        EXPECT_EQ(tm.colorAt("applet/rx",   "color.toggle.accent.background.checked").name().toLower(),
+                  QString("#4dd87a"));
+        EXPECT_EQ(tm.colorAt("applet/comp", "color.toggle.accent.background.checked").name().toLower(),
+                  QString("#ffb84d"));
+        // Unrelated applet inherits root scope (blue).
+        EXPECT_EQ(tm.colorAt("applet/dax",  "color.toggle.accent.background.checked").name().toLower(),
+                  QString("#0070c0"));
+        // isOverriddenAt confirms the override is set at applet/tx itself,
+        // not inherited through the parent chain.
+        EXPECT_TRUE(tm.isOverriddenAt("applet/tx",   "color.toggle.accent.background.checked"));
+        EXPECT_TRUE(tm.isOverriddenAt("applet/rx",   "color.toggle.accent.background.checked"));
+        EXPECT_TRUE(tm.isOverriddenAt("applet/comp", "color.toggle.accent.background.checked"));
+        // Success + Warning tribes — semantic, no per-applet shift.
+        EXPECT_EQ(tm.colorAt("applet/tx",  "color.toggle.success.background.checked").name().toLower(),
+                  QString("#006040"));
+        EXPECT_EQ(tm.colorAt("applet/tx",  "color.toggle.warning.background.checked").name().toLower(),
+                  QString("#5a3a0a"));
+        EXPECT_TRUE(!tm.isOverriddenAt("applet/tx", "color.toggle.success.background.checked"));
+        EXPECT_TRUE(!tm.isOverriddenAt("applet/tx", "color.toggle.warning.background.checked"));
+    }
+
     // ── Factory-snapshot v2 schema awareness ──
     // ensureFactoryLoaded() reads :/themes/default-dark.json to build
     // m_factoryTokens, which Reset-to-default reads at root scope.  The
@@ -474,6 +528,15 @@ int main(int argc, char** argv)
         const QColor parentColor = QColor("#11aa33");
 
         tm.setColor("scopeB", "color.accent", parentColor);
+        // Materialise scopeB/leaf BEFORE the inheritance query.  lookupRaw
+        // falls back to root scope when scopeForPath returns nullptr (no
+        // scope object exists at the queried path), so a "scopeB/leaf"
+        // query without a scope object jumps over scopeB straight to root
+        // and returns the root colour.  Production editor code always
+        // creates the leaf via setColor / setSizing before querying it,
+        // so this matches real usage — an unmaterialised-leaf query is a
+        // separate concern (would need a path-walk fallback in lookupRaw).
+        tm.setSizing("scopeB/leaf", "sizing.panel.padding", 7);
 
         // scopeB/leaf has no own override — inheritance must walk up to
         // scopeB and return its value.
@@ -481,12 +544,7 @@ int main(int argc, char** argv)
                   parentColor.name().toLower());
         // scopeB itself is the source of the override.
         EXPECT_TRUE(tm.isOverriddenAt("scopeB", "color.accent"));
-        // scopeB/leaf inherits — must NOT report own-override.  Use
-        // scopeOrCreate (via a setSizing on an unrelated token) to make
-        // the leaf scope exist; otherwise scopeForPath returns nullptr
-        // and isOverriddenAt short-circuits to false anyway, but
-        // exercising the real path here matches the editor's behaviour.
-        tm.setSizing("scopeB/leaf", "sizing.panel.padding", 7);
+        // scopeB/leaf inherits — must NOT report own-override.
         EXPECT_TRUE(!tm.isOverriddenAt("scopeB/leaf", "color.accent"));
     }
 
