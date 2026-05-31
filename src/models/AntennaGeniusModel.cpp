@@ -25,6 +25,17 @@ AntennaGeniusModel::AntennaGeniusModel(QObject* parent)
 {
     m_portA.portId = 1;
     m_portB.portId = 2;
+
+    // Retries every 5s indefinitely until the device returns or the user disconnects.
+    // This is intentional for a LAN peripheral that may be power-cycling.
+    m_reconnectTimer = new QTimer(this);
+    m_reconnectTimer->setSingleShot(true);
+    m_reconnectTimer->setInterval(5000);
+    connect(m_reconnectTimer, &QTimer::timeout, this, [this]() {
+        if (!m_connected && m_device.port > 0 && !m_device.ip.isNull()) {
+            connectToDevice(m_device);
+        }
+    });
 }
 
 AntennaGeniusModel::~AntennaGeniusModel()
@@ -214,6 +225,10 @@ quint16 AntennaGeniusModel::peerPort() const
 
 void AntennaGeniusModel::disconnectFromDevice()
 {
+    m_deliberateDisconnect = true;
+    if (m_reconnectTimer) {
+        m_reconnectTimer->stop();
+    }
     if (m_keepAlive) {
         m_keepAlive->stop();
         delete m_keepAlive;
@@ -228,6 +243,7 @@ void AntennaGeniusModel::disconnectFromDevice()
         m_connected = false;
         emit disconnected();
     }
+    m_deliberateDisconnect = false;
     m_antennas.clear();
     m_bands.clear();
     m_portA = AgPortStatus{1};
@@ -255,6 +271,7 @@ void AntennaGeniusModel::onTcpConnected()
 void AntennaGeniusModel::onTcpDisconnected()
 {
     qCDebug(lcTuner) << "AntennaGenius: TCP disconnected";
+    bool wasConnected = m_connected;
     if (m_connected) {
         m_connected = false;
         emit disconnected();
@@ -262,6 +279,11 @@ void AntennaGeniusModel::onTcpDisconnected()
     if (m_keepAlive) {
         m_keepAlive->stop();
     }
+    if (!m_deliberateDisconnect && m_autoReconnect && wasConnected
+        && m_device.port > 0 && !m_device.ip.isNull()) {
+        m_reconnectTimer->start();
+    }
+    m_deliberateDisconnect = false;
 }
 
 void AntennaGeniusModel::onTcpError()
@@ -270,6 +292,15 @@ void AntennaGeniusModel::onTcpError()
     QString err = m_tcpSocket->errorString();
     qCWarning(lcTuner) << "AntennaGenius: TCP error:" << err;
     emit connectionError(err);
+    // A failed reconnect attempt arrives here (not via onTcpDisconnected) because
+    // the socket never reached ConnectedState. Re-arm so we keep retrying until
+    // the device returns or the user disconnects. isActive() prevents double-arm
+    // when a live drop emits both errorOccurred and disconnected.
+    if (!m_deliberateDisconnect && m_autoReconnect && !m_connected
+            && m_device.port > 0 && !m_device.ip.isNull()
+            && m_reconnectTimer && !m_reconnectTimer->isActive()) {
+        m_reconnectTimer->start();
+    }
 }
 
 void AntennaGeniusModel::onTcpReadyRead()

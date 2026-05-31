@@ -18,6 +18,7 @@
 #include "core/CommandParser.h"
 #include "core/LogManager.h"
 #include "core/PerfTelemetry.h"
+#include "core/PeripheralSettings.h"
 #include "core/VoiceSignalDetector.h"
 #include "core/MemoryRecallPolicy.h"
 #include "core/StreamStatus.h"
@@ -3557,6 +3558,14 @@ MainWindow::MainWindow(QWidget* parent)
             m_tgxlConn.disconnect();
         }
     });
+    // Apply auto-reconnect setting at startup so it's active before any connection is made
+    {
+        const bool ar = PeripheralSettings::autoReconnect();
+        m_tgxlConn.setAutoReconnect(ar);
+        m_pgxlConn.setAutoReconnect(ar);
+        m_antennaGenius.setAutoReconnect(ar);
+    }
+
     // Wire TgxlConnection to TunerModel
     m_radioModel.tunerModel().setDirectConnection(&m_tgxlConn);
     // Also attempt connection when TGXL IP arrives (may come after presence)
@@ -10306,6 +10315,12 @@ void MainWindow::onConnectionStateChanged(bool connected)
                     QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->startConnection(); });
             }
 #endif
+            // Propagate auto-reconnect setting to all peripheral connections
+            const bool autoReconnect = PeripheralSettings::autoReconnect();
+            m_tgxlConn.setAutoReconnect(autoReconnect);
+            m_pgxlConn.setAutoReconnect(autoReconnect);
+            m_antennaGenius.setAutoReconnect(autoReconnect);
+
             // Auto-connect peripherals with manual IPs (#914)
             QString tgxlIp = cs.value("TGXL_ManualIp", "").toString();
             if (!tgxlIp.isEmpty() && !m_tgxlConn.isConnected()) {
