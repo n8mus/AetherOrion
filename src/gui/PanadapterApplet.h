@@ -6,6 +6,7 @@ class QLabel;
 class QPushButton;
 class QSlider;
 class QTextEdit;
+class RangeSlider;
 
 namespace AetherSDR {
 
@@ -50,6 +51,10 @@ public:
     QPushButton* lockPitchButton()  const { return m_lockPitchBtn; }
     QPushButton* lockSpeedButton()  const { return m_lockSpeedBtn; }
     float        cwCostThreshold()  const { return m_cwCostThreshold; }
+    int speedRangeLow()   const;
+    int speedRangeHigh()  const;
+    int pitchRangeLow()   const;
+    int pitchRangeHigh()  const;
 
     QSize sizeHint() const override { return {800, 316}; }
 
@@ -60,6 +65,7 @@ signals:
     void dockClicked();
     void maximizeRequested(const QString& panId);
     void pitchRangeChanged(int minHz, int maxHz);
+    void speedRangeChanged(int minWpm, int maxWpm);
     void cwPanelCloseRequested();
 
 protected:
@@ -82,10 +88,8 @@ private:
     QSlider*      m_cwSensSlider{nullptr};
     QPushButton*  m_lockPitchBtn{nullptr};
     QPushButton*  m_lockSpeedBtn{nullptr};
-    QSlider*      m_pitchMinSlider{nullptr};
-    QSlider*      m_pitchMaxSlider{nullptr};
-    QLabel*       m_pitchMinValLabel{nullptr};
-    QLabel*       m_pitchMaxValLabel{nullptr};
+    RangeSlider*  m_pitchRangeSlider{nullptr};
+    RangeSlider*  m_speedRangeSlider{nullptr};
     float         m_cwCostThreshold{0.70f};
 
     // Last CW text source — used by appendCwText / appendCwTextTx so the
