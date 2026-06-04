@@ -529,13 +529,10 @@ QWidget* RadioSetupDialog::buildRadioTab()
         "border: 1px solid #20a040; }";
 
     auto makeToggle = [](bool checked) {
-        auto* btn = new QPushButton(checked ? "Enabled" : "Disabled");
+        auto* btn = new QPushButton("Enabled");
         btn->setCheckable(true);
         btn->setChecked(checked);
         btn->setStyleSheet(kToggleStyle);
-        QObject::connect(btn, &QPushButton::toggled, btn, [btn](bool on) {
-            btn->setText(on ? "Enabled" : "Disabled");
-        });
         return btn;
     };
 
@@ -1011,7 +1008,7 @@ QWidget* RadioSetupDialog::buildNetworkTab()
         grid->setSpacing(6);
 
         grid->addWidget(new QLabel("Enforce Private IP Connections:"), 0, 0);
-        auto* enforceBtn = new QPushButton(m_model->enforcePrivateIp() ? "Enabled" : "Disabled");
+        auto* enforceBtn = new QPushButton("Enabled");
         enforceBtn->setCheckable(true);
         enforceBtn->setChecked(m_model->enforcePrivateIp());
         AetherSDR::ThemeManager::instance().applyStyleSheet(enforceBtn, "QPushButton { background: {{color.background.1}}; border: 1px solid {{color.background.2}}; "
@@ -1019,8 +1016,7 @@ QWidget* RadioSetupDialog::buildNetworkTab()
             "padding: 3px 10px; }"
             "QPushButton:checked { background: #1a5030; color: {{color.accent.success}}; "
             "border: 1px solid #20a040; }");
-        connect(enforceBtn, &QPushButton::toggled, this, [this, enforceBtn](bool on) {
-            enforceBtn->setText(on ? "Enabled" : "Disabled");
+        connect(enforceBtn, &QPushButton::toggled, this, [this](bool on) {
             m_model->sendCommand(
                 QString("radio set enforce_private_ip_connections=%1").arg(on ? 1 : 0));
         });
@@ -1371,7 +1367,7 @@ QWidget* RadioSetupDialog::buildTxTab()
         auto* swLbl = new QLabel("Show TX in Waterfall:");
         swLbl->setStyleSheet(kLabelStyle);
         grid->addWidget(swLbl, 1, 0);
-        auto* swBtn = new QPushButton(tx.showTxInWaterfall() ? "Enabled" : "Disabled");
+        auto* swBtn = new QPushButton("Enabled");
         swBtn->setCheckable(true);
         swBtn->setChecked(tx.showTxInWaterfall());
         AetherSDR::ThemeManager::instance().applyStyleSheet(swBtn, "QPushButton { background: {{color.background.1}}; border: 1px solid {{color.background.2}}; "
@@ -1379,8 +1375,7 @@ QWidget* RadioSetupDialog::buildTxTab()
             "padding: 3px 10px; }"
             "QPushButton:checked { background: #1a5030; color: {{color.accent.success}}; "
             "border: 1px solid #20a040; }");
-        connect(swBtn, &QPushButton::toggled, this, [this, swBtn](bool on) {
-            swBtn->setText(on ? "Enabled" : "Disabled");
+        connect(swBtn, &QPushButton::toggled, this, [this](bool on) {
             m_model->sendCommand(
                 QString("transmit set show_tx_in_waterfall=%1").arg(on ? 1 : 0));
         });
@@ -1505,9 +1500,8 @@ QWidget* RadioSetupDialog::buildPhoneCwTab()
         connect(boostBtn, &QPushButton::toggled, this, [this](bool on) {
             m_model->transmitModel().setMicBoost(on);
         });
-        auto* metBtn = mkTogBtn(tx.metInRx() ? "Enabled" : "Disabled", tx.metInRx());
-        connect(metBtn, &QPushButton::toggled, this, [this, metBtn](bool on) {
-            metBtn->setText(on ? "Enabled" : "Disabled");
+        auto* metBtn = mkTogBtn("Enabled", tx.metInRx());
+        connect(metBtn, &QPushButton::toggled, this, [this](bool on) {
             m_model->sendCommand(QString("transmit set met_in_rx=%1").arg(on ? 1 : 0));
         });
 
@@ -1530,8 +1524,7 @@ QWidget* RadioSetupDialog::buildPhoneCwTab()
         iamLbl->setStyleSheet(kLabelStyle);
         grid->addWidget(iamLbl, 0, 0);
         auto* iamBtn = mkTogBtn("Enabled", tx.cwIambic());
-        connect(iamBtn, &QPushButton::toggled, this, [this, iamBtn](bool on) {
-            iamBtn->setText(on ? "Enabled" : "Disabled");
+        connect(iamBtn, &QPushButton::toggled, this, [this](bool on) {
             m_model->sendCommand(QString("cw iambic %1").arg(on ? 1 : 0));
         });
         grid->addWidget(iamBtn, 0, 1);
@@ -1921,12 +1914,11 @@ QWidget* RadioSetupDialog::buildRxTab()
             auto* lbl = new QLabel(label);
             lbl->setStyleSheet(kLabelStyle);
             grid->addWidget(lbl, row, 0);
-            auto* btn = new QPushButton(checked ? "Enabled" : "Disabled");
+            auto* btn = new QPushButton("Enabled");
             btn->setCheckable(true);
             btn->setChecked(checked);
             btn->setStyleSheet(kTogStyle);
-            connect(btn, &QPushButton::toggled, this, [this, btn, cmd](bool on) {
-                btn->setText(on ? "Enabled" : "Disabled");
+            connect(btn, &QPushButton::toggled, this, [this, cmd](bool on) {
                 m_model->sendCommand(
                     QString("%1=%2").arg(cmd).arg(on ? 1 : 0));
             });
@@ -2247,7 +2239,7 @@ QWidget* RadioSetupDialog::buildAudioTab()
         boostLabel->setStyleSheet(kLabelStyle);
         boostLabel->setFixedWidth(90);
         bool boostOn = AppSettings::instance().value("AudioBoost", "False").toString() == "True";
-        auto* boostBtn = new QPushButton(boostOn ? "Enabled" : "Disabled");
+        auto* boostBtn = new QPushButton("Enabled");
         boostBtn->setCheckable(true);
         boostBtn->setChecked(boostOn);
         boostBtn->setToolTip("Apply 50% software gain boost to PC audio output.\n"
@@ -2257,8 +2249,7 @@ QWidget* RadioSetupDialog::buildAudioTab()
             "padding: 3px 10px; }"
             "QPushButton:checked { background: #1a5030; color: {{color.accent.success}}; "
             "border: 1px solid #20a040; }");
-        connect(boostBtn, &QPushButton::toggled, this, [this, boostBtn](bool on) {
-            boostBtn->setText(on ? "Enabled" : "Disabled");
+        connect(boostBtn, &QPushButton::toggled, this, [this](bool on) {
             auto& s = AppSettings::instance();
             s.setValue("AudioBoost", on ? "True" : "False");
             s.save();
@@ -2733,7 +2724,7 @@ QWidget* RadioSetupDialog::buildXvtrTab()
         auto* rxOnlyLbl = new QLabel("RX Only:");
         rxOnlyLbl->setStyleSheet(kLabelStyle);
         grid->addWidget(rxOnlyLbl, 3, 2);
-        auto* rxOnlyBtn = new QPushButton(x.rxOnly ? "Enabled" : "Disabled");
+        auto* rxOnlyBtn = new QPushButton("Enabled");
         rxOnlyBtn->setCheckable(true);
         rxOnlyBtn->setChecked(x.rxOnly);
         AetherSDR::ThemeManager::instance().applyStyleSheet(rxOnlyBtn, "QPushButton { background: {{color.background.1}}; border: 1px solid {{color.background.2}}; "
@@ -2741,8 +2732,7 @@ QWidget* RadioSetupDialog::buildXvtrTab()
             "padding: 3px 10px; }"
             "QPushButton:checked { background: #1a5030; color: {{color.accent.success}}; "
             "border: 1px solid #20a040; }");
-        connect(rxOnlyBtn, &QPushButton::toggled, this, [this, rxOnlyBtn, idx](bool on) {
-            rxOnlyBtn->setText(on ? "Enabled" : "Disabled");
+        connect(rxOnlyBtn, &QPushButton::toggled, this, [this, idx](bool on) {
             m_model->sendCommand(
                 QString("xvtr set %1 rx_only=%2").arg(idx).arg(on ? 1 : 0));
         });
