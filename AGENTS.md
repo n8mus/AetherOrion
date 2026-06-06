@@ -389,3 +389,19 @@ Filter all status and VITA-49 packets by `client_handle` — three layers:
 
 Early status messages arrive WITHOUT `client_handle`. Create SliceModels for
 all initially, remove other clients' when handle arrives.
+
+---
+
+## Accessibility — `src/gui/` Rules
+
+Touching any file under `src/gui/`? Read [`docs/a11y.md`](docs/a11y.md)
+**before** adding or modifying a widget. Canonical Qt patterns:
+`setAccessibleName` / `setAccessibleDescription`, `QAccessibleValueChangeEvent`
+on every value-change method, `QAccessibleInterface` subclass for any
+`paintEvent` override, and the interactive-`QLabel` anti-pattern (replace
+with `QPushButton` or add keyboard activation).
+
+CI enforcement: [`tools/check_a11y.py`](tools/check_a11y.py) runs on every
+PR via [`.github/workflows/a11y-check.yml`](.github/workflows/a11y-check.yml)
+and emits inline diff annotations for the patterns above. Warning-only
+(`exit 0`); never blocks a build.
