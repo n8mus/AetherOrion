@@ -596,6 +596,44 @@ QWidget* RadioSetupDialog::buildRadioTab()
                                       kInfoRightLabelWidth),
                         3, 1);
 
+        auto* rebootBtn = new QPushButton(QStringLiteral("Reboot Radio"));
+        AetherSDR::ThemeManager::instance().applyStyleSheet(rebootBtn,
+            "QPushButton { background: #3a1a1a; color: #ffb080; border: 1px solid #6e3030;"
+            " border-radius: 3px; font-size: 11px; font-weight: bold; padding: 3px 10px; }"
+            "QPushButton:hover { background: #4a2020; }"
+            "QPushButton:disabled { background: {{color.background.1}}; color: {{color.meter.bar.fill}}; border-color: {{color.background.2}}; }");
+        // Only enable when actually connected; subscribe so disconnect/reconnect
+        // disables/re-enables the button without the user having to reopen the
+        // dialog. rebootRadio() also early-returns on disconnected, but the
+        // disabled state makes the affordance discoverable rather than silent.
+        rebootBtn->setEnabled(m_model->isConnected());
+        connect(m_model, &RadioModel::connectionStateChanged,
+                rebootBtn, &QPushButton::setEnabled);
+        connect(rebootBtn, &QPushButton::clicked, this, [this] {
+            const bool wan = m_model->isWan();
+            const QString body = wan
+                ? QStringLiteral("Reboot the connected radio now?\n\n"
+                                 "AetherSDR will disconnect. SmartLink/WAN sessions "
+                                 "do not auto-reconnect today — you will need to "
+                                 "reconnect manually once the radio finishes booting.")
+                : QStringLiteral("Reboot the connected radio now?\n\n"
+                                 "AetherSDR will disconnect and automatically reconnect "
+                                 "once the radio finishes booting.");
+            const auto ret = QMessageBox::warning(
+                this,
+                QStringLiteral("Reboot Radio"),
+                body,
+                QMessageBox::Ok | QMessageBox::Cancel,
+                QMessageBox::Cancel);
+            if (ret == QMessageBox::Ok) {
+                m_model->rebootRadio();
+                close();
+            }
+        });
+        grid->addWidget(makeInfoField(QStringLiteral("Reboot:"), rebootBtn,
+                                      kInfoLeftLabelWidth),
+                        3, 0);
+
         connect(m_model, &RadioModel::infoChanged, this, [this] {
             if (m_serialLabel) {
                 m_serialLabel->setText(radioSerialNumber(m_model));
