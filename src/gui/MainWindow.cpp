@@ -1758,6 +1758,12 @@ MainWindow::MainWindow(QWidget* parent)
         s.save();
     });
 
+    // Start the AetherModem KISS TNC headlessly at launch if the user enabled
+    // "Start TNC on Startup" — constructs the (hidden, persistent) AetherModem
+    // window so the TCP server runs without the window being opened. Deferred so
+    // the audio engine and main window are fully up first.
+    QTimer::singleShot(0, this, [this] { startKissTncOnStartupIfConfigured(); });
+
     // Auto-connect: when a radio is discovered, check if it matches the last one
     connect(&m_discovery, &RadioDiscovery::radioDiscovered,
             this, [this](const RadioInfo& info) {
@@ -6662,9 +6668,47 @@ void MainWindow::showAgcCalibrationDialog(int sliceId)
 void MainWindow::showAx25HfPacketDecodeDialog()
 {
     SliceModel* slice = activeSlice();
-    showOrRaisePersistent(m_ax25HfPacketDecodeDialog, m_audio, &m_radioModel, slice);
+
+    // Construct on first open if it didn't already come up via
+    // startKissTncOnStartupIfConfigured(). Intentionally NOT using
+    // showOrRaisePersistent() here because that template sets
+    // WA_DeleteOnClose: closing the window would destroy the dialog and
+    // along with it the KISS TCP server, dropping every connected client
+    // without warning. The TNC server lifecycle is decoupled from the
+    // window's open/close cycle — the dialog stays alive as long as
+    // MainWindow does and is just hidden on close.
+    if (!m_ax25HfPacketDecodeDialog) {
+        auto* dlg = new Ax25HfPacketDecodeDialog(m_audio, &m_radioModel, slice, this);
+        dlg->setFramelessMode(
+            AppSettings::instance().value("FramelessWindow", "True").toString() == "True");
+        m_ax25HfPacketDecodeDialog = dlg;
+        m_persistentDialogs.append(QPointer<PersistentDialog>(dlg));
+    }
+    m_ax25HfPacketDecodeDialog->setAttachedSlice(slice);
+    m_ax25HfPacketDecodeDialog->show();
+    m_ax25HfPacketDecodeDialog->raise();
+    m_ax25HfPacketDecodeDialog->activateWindow();
+}
+
+void MainWindow::startKissTncOnStartupIfConfigured()
+{
     if (m_ax25HfPacketDecodeDialog)
-        m_ax25HfPacketDecodeDialog->setAttachedSlice(slice);
+        return; // already constructed (e.g. user opened the window)
+    // One-shot migration from legacy flat keys (AetherModemKissTnc*) into
+    // the nested-JSON blob (Constitution Principle V). Safe to call on
+    // every startup — no-op once the blob exists.
+    TncSettings::migrateLegacy();
+    if (!TncSettings::startOnStartup())
+        return;
+
+    // Construct the AetherModem window hidden and persistent (no WA_DeleteOnClose)
+    // so the KISS TCP server runs from launch and survives the window being
+    // closed. The dialog's constructor auto-starts the TNC per the same setting.
+    auto* dlg = new Ax25HfPacketDecodeDialog(m_audio, &m_radioModel, activeSlice(), this);
+    dlg->setFramelessMode(
+        AppSettings::instance().value("FramelessWindow", "True").toString() == "True");
+    m_ax25HfPacketDecodeDialog = dlg;
+    m_persistentDialogs.append(QPointer<PersistentDialog>(dlg));
 }
 
 void MainWindow::showFlexControlDialog()

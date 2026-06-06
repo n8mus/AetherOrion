@@ -366,6 +366,7 @@ private:
     void showNetworkDiagnosticsDialog();
     void showAgcCalibrationDialog(int sliceId);
     void showAx25HfPacketDecodeDialog();
+    void startKissTncOnStartupIfConfigured();
     void showFlexControlDialog();
     void handleFlexControlTuneSteps(int steps);
     void handleFlexControlButton(int button, int action);

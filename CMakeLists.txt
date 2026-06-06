@@ -577,6 +577,8 @@ set(CORE_SOURCES
     src/core/MemoryRecallPolicy.cpp
     src/core/tnc/AetherAx25LibmodemShim.cpp
     src/core/tnc/Ax25FrameFormatter.cpp
+    src/core/tnc/KissFraming.cpp
+    src/core/tnc/KissTncServer.cpp
 )
 
 if(APPLE)
@@ -1936,6 +1938,7 @@ add_executable(ax25_libmodem_shim_test
     tests/ax25_libmodem_shim_test.cpp
     src/core/tnc/AetherAx25LibmodemShim.cpp
     src/core/tnc/Ax25FrameFormatter.cpp
+    src/core/tnc/KissFraming.cpp
     # LogManager.cpp provides lcAx25 (the shim's qCDebug category, #2763);
     # LogManager.cpp depends on AsyncLogWriter via the m_writer member, so
     # AppSettings + AsyncLogWriter come along to satisfy the constructor /
