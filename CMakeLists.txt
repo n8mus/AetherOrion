@@ -486,6 +486,7 @@ endif()
 # Sources
 set(CORE_SOURCES
     src/core/AppSettings.cpp
+    src/core/AgcTCalibrator.cpp
     src/core/SettingsHelpers.cpp
     src/core/ThemeManager.cpp
     src/core/BandStackSettings.cpp
@@ -622,6 +623,7 @@ set(MODEL_SOURCES
 
 set(GUI_SOURCES
     src/gui/MainWindow.cpp
+    src/gui/AgcCalibrationDialog.cpp
     src/gui/AudioDeviceChangeDialog.cpp
     src/gui/ConnectionPanel.cpp
     src/gui/ClientDisconnectDialog.cpp
