@@ -366,6 +366,7 @@ private:
 #ifdef HAVE_MQTT
     void showMqttSettingsDialog();
     void publishCwDecodeMqtt(const QString& text, float cost, bool rx);
+    void publishRadioStateMqtt();
 #endif
     void applyPanLayout(const QString& layoutId);
     void createPansSequentially(const QString& layoutId, int total,
@@ -478,12 +479,26 @@ private:
     PgxlConnection    m_pgxlConn;        // direct TCP 9008 to PGXL for telemetry
     BandPlanManager*  m_bandPlanMgr{nullptr};
     CwDecoder         m_cwDecoder;
+    float             m_cwLastPitchHz{0.0f};
+    float             m_cwLastSpeedWpm{0.0f};
     CwDecoder         m_cwDecoderTx;
     RttyDecoder       m_rttyDecoder;
     DxClusterClient*   m_dxCluster{nullptr};
     DxClusterClient*   m_rbnClient{nullptr};
 #ifdef HAVE_MQTT
     MqttClient*        m_mqttClient{nullptr};
+    QMetaObject::Connection m_radioStateFreqConn;
+    QMetaObject::Connection m_radioStateModeConn;
+    QTimer                  m_radioStateCoalesceTimer;
+    QMetaObject::Connection m_cwStatsConn;
+    QMetaObject::Connection m_cwxSpeedRestoreConn;
+    int               m_cwxSavedWpm{0};
+    int               m_cwxSavedHz{0};
+    int               m_cwxSentWpm{0};
+    int               m_cwxSentHz{0};
+    bool              m_cwxTransmitting{false};
+    bool              m_cwxPublishedTxTrue{false};
+    QTimer            m_cwxTxEndTimer;
 #endif
     WsjtxClient*       m_wsjtxClient{nullptr};
     SpotCollectorClient* m_spotCollectorClient{nullptr};
