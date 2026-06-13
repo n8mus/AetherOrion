@@ -2103,6 +2103,12 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
     });
 #endif
 
+    connect(w, &VfoWidget::wfmActivated, this, [this](bool on, int sliceId) {
+        if (on) activateWFM(sliceId);
+        // Same policy as the RxApplet handler: slice-gated, cooldown-debounced.
+        else if (sliceId == m_wfmSliceId && !m_wfmCooldown) deactivateWFM();
+    });
+
     // AetherDSP button on the per-slice DSP tab — same entry point as the
     // Settings menu action and the RX chain double-click; reuses the
     // existing modeless m_dspDialog when one is already open.

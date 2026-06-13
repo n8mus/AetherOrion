@@ -578,6 +578,9 @@ set(CORE_SOURCES
     src/core/SleepInhibitor.cpp
     src/core/MemoryCsvCompat.cpp
     src/core/MemoryRecallPolicy.cpp
+    src/core/WfmDemodulator.cpp
+    src/core/WfmDsp.cpp
+    src/core/WaveOutWriter.cpp
     src/core/tnc/AetherAx25LibmodemShim.cpp
     src/core/tnc/HdlcCodec.cpp
     src/core/tnc/Ax25FrameFormatter.cpp
@@ -647,6 +650,7 @@ set(GUI_SOURCES
     src/gui/MainWindow_Wiring.cpp
     src/gui/AgcCalibrationDialog.cpp
     src/gui/AudioDeviceChangeDialog.cpp
+    src/gui/WfmDeviceDialog.cpp
     src/gui/ConnectionPanel.cpp
     src/gui/ClientDisconnectDialog.cpp
     src/gui/ConnectedStationsDialog.cpp
@@ -1729,6 +1733,22 @@ target_include_directories(tx_mic_channel_normalizer_test PRIVATE
 )
 target_link_libraries(tx_mic_channel_normalizer_test PRIVATE Qt6::Core)
 add_test(NAME tx_mic_channel_normalizer_test COMMAND tx_mic_channel_normalizer_test)
+
+# Pins the SkyRoof-parity WFM DSP chain: NCO offset correction removes the
+# discriminator DC term (fixed pan + Doppler-stepped slice), twin linear-phase
+# resamplers deliver exactly 48 kHz from any native DAX IQ rate, and streaming
+# state is continuous across block boundaries.
+add_executable(wfm_dsp_test
+    tests/wfm_dsp_test.cpp
+    src/core/WfmDsp.cpp
+    src/core/Resampler.cpp
+)
+target_include_directories(wfm_dsp_test PRIVATE
+    src
+    ${CMAKE_SOURCE_DIR}/third_party/r8brain
+)
+target_link_libraries(wfm_dsp_test PRIVATE Qt6::Core)
+add_test(NAME wfm_dsp_test COMMAND wfm_dsp_test)
 
 # Pure, headless, hardware-free golden matrix for the consolidated audio
 # format/rate negotiation policy (#3306). TargetOs is data, so this one binary

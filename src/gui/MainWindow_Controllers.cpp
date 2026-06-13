@@ -2174,8 +2174,10 @@ void MainWindow::wireExternalControllers()
             this, &MainWindow::handleFlexControlButton);
     connect(m_flexControl, &FlexControlManager::buttonPressed,
             this, [this](int button, int action) {
+#ifdef HAVE_HIDAPI
         if (m_hidEncoder->isTMate2())
             noteTMate2Interaction();
+#endif
         if (m_flexControlDialog)
             m_flexControlDialog->reflectButtonPress(button, action);
     });

@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QString>
 #include <QThread>
+#include <QVector>
 
 namespace AetherSDR {
 
@@ -59,8 +60,13 @@ signals:
     void streamChanged(int channel);
     void commandReady(const QString& cmd);
     void iqLevelReady(int channel, float rms);
+    void iqSamplesReady(int channel, QVector<float> iqInterleaved, int sampleRate);
 
 private:
+    // Worker→model relay: converts to QVector<float> and re-emits
+    // iqSamplesReady only when a consumer (WFM demodulator) is connected.
+    void relayIqSamples(int channel, const QByteArray& iqBytes, int sampleRate);
+
     IqStream m_streams[NUM_CHANNELS];  // index 0-3 for channels 1-4
     int m_capacity{0};
     int m_available{0};
@@ -89,6 +95,9 @@ public slots:
 
 signals:
     void levelReady(int channel, float rms);
+    // Byte-swapped native-endian float32 IQ; QByteArray so the cross-thread
+    // emission only refs the implicitly-shared buffer (no per-packet copy).
+    void samplesReady(int channel, QByteArray iqBytes, int sampleRate);
 
 private:
     int m_pipeFds[DaxIqModel::NUM_CHANNELS]{-1, -1, -1, -1};
