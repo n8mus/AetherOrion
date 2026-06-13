@@ -36,6 +36,16 @@ namespace {
 // matches the rigctld cap.
 constexpr qint64 kMaxWsMessageBytes = 64 * 1024;
 constexpr int    kMaxClients        = 8;
+// Grace period before tearing down DAX RX after the last audio client drops.
+// A TCP drop is frequently transient (WSJT-X throws on a CAT timeout — e.g. a
+// vfo: echo delayed by an ATU tune — then reconnects). Deferring the teardown
+// lets the stream survive the blip so audio resumes with no recreate; a
+// reconnecting client cancels it. (#3363/#3476 + Tune/ATU)
+// Measured drop→audio_start gaps in the field repros: 2.1s / 3.3s / 3.5s —
+// and WSJT-X is slowest to reconnect mid-FT8-decode, exactly when these
+// throws happen. 10s gives ~3x margin; the cost of lingering after a genuine
+// quit is just an unconsumed stream + dax flag for a few extra seconds.
+constexpr int    kDaxReleaseGraceMs = 10000;
 }
 
 // ── TCI binary audio frame header (per ExpertSDR3 TCI spec v2.0) ────────
@@ -132,8 +142,19 @@ TciServer::TciServer(RadioModel* model, QObject* parent)
                 for (auto it = m_tciDaxStreamIds.begin(); it != m_tciDaxStreamIds.end(); ++it) {
                     if (it.value() == streamId) {
                         qCInfo(lcCat) << "TCI: radio removed DAX RX stream" << Qt::hex << streamId
-                                      << "for channel" << it.key();
-                        it.value() = 0;
+                                      << "for channel" << it.key()
+                                      << "— clearing cache entry so re-arm recreates it (#3476)";
+                        // Erase (not zero) the entry. Leaving a key behind keeps
+                        // ensureDaxForTci()'s `contains(ch)` guard true, so after a
+                        // profile load / slice teardown — which destroys the radio's
+                        // dax_rx stream without a TCI disconnect — the sliceAdded
+                        // re-arm skips `stream create` and TCI RX stays silent until
+                        // a full reconnect. That is the #3476/#3364 "switched profile,
+                        // never came back" failure. Pending creates (value 0) are
+                        // never matched here (streamId != 0), so an in-flight request
+                        // is safe.
+                        m_tciDaxBorrowedChannels.remove(it.key());
+                        m_tciDaxStreamIds.erase(it);
                         break;
                     }
                 }
@@ -197,6 +218,13 @@ TciServer::TciServer(RadioModel* model, QObject* parent)
                 }
                 m_tciDaxStreamIds.clear();
                 m_tciDaxBorrowedChannels.clear();
+                // Also drop the slice-assignment bookkeeping: slices are being
+                // destroyed with the connection, and a releaseDaxForTci() that
+                // runs later (e.g. the debounced grace timer firing after a
+                // quick radio reconnect) must not setDaxChannel(0) on the
+                // RECREATED slices — that would strip a profile-restored DAX
+                // assignment from a slice we no longer manage.
+                m_tciDaxSlices.clear();
                 return;
             }
             for (const auto& cs : m_clients) {
@@ -225,6 +253,22 @@ TciServer::TciServer(RadioModel* model, QObject* parent)
     m_meterTimer = new QTimer(this);
     m_meterTimer->setInterval(200);
     connect(m_meterTimer, &QTimer::timeout, this, &TciServer::broadcastStatus);
+
+    // Debounced DAX RX teardown — see scheduleDaxRelease(). Single-shot; a
+    // reconnecting audio client cancels it before it fires.
+    m_daxReleaseTimer = new QTimer(this);
+    m_daxReleaseTimer->setSingleShot(true);
+    connect(m_daxReleaseTimer, &QTimer::timeout, this, [this]() {
+        bool anyAudio = false;
+        for (const auto& cs : m_clients)
+            if (cs.audioEnabled) { anyAudio = true; break; }
+        if (anyAudio) {
+            qCWarning(lcCat) << "TCI: DAX release grace expired but an audio client is active — keeping DAX RX";
+            return;
+        }
+        qCWarning(lcCat) << "TCI: DAX release grace expired, no audio client returned — releasing DAX RX now";
+        releaseDaxForTci();
+    });
 
     // TX_CHRONO timer — sends timing frames to TCI client during TX.
     // WSJT-X only sends TX audio in response to these frames.
@@ -290,6 +334,7 @@ bool TciServer::start(quint16 port)
 void TciServer::stop()
 {
     m_meterTimer->stop();
+    if (m_daxReleaseTimer) m_daxReleaseTimer->stop();  // immediate teardown below
     stopTxChrono();
 
     if (!m_server) return;
@@ -461,14 +506,17 @@ void TciServer::onClientDisconnected()
             for (const auto& cs : m_clients) {
                 if (cs.audioEnabled) { anyAudio = true; break; }
             }
-            if (!anyAudio) releaseDaxForTci();
+            if (!anyAudio) scheduleDaxRelease();  // debounce: survive transient WSJT-X reconnects
             break;
         }
     }
 
     ws->deleteLater();
-    qCInfo(lcCat) << "TciServer: client disconnected,"
-                  << m_clients.size() << "remaining";
+    // DIAG: qCWarning — a TCP-level client drop (WSJT-X threw a rig-control
+    // error in do_stop()) is the trigger for the DAX RX teardown above. Always
+    // log it so the cause of mid-session RX loss is visible.
+    qCWarning(lcCat) << "TciServer: client disconnected (TCP drop),"
+                     << m_clients.size() << "remaining";
     emit clientCountChanged(m_clients.size());
     emit clientsChanged();
 }
@@ -544,8 +592,9 @@ void TciServer::onTextMessage(const QString& msg)
             }
             client.audioEnabled = true;
             client.audioReceiver = requestedReceiver;
+            cancelDaxRelease();  // a (re)connecting audio client cancels a pending teardown
             ensureDaxForTci();
-            ws->sendTextMessage(cmd.trimmed() + ";");
+            replyText(ws,cmd.trimmed() + ";");
             qCDebug(lcCat) << "TCI: audio started"
                            << "receiver=" << client.audioReceiver
                            << "rate=" << client.audioSampleRate
@@ -568,10 +617,11 @@ void TciServer::onTextMessage(const QString& msg)
             for (const auto& cs : m_clients) {
                 if (cs.audioEnabled) { anyAudio = true; break; }
             }
-            if (!anyAudio) releaseDaxForTci();
-            ws->sendTextMessage(cmd.trimmed() + ";");
-            qCInfo(lcCat) << "TCI: audio stopped for client"
-                          << ws->peerAddress().toString();
+            if (!anyAudio) scheduleDaxRelease();  // debounce: audio_stop is often followed by a quick audio_start
+            replyText(ws,cmd.trimmed() + ";");
+            qCWarning(lcCat) << "TCI: audio_stop from client"
+                             << ws->peerAddress().toString()
+                             << "(anyAudio=" << anyAudio << ")";
             emit clientsChanged();
             continue;
         }
@@ -590,7 +640,7 @@ void TciServer::onTextMessage(const QString& msg)
                 qCInfo(lcCat) << "TCI: audio sample rate set to" << rate
                               << "for" << ws->peerAddress().toString();
             }
-            ws->sendTextMessage(QStringLiteral("audio_samplerate:%1;")
+            replyText(ws,QStringLiteral("audio_samplerate:%1;")
                                     .arg(client.audioSampleRate));
             continue;
         }
@@ -606,7 +656,7 @@ void TciServer::onTextMessage(const QString& msg)
                 fmt = fmtStr.toInt();  // numeric value
             if (fmt == 0 || fmt == 3)  // int16 or float32
                 client.audioFormat = fmt;
-            ws->sendTextMessage(QStringLiteral("audio_stream_sample_type:%1;")
+            replyText(ws,QStringLiteral("audio_stream_sample_type:%1;")
                                     .arg(client.audioFormat));
             continue;
         }
@@ -615,7 +665,7 @@ void TciServer::onTextMessage(const QString& msg)
             int colonIdx2 = trimmed.indexOf(':');
             QString val = trimmed.mid(colonIdx2 + 1).split(',').first();
             client.rxSensorsEnabled = (val == "true");
-            ws->sendTextMessage(QStringLiteral("rx_sensors_enable:%1;")
+            replyText(ws,QStringLiteral("rx_sensors_enable:%1;")
                                     .arg(client.rxSensorsEnabled ? "true" : "false"));
             qCInfo(lcCat) << "TCI: rx_sensors" << (client.rxSensorsEnabled ? "enabled" : "disabled");
             emit clientsChanged();
@@ -625,7 +675,7 @@ void TciServer::onTextMessage(const QString& msg)
             int colonIdx2 = trimmed.indexOf(':');
             QString val = trimmed.mid(colonIdx2 + 1).split(',').first();
             client.txSensorsEnabled = (val == "true");
-            ws->sendTextMessage(QStringLiteral("tx_sensors_enable:%1;")
+            replyText(ws,QStringLiteral("tx_sensors_enable:%1;")
                                     .arg(client.txSensorsEnabled ? "true" : "false"));
             qCInfo(lcCat) << "TCI: tx_sensors" << (client.txSensorsEnabled ? "enabled" : "disabled");
             emit clientsChanged();
@@ -644,7 +694,7 @@ void TciServer::onTextMessage(const QString& msg)
             // Forward to protocol to create DAX IQ stream on the radio
             QString response = client.protocol->handleCommand(cmd.trimmed());
             if (!response.isEmpty())
-                ws->sendTextMessage(response);
+                replyText(ws,response);
             emit clientsChanged();
             continue;
         }
@@ -658,7 +708,7 @@ void TciServer::onTextMessage(const QString& msg)
                           << "trx=" << trx;
             QString response = client.protocol->handleCommand(cmd.trimmed());
             if (!response.isEmpty())
-                ws->sendTextMessage(response);
+                replyText(ws,response);
             emit clientsChanged();
             continue;
         }
@@ -679,19 +729,19 @@ void TciServer::onTextMessage(const QString& msg)
 
         if (trimmed.startsWith("audio_stream_samples:")) {
             // Samples per audio packet — acknowledge but we use fixed packet sizes
-            ws->sendTextMessage(cmd.trimmed() + ";");
+            replyText(ws,cmd.trimmed() + ";");
             continue;
         }
         if (trimmed.startsWith("tx_stream_audio_buffering:")) {
             // TX audio buffering in ms — acknowledge
-            ws->sendTextMessage(cmd.trimmed() + ";");
+            replyText(ws,cmd.trimmed() + ";");
             continue;
         }
         if (trimmed.startsWith("line_out_start") ||
             trimmed.startsWith("line_out_stop") ||
             trimmed.startsWith("line_out_recorder")) {
             // Line-out recording — not applicable to FlexRadio, acknowledge
-            ws->sendTextMessage(cmd.trimmed() + ";");
+            replyText(ws,cmd.trimmed() + ";");
             continue;
         }
         if (trimmed.startsWith("audio_stream_channels:")) {
@@ -699,14 +749,14 @@ void TciServer::onTextMessage(const QString& msg)
             int ch = trimmed.mid(colonIdx2 + 1).toInt();
             if (ch == 1 || ch == 2)
                 client.audioChannels = ch;
-            ws->sendTextMessage(QStringLiteral("audio_stream_channels:%1;")
+            replyText(ws,QStringLiteral("audio_stream_channels:%1;")
                                     .arg(client.audioChannels));
             continue;
         }
 
         QString response = client.protocol->handleCommand(cmd.trimmed());
         if (!response.isEmpty()) {
-            ws->sendTextMessage(response);
+            replyText(ws,response);
             qCDebug(lcCat) << "TCI cmd:" << cmd.trimmed()
                            << "-> resp:" << response.left(80).trimmed();
         }
@@ -1513,13 +1563,32 @@ void TciServer::sendInitBurst(QWebSocket* client)
     // Split the concatenated burst into individual messages.
     QString burst = protocol->generateInitBurst();
     const auto commands = burst.split(';', Qt::SkipEmptyParts);
-    for (const auto& cmd : commands)
+    for (const auto& cmd : commands) {
+        // DIAG: log each init-burst command — the startup vfo:/dds: here is what
+        // WSJT-X reconciles against on connect; a wrong/late one explains the
+        // "TCI failed set rxfreq" some users hit right at WSJT-X startup.
+        qCDebug(lcCat).noquote() << "TCI tx→init:" << (cmd + QLatin1Char(';'));
         client->sendTextMessage(cmd + ';');
+    }
     qCDebug(lcCat) << "TCI: sent init burst," << commands.size() << "commands";
+}
+
+void TciServer::replyText(QWebSocket* ws, const QString& msg)
+{
+    if (!ws) return;
+    // DIAG: per-command echoes (audio_*, vfo:, etc.) bypass the dispatch log
+    // at the top of onTextMessage via their early `continue`; log them here so
+    // every command's response is visible when chasing CAT timeouts (#tci-diag).
+    qCDebug(lcCat).noquote() << "TCI tx→client:" << msg.trimmed();
+    ws->sendTextMessage(msg);
 }
 
 void TciServer::broadcast(const QString& msg)
 {
+    // DIAG: every async broadcast (vfo:/trx:/modulation:/lock:/rx_smeter:…).
+    // The vfo: echo here is exactly what WSJT-X's do_frequency() waits ≤2s on
+    // before it throws "TCI failed set rxfreq" and drops the socket.
+    qCDebug(lcCat).noquote() << "TCI tx→all:" << msg.trimmed();
     for (auto& cs : m_clients)
         cs.socket->sendTextMessage(msg);
     emit tciMessage(QStringLiteral("tx"), msg);
@@ -1937,9 +2006,42 @@ void TciServer::ensureDaxForTci()
     }
 }
 
+void TciServer::scheduleDaxRelease()
+{
+    // Debounce the DAX RX teardown. A TCP client drop is frequently transient:
+    // WSJT-X throws a rig-control error (e.g. a vfo: echo delayed past its 2s
+    // timeout by an ATU tune, or a profile-load band change) and reconnects
+    // within ~2s. Tearing DAX RX down immediately turns that blip into
+    // permanent silence (#3363 / #3476 / Tune-ATU). Defer it; a reconnecting
+    // client that re-arms audio cancels the timer (cancelDaxRelease()), so the
+    // stream survives and audio resumes with no recreate. If the radio actually
+    // destroyed the streams meanwhile (profile slice recreate), the reactive
+    // "stream removed" handler keeps m_tciDaxStreamIds truthful regardless.
+    if (!m_daxReleaseTimer) { releaseDaxForTci(); return; }
+    qCWarning(lcCat) << "TCI: last audio client gone — deferring DAX RX release"
+                     << kDaxReleaseGraceMs << "ms (cancelled if a client reconnects)";
+    m_daxReleaseTimer->start(kDaxReleaseGraceMs);
+}
+
+void TciServer::cancelDaxRelease()
+{
+    if (m_daxReleaseTimer && m_daxReleaseTimer->isActive()) {
+        m_daxReleaseTimer->stop();
+        qCWarning(lcCat) << "TCI: audio client (re)armed — cancelled pending DAX RX release; stream kept alive";
+    }
+}
+
 void TciServer::releaseDaxForTci()
 {
     if (!m_model) return;
+
+    // DIAG (qCWarning so it survives default log levels): this is the path that
+    // silences WSJT-X RX on a client disconnect / audio_stop. It ran invisibly
+    // in the 26.6.2 repro because qCInfo(lcCat) is suppressed below warning.
+    qCWarning(lcCat) << "TCI: releaseDaxForTci() tearing down DAX RX —"
+                     << m_tciDaxStreamIds.size() << "stream(s),"
+                     << m_tciDaxSlices.size() << "slice assignment(s);"
+                     << "RX audio stops until the next audio_start re-arms it";
 
     // Remove DAX RX streams we created (skip borrowed streams — owned by DaxBridge
     // or pre-existing; removing them would break other audio consumers).
@@ -1955,8 +2057,8 @@ void TciServer::releaseDaxForTci()
                 m_model->sendCommand(QString("stream remove 0x%1")
                     .arg(streamId, 8, 16, QChar('0')));
             }
-            qCInfo(lcCat) << "TCI: removed DAX RX stream" << Qt::hex << streamId
-                          << "channel" << ch << "(#1331)";
+            qCWarning(lcCat) << "TCI: removed DAX RX stream" << Qt::hex << streamId
+                             << "channel" << ch << "(#1331)";
         }
     }
     m_tciDaxStreamIds.clear();
@@ -1965,7 +2067,7 @@ void TciServer::releaseDaxForTci()
     // Release DAX channel assignments we made
     for (int sliceId : m_tciDaxSlices) {
         if (auto* s = m_model->slice(sliceId)) {
-            qCInfo(lcCat) << "TCI: releasing DAX channel from slice" << sliceId << "(#1331)";
+            qCWarning(lcCat) << "TCI: releasing DAX channel from slice" << sliceId << "(#1331)";
             s->setDaxChannel(0);
         }
     }

@@ -147,6 +147,9 @@ private slots:
 
 private:
     void sendInitBurst(QWebSocket* client);
+    // Diagnostic: log + send a text reply to one client (per-command echoes
+    // bypass the central dispatch log, so route them here for visibility).
+    void replyText(QWebSocket* ws, const QString& msg);
     void broadcastSpotClicked(const QString& callsign, long long frequencyHz,
                               int trx, int channel);
     SliceModel* sliceForPanId(const QString& panId) const;
@@ -197,6 +200,8 @@ private:
 
     void ensureDaxForTci();
     void releaseDaxForTci();
+    void scheduleDaxRelease();   // debounced releaseDaxForTci — cancel on reconnect
+    void cancelDaxRelease();
 
     QPointer<RadioModel> m_model;  // QPointer auto-clears when RadioModel is destroyed (#2385)
     AudioEngine*      m_audio{nullptr};
@@ -206,6 +211,7 @@ private:
     QMap<int, quint32> m_tciDaxStreamIds;      // DAX channel → stream ID created or borrowed by TCI
     QSet<int>          m_tciDaxBorrowedChannels; // channels where TCI reused an existing stream
     QTimer*           m_meterTimer{nullptr};  // 200ms status broadcast
+    QTimer*           m_daxReleaseTimer{nullptr}; // debounced DAX RX teardown
     QTimer*           m_txChronoTimer{nullptr}; // TX_CHRONO frame cadence
     QWebSocket*       m_txChronoClient{nullptr};
     int               m_txChronoTrx{0};
