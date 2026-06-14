@@ -9,7 +9,7 @@ tool. Each tool has its own well-known file at a different path
 project-wide lives in **this** file.
 
 If you are an AI assistant: read this file end-to-end before writing
-code or recommending merges. The file is ~330 lines; that's the cost
+code or recommending merges. The file is ~440 lines; that's the cost
 of doing the job right on this codebase.
 
 ## Project Goal
@@ -200,7 +200,10 @@ Key source directories: `src/core/` (protocol, audio, DSP), `src/models/`
 - `RadioModel` — central state, owns connection + all sub-models
 - `AudioEngine` — RX/TX audio, NR2/RN2/NR4/BNR/DFNR DSP pipeline
 - `SpectrumWidget` — GPU-accelerated FFT spectrum + waterfall (QRhiWidget)
-- `MainWindow` — wires everything together, signal routing hub
+- `MainWindow` — wires everything together, signal routing hub. **Decomposed
+  (#3351)** into one class across `MainWindow.cpp` + `MainWindow_*.cpp` sibling
+  TUs; new feature code goes in a sibling, NOT `MainWindow.cpp` — see
+  [Adding code to MainWindow](#adding-code-to-mainwindow)
 - `PanadapterStream` — VITA-49 UDP parsing, routes FFT/waterfall/audio/meters
 
 **Threading:** up to 11 threads — see `docs/architecture/pipelines.md` for the
@@ -261,6 +264,38 @@ audio payload, meter data — see `docs/architecture/vita49-format.md`.
 ---
 
 ## Key Implementation Patterns
+
+### Adding code to MainWindow
+
+`MainWindow` was a ~19,500-line monolith; **#3351 split it into one class across
+`MainWindow.cpp` + a family of `MainWindow_*.cpp` sibling TUs.** It is still one
+`MainWindow` class — every sibling-TU function is a `MainWindow::` member
+declared in `MainWindow.h`. The split is about *which file* a body lives in.
+
+**Do not add new feature code to `MainWindow.cpp`.** Route it by subsystem:
+
+| Your change | Goes in |
+|---|---|
+| Feature lifecycle/handler fitting an existing subsystem | that subsystem's TU — demods (RADE/FreeDV/DAX/RTTY/WFM) → `MainWindow_DigitalModes.cpp`; physical controllers → `MainWindow_Controllers.cpp`; SWR sweep → `MainWindow_SwrSweep.cpp`; spot clients → `MainWindow_Spots.cpp`; discovery/connection/pan-lifecycle → `MainWindow_Session.cpp`; client-DSP applets → `MainWindow_DspApplets.cpp` |
+| Wiring a newly-created radio object (slice/pan/VFO/DSP) to the UI | `MainWindow_Wiring.cpp` |
+| A menu item / action | `MainWindow_Menus.cpp` |
+| A keyboard shortcut | `MainWindow_Shortcuts.cpp` |
+| A stateless helper with no `MainWindow` dependency | `MainWindowHelpers.{h,cpp}` |
+| A whole new subsystem with no TU home | a **new** `MainWindow_<Subsystem>.cpp` sibling — only if it's a cohesive subsystem ~500+ lines; smaller waits in the closest sibling |
+| A member field, or a guard inside a function that can't move | stays in `MainWindow.{h,cpp}` (keep minimal) |
+
+A new TU is not free — every sibling re-parses the ~1,000-line `MainWindow.h`,
+and any header edit rebuilds all of them. Split only to a cohesive, reviewable
+granularity, then **stop**: if tempted to subdivide one subsystem into several
+thin TUs, extract a real class instead (the #3557 direction) — that's the only
+move that actually decouples.
+
+Sibling TUs must **carry their includes explicitly** — the Linux CI floor is
+Qt 6.4.2; don't rely on transitive includes (this broke #3532). When you move
+the last user of a header out of `MainWindow.cpp`, drop that `#include` too.
+
+Full map + decision guide:
+**[`docs/architecture/mainwindow-decomposition.md`](docs/architecture/mainwindow-decomposition.md)**.
 
 ### Adding or converting a dialog
 
