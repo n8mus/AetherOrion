@@ -81,6 +81,41 @@ void PskReporterClient::setCallsign(const QString& callsign)
     }
 }
 
+void PskReporterClient::setLookbackSeconds(int seconds)
+{
+    const int clamped = std::clamp(seconds, 60, kMaxLookbackSec);
+    if (clamped == m_lookbackSec) {
+        return;
+    }
+    m_lookbackSec = clamped;
+    // Only hit the network when the new window is DEEPER than anything we've
+    // already fetched this session. Narrowing — or revisiting a window we've
+    // covered — is just a display change (the dialog filters spots() by the
+    // current lookback), so it costs nothing and won't trip PSK Reporter's
+    // rate limiter.
+    if (m_running && clamped > m_fetchedLookbackSec) {
+        m_lastSeqNo = -1;  // force a deep backfill at the new depth
+        poll();
+    }
+    pruneOldSpots();
+    emit spotsUpdated();
+}
+
+bool PskReporterClient::isMqttConnected() const
+{
+#ifdef HAVE_MQTT
+    return m_mqtt != nullptr && m_mqtt->isConnected();
+#else
+    return false;
+#endif
+}
+
+QString PskReporterClient::transport() const
+{
+    return (isLive() && isMqttConnected()) ? QStringLiteral("MQTT")
+                                           : QStringLiteral("HTTP");
+}
+
 void PskReporterClient::start(int intervalMs)
 {
     stop();
@@ -92,6 +127,13 @@ void PskReporterClient::start(int intervalMs)
                        ? kLiveMqtt
                        : std::max(intervalMs, kMinPollMs);
     m_running = true;
+
+    // Always do a fresh deep HTTP backfill on (re)start — including in Live
+    // mode — so opening the window immediately repopulates the lookback
+    // window instead of waiting for new live spots. (Without this, a reopen
+    // kept the prior session's lastSeqNo and only fetched newer records.)
+    m_lastSeqNo = -1;
+    m_fetchedLookbackSec = 0;  // the open's first query establishes the depth
 
     // Repopulate from the on-disk cache so the map isn't blank while the
     // first fetch / live feed warms up.
@@ -133,14 +175,16 @@ void PskReporterClient::poll()
     query.addQueryItem(QStringLiteral("appcontact"),
                        QStringLiteral("ki6bcj@aethersdr.com"));
     const bool initial = m_lastSeqNo < 0;
+    const int fetchDepth = m_lookbackSec;  // depth this query backfills
     if (!initial) {
         // Incremental: only records newer than the last sequence number.
         query.addQueryItem(QStringLiteral("lastseqno"),
                            QString::number(m_lastSeqNo));
+    } else {
+        // Initial fetch: backfill the full selected lookback window.
+        query.addQueryItem(QStringLiteral("flowStartSeconds"),
+                           QString::number(-fetchDepth));
     }
-    // On the first fetch we deliberately omit flowStartSeconds so PSK
-    // Reporter returns its default window (the last 100 reception records,
-    // up to 6 hours) — a friendly initial population when the window opens.
 
     QUrl url{ QString::fromLatin1(kQueryUrl) };
     url.setQuery(query);
@@ -148,7 +192,10 @@ void PskReporterClient::poll()
     req.setHeader(QNetworkRequest::UserAgentHeader,
                   QStringLiteral("AetherSDR/%1")
                       .arg(QCoreApplication::applicationVersion()));
-    req.setRawHeader("Accept-Encoding", "gzip");
+    // Do NOT set Accept-Encoding manually: Qt auto-negotiates gzip/deflate
+    // and transparently decompresses the reply, but only if we leave the
+    // header alone. Setting it ourselves disables that, leaving raw gzip
+    // bytes that fail XML parsing ("incorrectly encoded content").
 
     qCInfo(lcPskReporter) << "HTTP query"
                           << (initial ? "(initial)" : "(incremental)")
@@ -156,7 +203,7 @@ void PskReporterClient::poll()
                           << "url" << url.toString(QUrl::RemoveQuery);
     emit statusChanged(tr("Updating…"));
     auto* reply = m_nam.get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, initial, fetchDepth] {
         m_fetchInFlight = false;
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
@@ -164,10 +211,21 @@ void PskReporterClient::poll()
                 << "HTTP error:" << reply->errorString()
                 << "status"
                 << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
+            m_lastHttpOk = false;
+            m_sawError = true;
+            emit connectionStateChanged();
             emit statusChanged(tr("PSK Reporter error: %1")
                                    .arg(reply->errorString()));
             return;
         }
+        if (initial) {
+            // We now hold history back to this depth; record it so narrowing
+            // and re-widening within it won't re-query.
+            m_fetchedLookbackSec = qMax(m_fetchedLookbackSec, fetchDepth);
+        }
+        m_lastHttpOk = true;
+        m_sawError = false;
+        emit connectionStateChanged();
         const QByteArray body = reply->readAll();
         qCInfo(lcPskReporter) << "HTTP reply" << body.size() << "bytes";
         handleQueryReply(body);
@@ -237,30 +295,55 @@ void PskReporterClient::startMqtt()
         connect(m_mqtt, &MqttClient::connected, this, [this] {
             qCInfo(lcPskReporter) << "MQTT connected to" << kMqttHost
                                   << "topic filter callsign" << m_callsign;
+            // Live feed is up — stop the HTTP fallback poller.
+            m_timer.stop();
+            m_sawError = false;
+            emit connectionStateChanged();
             emit statusChanged(tr("Live (MQTT) — connected"));
         });
         connect(m_mqtt, &MqttClient::disconnected, this, [this] {
             qCWarning(lcPskReporter) << "MQTT disconnected from" << kMqttHost;
-            emit statusChanged(tr("Live (MQTT) — reconnecting…"));
+            startFallbackPolling();
+            emit connectionStateChanged();
+            emit statusChanged(tr("Live — reconnecting (polling meanwhile)…"));
         });
         connect(m_mqtt, &MqttClient::connectionError, this,
                 [this](const QString& err) {
-                    qCWarning(lcPskReporter) << "MQTT error:" << err;
-                    emit statusChanged(tr("MQTT error: %1").arg(err));
+                    qCWarning(lcPskReporter) << "MQTT error:" << err
+                                             << "— falling back to HTTP polling";
+                    m_sawError = true;
+                    startFallbackPolling();
+                    emit connectionStateChanged();
+                    emit statusChanged(tr("Live unavailable — polling every 5 min"));
                 });
     }
     // Live feed has no backfill; seed the window with one HTTP query.
     poll();
     m_mqtt->setSubscriptions(
         { QStringLiteral("pskr/filter/v2/+/+/%1/#").arg(m_callsign) });
-    m_mqtt->connectToBroker(QString::fromLatin1(kMqttHost), kMqttTlsPort,
-                            {}, {}, /*useTls=*/true);
+    m_mqtt->connectToBroker(QString::fromLatin1(kMqttHost), kMqttPort,
+                            {}, {}, /*useTls=*/false);
     m_mqttMsgWindow = 0;
     m_mqttHealthTimer.start();
+    // Safety net: poll over HTTP until MQTT confirms it's connected (and if
+    // it never does — e.g. the network blocks MQTT — keep polling). The
+    // connected() handler stops this timer.
+    startFallbackPolling();
     emit statusChanged(tr("Live (MQTT) — connecting…"));
 #else
     emit statusChanged(tr("MQTT support not built in"));
 #endif
+}
+
+void PskReporterClient::startFallbackPolling()
+{
+    // Only meaningful in Live mode; the explicit poll tiers manage m_timer
+    // themselves. Don't double-start.
+    if (m_intervalMs != kLiveMqtt || m_timer.isActive()) {
+        return;
+    }
+    m_timer.start(kFallbackPollMs);
+    poll();
 }
 
 void PskReporterClient::stopMqtt()
@@ -326,8 +409,13 @@ void PskReporterClient::appendSpot(const PskReporterSpot& spot)
 
 void PskReporterClient::pruneOldSpots()
 {
+    // Retain spots back to the deepest window we've fetched (not just the
+    // current lookback), so narrowing then widening shows the data again
+    // without another network query. The dialog filters the *display* to the
+    // current lookback.
+    const int retainSec = qMax(m_lookbackSec, m_fetchedLookbackSec);
     const qint64 cutoff =
-        QDateTime::currentSecsSinceEpoch() - kSpotTtlSeconds;
+        QDateTime::currentSecsSinceEpoch() - retainSec;
     const int before = m_spots.size();
     m_spots.erase(std::remove_if(m_spots.begin(), m_spots.end(),
                                  [cutoff](const PskReporterSpot& s) {
@@ -365,7 +453,7 @@ void PskReporterClient::loadCache()
         return;
     }
     const qint64 cutoff =
-        QDateTime::currentSecsSinceEpoch() - kSpotTtlSeconds;
+        QDateTime::currentSecsSinceEpoch() - m_lookbackSec;
     const QJsonArray arr = root.value(QLatin1String("spots")).toArray();
     int loaded = 0;
     for (const QJsonValue& v : arr) {

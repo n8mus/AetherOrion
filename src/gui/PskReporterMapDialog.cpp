@@ -2,6 +2,7 @@
 
 #include "core/AppSettings.h"
 #include "core/MaidenheadLocator.h"
+#include "core/PropForecastClient.h"
 #include "core/PskReporterClient.h"
 #include "map/MapView.h"
 #include "models/RadioModel.h"
@@ -10,6 +11,8 @@
 #include <QComboBox>
 #include <QCursor>
 #include <QDateTime>
+#include <QSet>
+#include <QStringList>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -100,6 +103,19 @@ QString bandName(qint64 freqHz)
     return QStringLiteral("VHF+");
 }
 
+// HF band-condition pill color, matching PropDashboardDialog's palette.
+QString bandConditionColor(const QString& condition)
+{
+    if (condition == QLatin1String("Good")) return QStringLiteral("#66d19e");
+    if (condition == QLatin1String("Fair")) return QStringLiteral("#f2c14e");
+    if (condition == QLatin1String("Poor")) return QStringLiteral("#ff8c6b");
+    return QStringLiteral("#7f93a5");
+}
+
+// Short labels for the four N0NBH band groups (matching PropForecastDetail
+// index order: 0=80m-40m, 1=30m-20m, 2=17m-15m, 3=12m-10m).
+const char* const kBandGroupLabels[4] = { "80-40m", "30-20m", "17-15m", "12-10m" };
+
 // Initial great-circle bearing from point 1 to point 2, degrees 0-360.
 double bearingDeg(double lat1, double lon1, double lat2, double lon2)
 {
@@ -112,14 +128,9 @@ double bearingDeg(double lat1, double lon1, double lat2, double lon2)
     return std::fmod(qRadiansToDegrees(std::atan2(y, x)) + 360.0, 360.0);
 }
 
-// SNR color: decoded spots are never "bad", so this is a strong/medium/weak
-// ramp (green → orange → gray), all readable on a light tooltip background.
-QString snrColor(int snr)
-{
-    if (snr >= -5)  return QStringLiteral("#1b5e20");  // strong
-    if (snr >= -15) return QStringLiteral("#bf6000");  // medium
-    return QStringLiteral("#616161");                  // weak but decoded
-}
+// Muted text color and the SNR highlight, tuned for the dark hover card.
+constexpr const char* kCardMuted = "#b8b8b8";
+constexpr const char* kSnrColor  = "#ff8c00";  // dark orange — easy to spot
 
 // Compact, human-readable age of a report.
 QString relativeAge(qint64 reportEpoch)
@@ -147,8 +158,9 @@ QString buildSpotCard(const PskReporterSpot& spot, bool hasHome,
 
     // Line 1 — identity.
     html += QStringLiteral("<b>%1</b>&nbsp;&nbsp;"
-                           "<span style='color:gray;'>%2</span>")
+                           "<span style='color:%2;'>%3</span>")
                 .arg(spot.receiverCallsign.toHtmlEscaped(),
+                     QString::fromLatin1(kCardMuted),
                      spot.receiverLocator.toHtmlEscaped());
 
     // Line 2 — RF.
@@ -156,11 +168,11 @@ QString buildSpotCard(const PskReporterSpot& spot, bool hasHome,
                 .arg(bandName(spot.frequencyHz), freq,
                      spot.mode.toHtmlEscaped());
 
-    // Line 3 — signal + geometry.
+    // Line 3 — signal + geometry. SNR is always dark orange for visibility.
     QString line3;
     if (spot.snr > -999) {
         line3 = QStringLiteral("<b style='color:%1;'>%2 dB</b>")
-                    .arg(snrColor(spot.snr))
+                    .arg(QString::fromLatin1(kSnrColor))
                     .arg(spot.snr);
     }
     if (hasHome) {
@@ -178,8 +190,9 @@ QString buildSpotCard(const PskReporterSpot& spot, bool hasHome,
     }
 
     // Line 4 — time (absolute UTC is always correct; age is glanceable).
-    html += QStringLiteral("<br><span style='color:gray;'>%1 · %2</span>")
-                .arg(QDateTime::fromSecsSinceEpoch(spot.flowStartSeconds)
+    html += QStringLiteral("<br><span style='color:%1;'>%2 · %3</span>")
+                .arg(QString::fromLatin1(kCardMuted),
+                     QDateTime::fromSecsSinceEpoch(spot.flowStartSeconds)
                          .toUTC()
                          .toString(QStringLiteral("hh:mm:ss'Z'")),
                      relativeAge(spot.flowStartSeconds));
@@ -191,11 +204,13 @@ QString buildSpotCard(const PskReporterSpot& spot, bool hasHome,
 } // namespace
 
 PskReporterMapDialog::PskReporterMapDialog(RadioModel* radioModel,
+                                           PropForecastClient* propForecast,
                                            QWidget* parent)
     : PersistentDialog(tr("PSK Reporter"),
                        QStringLiteral("PskReporterMapGeometry"), parent)
     , m_radioModel(radioModel)
     , m_client(new PskReporterClient(this))
+    , m_propForecast(propForecast)
 {
     setMinimumSize(720, 480);
 
@@ -223,6 +238,16 @@ PskReporterMapDialog::PskReporterMapDialog(RadioModel* radioModel,
     }
     topBar->addWidget(m_modeCombo);
 
+    topBar->addWidget(new QLabel(tr("Lookback:"), bodyWidget()));
+    m_lookbackCombo = new QComboBox(bodyWidget());
+    m_lookbackCombo->addItem(tr("15 min"), 15 * 60);
+    m_lookbackCombo->addItem(tr("30 min"), 30 * 60);
+    m_lookbackCombo->addItem(tr("1 hour"), 60 * 60);
+    m_lookbackCombo->addItem(tr("2 hours"), 2 * 60 * 60);
+    m_lookbackCombo->addItem(tr("4 hours"), 4 * 60 * 60);
+    m_lookbackCombo->addItem(tr("8 hours"), 8 * 60 * 60);
+    topBar->addWidget(m_lookbackCombo);
+
     topBar->addSpacing(12);
     topBar->addWidget(new QLabel(tr("Update every:"), bodyWidget()));
 
@@ -242,13 +267,11 @@ PskReporterMapDialog::PskReporterMapDialog(RadioModel* radioModel,
     m_pathsCheck->setChecked(pskSettings().value("showPaths").toBool(true));
     topBar->addWidget(m_pathsCheck);
 
+    // Persistent reception stats, pinned to the top-right corner.
     topBar->addStretch(1);
     m_dxLabel = new QLabel(bodyWidget());
+    m_dxLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     topBar->addWidget(m_dxLabel);
-    topBar->addSpacing(10);
-    m_statusLabel = new QLabel(bodyWidget());
-    m_statusLabel->setStyleSheet(QStringLiteral("color: palette(mid);"));
-    topBar->addWidget(m_statusLabel);
     root->addLayout(topBar);
 
     m_mapView = new MapView(bodyWidget());
@@ -275,6 +298,47 @@ PskReporterMapDialog::PskReporterMapDialog(RadioModel* radioModel,
                 }
             });
 
+    // Bottom row: forecasted HF band conditions justified to the bottom-left
+    // (reusing the propagation-forecast N0NBH/hamqsl day/night ratings), with
+    // the transient update-status text pushed to the bottom-right corner.
+    auto* bottomBar = new QHBoxLayout();
+    bottomBar->setSpacing(6);
+    // Band-condition pills snap to the bottom-left corner — no leading title
+    // label (it was near-invisible in dark themes and pushed the pills off
+    // the corner); day/night context lives in each pill's tooltip.
+    if (m_propForecast != nullptr) {
+        for (int i = 0; i < 4; ++i) {
+            auto* pill = new QLabel(QString::fromLatin1(kBandGroupLabels[i]),
+                                    bodyWidget());
+            pill->setAlignment(Qt::AlignCenter);
+            m_bandCondPills[i] = pill;
+            bottomBar->addWidget(pill);
+        }
+        connect(m_propForecast, &PropForecastClient::detailUpdated, this,
+                [this] { updateBandConditions(); });
+    }
+    bottomBar->addStretch(1);
+    m_statusLabel = new QLabel(bodyWidget());
+    m_statusLabel->setStyleSheet(QStringLiteral("color: palette(mid);"));
+    m_statusLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    bottomBar->addWidget(m_statusLabel);
+    // Connection indicator pinned to the bottom-right corner: "MQTT"/"HTTP"
+    // plus a status bullet (green=connected w/ data, yellow=no data,
+    // red=no good connection).
+    m_connLabel = new QLabel(bodyWidget());
+    m_connLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    bottomBar->addSpacing(10);
+    bottomBar->addWidget(m_connLabel);
+    root->addLayout(bottomBar);
+
+    connect(m_client, &PskReporterClient::connectionStateChanged,
+            this, &PskReporterMapDialog::updateConnectionIndicator);
+    updateConnectionIndicator();
+
+    if (m_propForecast != nullptr) {
+        updateBandConditions();  // paint from cache if already fetched
+    }
+
     // Empty-state guidance: if nothing has been heard a couple of minutes
     // after starting, explain what to expect instead of a blank map.
     m_emptyStateTimer = new QTimer(this);
@@ -293,8 +357,24 @@ PskReporterMapDialog::PskReporterMapDialog(RadioModel* radioModel,
     const int idx = m_intervalCombo->findData(savedInterval);
     m_intervalCombo->setCurrentIndex(idx >= 0 ? idx : 0);
 
+    const int savedLookback = pskSettings().value("lookbackSec").toInt(60 * 60);
+    const int lbIdx = m_lookbackCombo->findData(savedLookback);
+    m_lookbackCombo->setCurrentIndex(lbIdx >= 0 ? lbIdx : 2);  // default 1h
+    m_client->setLookbackSeconds(m_lookbackCombo->currentData().toInt());
+
+    // Debounce rapid Lookback changes into a single deep HTTP query, so
+    // spinning through options doesn't hammer PSK Reporter (which 503s).
+    m_lookbackDebounce = new QTimer(this);
+    m_lookbackDebounce->setSingleShot(true);
+    m_lookbackDebounce->setInterval(750);
+    connect(m_lookbackDebounce, &QTimer::timeout, this, [this] {
+        m_client->setLookbackSeconds(m_lookbackCombo->currentData().toInt());
+    });
+
     connect(m_intervalCombo, &QComboBox::currentIndexChanged,
             this, &PskReporterMapDialog::onIntervalChanged);
+    connect(m_lookbackCombo, &QComboBox::currentIndexChanged,
+            this, &PskReporterMapDialog::onLookbackChanged);
     connect(m_bandCombo, &QComboBox::currentIndexChanged,
             this, [this] { rebuildMarkers(); });
     connect(m_modeCombo, &QComboBox::currentIndexChanged,
@@ -307,6 +387,16 @@ PskReporterMapDialog::PskReporterMapDialog(RadioModel* radioModel,
     if (m_radioModel != nullptr) {
         connect(m_radioModel, &RadioModel::gpsStatusChanged,
                 this, [this] { updateHomeFromRadio(); });
+        // Pick up a late-arriving or edited callsign without a reopen.
+        // restartClient() (not setCallsign alone) so a callsign that was
+        // empty when the window opened actually starts the client.
+        connect(m_radioModel, &RadioModel::callsignChanged, this,
+                [this] {
+                    if (m_started) {
+                        restartClient();
+                    }
+                    updateHomeFromRadio();
+                });
     }
 }
 
@@ -338,12 +428,44 @@ void PskReporterMapDialog::onIntervalChanged(int index)
     restartClient();
 }
 
+void PskReporterMapDialog::onLookbackChanged(int index)
+{
+    // Persist immediately; defer the (networked) client update so rapid
+    // toggling coalesces into one query.
+    writePskSetting("lookbackSec", m_lookbackCombo->itemData(index).toInt());
+    m_lookbackDebounce->start();
+}
+
 void PskReporterMapDialog::restartClient()
 {
     m_client->setCallsign(m_radioModel != nullptr ? m_radioModel->callsign()
                                                   : QString());
+    m_client->setLookbackSeconds(m_lookbackCombo->currentData().toInt());
     m_client->start(m_intervalCombo->currentData().toInt());
     m_emptyStateTimer->start();
+}
+
+void PskReporterMapDialog::updateConnectionIndicator()
+{
+    // Three-state bullet next to the transport label (MQTT/HTTP):
+    //   green  = connected and showing data
+    //   yellow = connected but no spots yet
+    //   red    = no good connection
+    const bool up = m_client->isMqttConnected() || m_client->lastHttpOk();
+    const bool hasData = !m_client->spots().isEmpty();
+    QString color;
+    if (!up) {
+        color = m_client->sawError() ? QStringLiteral("#e74c3c")    // red
+                                     : QStringLiteral("#f4c20d");   // connecting
+    } else {
+        color = hasData ? QStringLiteral("#2ecc71")                 // green
+                        : QStringLiteral("#f4c20d");                // yellow
+    }
+    // Transport word in the normal label color (white in dark themes);
+    // only the bullet carries the status color.
+    m_connLabel->setText(
+        QStringLiteral("%1 <span style='color:%2;'>&#9679;</span>")
+            .arg(m_client->transport(), color));
 }
 
 void PskReporterMapDialog::rebuildMarkers()
@@ -356,7 +478,20 @@ void PskReporterMapDialog::rebuildMarkers()
     const QString modeFilter = m_modeCombo->currentIndex() > 0
                                    ? m_modeCombo->currentText()
                                    : QString();
+    const bool hasHome = m_mapView->hasHomePosition();
+    // The client retains the deepest window it has fetched; filter the
+    // *display* to the currently selected lookback.
+    const qint64 cutoff = QDateTime::currentSecsSinceEpoch()
+                          - m_client->lookbackSeconds();
+
+    QSet<QString> bandsHeard;
+    double bestKm = -1.0;
+    QString farthestCall;
+
     for (const PskReporterSpot& spot : m_client->spots()) {
+        if (spot.flowStartSeconds < cutoff) {
+            continue;
+        }
         if (!bandFilter.isEmpty() && bandName(spot.frequencyHz) != bandFilter) {
             continue;
         }
@@ -375,44 +510,75 @@ void PskReporterMapDialog::rebuildMarkers()
         m.color = modeColor(spot.mode);
         // Same compact card for hover and click.
         const QString card = buildSpotCard(
-            spot, m_mapView->hasHomePosition(),
-            m_mapView->homeLat(), m_mapView->homeLon(), lat, lon);
+            spot, hasHome, m_mapView->homeLat(), m_mapView->homeLon(),
+            lat, lon);
         m.tooltip = card;
         m.clickInfo = card;
         markers.append(m);
+
+        bandsHeard.insert(bandName(spot.frequencyHz));
+        if (hasHome) {
+            const double km = MaidenheadLocator::distanceKm(
+                m_mapView->homeLat(), m_mapView->homeLon(), lat, lon);
+            if (km > bestKm) {
+                bestKm = km;
+                farthestCall = spot.receiverCallsign;
+            }
+        }
     }
     m_mapView->setMarkers(markers);
 
-    // Status enrichment: spot count and farthest receiver.
-    QString dx;
-    if (m_mapView->hasHomePosition()) {
-        double bestKm = -1.0;
-        QString bestCall;
-        for (const MapView::Marker& m : markers) {
-            const double km = MaidenheadLocator::distanceKm(
-                m_mapView->homeLat(), m_mapView->homeLon(), m.lat, m.lon);
-            if (km > bestKm) {
-                bestKm = km;
-                bestCall = m.label;
-            }
-        }
+    // Reception stats (top-right): count · bands · farthest.
+    QStringList parts;
+    if (!markers.isEmpty()) {
+        parts << tr("%n spot(s)", nullptr, markers.size());
+        parts << tr("%n band(s)", nullptr, bandsHeard.size());
         if (bestKm >= 0.0) {
-            dx = tr("%n spot(s)", nullptr, markers.size())
-                 + tr(" • farthest: %1 %L2 km")
-                       .arg(bestCall)
-                       .arg(qRound(bestKm));
+            parts << tr("farthest %1 %L2 km").arg(farthestCall).arg(qRound(bestKm));
         }
     }
-    if (dx.isEmpty() && !markers.isEmpty()) {
-        dx = tr("%n spot(s)", nullptr, markers.size());
+    m_dxLabel->setText(parts.join(QStringLiteral("  •  ")));
+
+    // Data presence affects the connection bullet color.
+    updateConnectionIndicator();
+}
+
+void PskReporterMapDialog::updateBandConditions()
+{
+    if (m_propForecast == nullptr || m_bandCondPills[0] == nullptr) {
+        return;
     }
-    m_dxLabel->setText(dx);
+    const PropForecastDetail det = m_propForecast->lastDetail();
+    // Pick the day vs night rating set by the operator's local time.
+    const int hour = QDateTime::currentDateTime().time().hour();
+    const bool daytime = hour >= 6 && hour < 18;
+    const QString tod = daytime ? tr("day") : tr("night");
+    for (int i = 0; i < 4; ++i) {
+        const QString cond = daytime ? det.bandDay[i] : det.bandNight[i];
+        QLabel* pill = m_bandCondPills[i];
+        const QString shown = cond.isEmpty() ? QStringLiteral("–") : cond;
+        pill->setToolTip(tr("%1 (%2): %3")
+                             .arg(QString::fromLatin1(kBandGroupLabels[i]), tod,
+                                  cond.isEmpty() ? tr("no data") : cond));
+        pill->setText(QStringLiteral("%1 %2")
+                          .arg(QString::fromLatin1(kBandGroupLabels[i]), shown));
+        pill->setStyleSheet(
+            QStringLiteral("background-color: %1; color: #1a1a1a;"
+                           " border-radius: 4px; padding: 1px 6px;")
+                .arg(bandConditionColor(cond)));
+    }
 }
 
 void PskReporterMapDialog::showEvent(QShowEvent* event)
 {
     PersistentDialog::showEvent(event);
     updateHomeFromRadio();
+    if (m_propForecast != nullptr) {
+        // Refresh the detailed forecast (band conditions) on open; the
+        // client guards against overlapping in-flight requests.
+        m_propForecast->fetchDetail();
+        updateBandConditions();
+    }
     if (!m_started) {
         m_started = true;
         restartClient();
