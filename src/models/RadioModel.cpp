@@ -1806,12 +1806,27 @@ void RadioModel::setWaterfallBlackLevel(int level)
 
 void RadioModel::setWaterfallAutoBlack(bool on)
 {
-    Q_UNUSED(on);
-    // Auto-black is handled client-side. Always keep radio's auto_black off
-    // because its algorithm targets SmartSDR's rendering, not ours.
+    m_wfAutoBlackOn = on;
+    applyWaterfallAutoBlack();
+}
+
+void RadioModel::setWaterfallAutoBlackSource(bool radioSide)
+{
+    m_wfAutoBlackRadioSide = radioSide;
+    applyWaterfallAutoBlack();
+}
+
+void RadioModel::applyWaterfallAutoBlack()
+{
+    // The radio only needs to compute and embed its per-tile auto-black level
+    // when the user has selected radio-side auto-black AND auto-black is on.
+    // Otherwise the client renders the floor from its own estimate, so keep
+    // auto_black=0 (radio-authoritative when, and only when, the user asks).
     if (activeWfId().isEmpty()) return;
+    const int v = (m_wfAutoBlackOn && m_wfAutoBlackRadioSide) ? 1 : 0;
     sendCmd(
-        QString("display panafall set %1 auto_black=0").arg(activeWfId()));
+        QString("display panafall set %1 auto_black=%2")
+            .arg(activeWfId()).arg(v));
 }
 
 void RadioModel::setWaterfallLineDuration(int ms)
@@ -5311,7 +5326,12 @@ void RadioModel::configureWaterfall(const QString& waterfallId)
     const QString targetWaterfallId = RadioStatusOwnership::normalizedFlexId(waterfallId);
     if (targetWaterfallId.isEmpty()) return;
 
-    // Disable automatic black-level and set a fixed threshold.
+    // Initialize with radio auto-black OFF (the client renders the floor from
+    // its own estimate by default). The persisted auto-black on/off and
+    // client-vs-radio source are pushed moments later from the session layer
+    // via setWaterfallAutoBlack()/setWaterfallAutoBlackSource(), which raise
+    // auto_black=1 only when the user has selected radio-side. black_level is
+    // the manual fallback; color_gain is applied client-side via wfHighThresholdRaw.
     // FlexLib uses "display panafall set" addressed to the waterfall stream ID.
     const QString cmd = QString("display panafall set %1 auto_black=0 black_level=15 color_gain=50")
                             .arg(targetWaterfallId);
