@@ -5,12 +5,14 @@
 #include "GuardedSlider.h"
 #include "ComboStyle.h"
 #include "Theme.h"
+#include "core/GpuSelector.h"
 #include "models/SliceModel.h"
 #include "models/BandDefs.h"
 #include "core/AppSettings.h"
 
 #include <QPushButton>
 #include <QComboBox>
+#include <QStandardItemModel>
 #include <QSlider>
 #include <QLabel>
 #include <QGridLayout>
@@ -1399,6 +1401,68 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         connect(m_colorSchemeCmb, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, [this](int idx) { emit wfColorSchemeChanged(idx); });
         ++row;
+    }
+
+    // ── Render GPU (multi-GPU systems only) ───────────────────────────────
+    // The graphics adapter can't be switched under a live context, so the
+    // choice is persisted and applied on the next launch (GpuSelector reads it
+    // before QApplication).  Hidden entirely on single-GPU systems.
+    if (GpuSelector::hasMultiple()) {
+        auto* lbl = new QLabel("GPU:");
+        lbl->setStyleSheet(labelStyle);
+        grid->addWidget(lbl, row, 0);
+        m_gpuCombo = new QComboBox;
+        m_gpuCombo->setFixedHeight(18);
+        applyComboStyle(m_gpuCombo);
+        const QString savedId = GpuSelector::savedChoiceId();
+        for (const GpuInfo& g : GpuSelector::available()) {
+            QString label = g.name;
+            if (!g.selectable) {
+                label += "  — disabled (#1921)";
+            } else if (g.experimental) {
+                label += "  (experimental)";
+            }
+            m_gpuCombo->addItem(label, g.id);
+            const int idx = m_gpuCombo->count() - 1;
+            if (!g.selectable) {
+                // Present-but-unsafe (Windows iGPU → #1921): show it greyed so
+                // users understand why the discrete GPU is forced, but block it.
+                if (auto* model = qobject_cast<QStandardItemModel*>(m_gpuCombo->model())) {
+                    if (QStandardItem* item = model->item(idx)) {
+                        item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+                    }
+                }
+                m_gpuCombo->setItemData(
+                    idx, "Integrated rendering crashes during panadapter "
+                         "reparenting (#1921); the discrete GPU is used instead.",
+                    Qt::ToolTipRole);
+            } else if (g.experimental) {
+                m_gpuCombo->setItemData(
+                    idx, "This adapter-selection path isn't hardware-verified yet.",
+                    Qt::ToolTipRole);
+            }
+            if (g.id == savedId && g.selectable) {
+                m_gpuCombo->setCurrentIndex(idx);
+            }
+        }
+        m_gpuCombo->setToolTip(
+            "Render GPU for the spectrum/waterfall. Takes effect on the next "
+            "launch — the graphics adapter can't be switched while running.");
+        grid->addWidget(m_gpuCombo, row, 1, 1, 3);
+        ++row;
+
+        auto* gpuNote = new QLabel("Restart to apply");
+        gpuNote->setStyleSheet("QLabel { color: #6a7a8a; font-size: 9px; border: none; }");
+        gpuNote->setVisible(false);
+        grid->addWidget(gpuNote, row, 1, 1, 3);
+        ++row;
+
+        connect(m_gpuCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this, gpuNote](int idx) {
+            if (!m_gpuCombo) return;
+            GpuSelector::saveChoiceId(m_gpuCombo->itemData(idx).toString());
+            gpuNote->setVisible(true);   // surface the restart requirement once changed
+        });
     }
 
     // ── Reset button ──────────────────────────────────────────────────────
