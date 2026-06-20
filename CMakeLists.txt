@@ -2469,4 +2469,7 @@ else()
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps
         RENAME aethersdr.png
     )
+    install(FILES packaging/linux/io.github.aethersdr.aethersdr.metainfo.xml
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo
+    )
 endif()
