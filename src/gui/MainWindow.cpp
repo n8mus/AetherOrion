@@ -1821,7 +1821,15 @@ MainWindow::MainWindow(QWidget* parent)
     auto* clockTimer = new QTimer(this);
     connect(clockTimer, &QTimer::timeout, this, [this] {
         auto utc = QDateTime::currentDateTimeUtc();
-        m_gpsDateLabel->setText(utc.toString("yyyy-MM-dd"));
+        // Show the (UTC) date in the operator's regional field order rather than
+        // a fixed ISO yyyy-MM-dd (#3511). Force a 4-digit year: the locale's
+        // short format is often 2-digit (e.g. 6/21/26), which loses precision
+        // and is easy to misread.
+        const QLocale loc = QLocale::system();
+        QString dateFmt = loc.dateFormat(QLocale::ShortFormat);
+        if (!dateFmt.contains(QLatin1String("yyyy")))
+            dateFmt.replace(QLatin1String("yy"), QLatin1String("yyyy"));
+        m_gpsDateLabel->setText(loc.toString(utc.date(), dateFmt));
         if (m_useSystemClock)
             m_gpsTimeLabel->setText(utc.toString("HH:mm:ssZ"));
     });
