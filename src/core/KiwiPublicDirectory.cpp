@@ -39,6 +39,28 @@ QString KiwiPublicReceiver::apiBadge() const
     return QStringLiteral("API policy unknown");
 }
 
+bool KiwiPublicReceiver::advertisesConnectionLimit() const
+{
+    // Match "Limits" as a whole whitespace-delimited token, not a substring, so
+    // a free-form hardware/firmware descriptor that merely contains those letters
+    // (e.g. "Unlimited", "NoLimitsBeta") can't false-positive. The public
+    // directory appends the marker as its own token in sdr_hw.
+    const QStringList tokens =
+        sdrHw.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    for (const QString& token : tokens) {
+        if (token.compare(QStringLiteral("Limits"), Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
+}
+
+QString KiwiPublicReceiver::connectionLimitBadge() const
+{
+    return advertisesConnectionLimit()
+        ? QStringLiteral("Limits")
+        : QString();
+}
+
 QVector<KiwiPublicReceiver> KiwiPublicDirectory::parse(const QByteArray& directoryHtml)
 {
     QVector<KiwiPublicReceiver> out;
