@@ -1362,6 +1362,8 @@ bool AudioEngine::startRxStream()
     m_kiwiSdrRxPackets.clear();
     m_rxOutputBuffer.clear();
     m_kiwiSdrOutputBuffer.clear();
+    m_kiwiSdrBnrOutBuf.clear();
+    m_kiwiSdrBnrPrimed = false;
     m_radeRxBuffer.clear();
     for (const auto& source : m_externalKiwiSources) {
         if (!source) {
@@ -1373,6 +1375,10 @@ bool AudioEngine::startRxStream()
         source->nr2Output.clear();
         source->rxResampler.reset();
         source->rxResamplerR.reset();
+        source->bnrUp.reset();
+        source->bnrDown.reset();
+        source->bnrOutBuf.clear();
+        source->bnrPrimed = false;
         source->prebuffering = source->enabled;
     }
     m_rxBufferBytes.store(0);
@@ -1575,6 +1581,8 @@ void AudioEngine::stopRxStream()
     m_kiwiSdrRxPackets.clear();
     m_rxOutputBuffer.clear();
     m_kiwiSdrOutputBuffer.clear();
+    m_kiwiSdrBnrOutBuf.clear();
+    m_kiwiSdrBnrPrimed = false;
     m_radeRxBuffer.clear();
     for (const auto& source : m_externalKiwiSources) {
         if (!source) {
@@ -1586,6 +1594,10 @@ void AudioEngine::stopRxStream()
         source->nr2Output.clear();
         source->rxResampler.reset();
         source->rxResamplerR.reset();
+        source->bnrUp.reset();
+        source->bnrDown.reset();
+        source->bnrOutBuf.clear();
+        source->bnrPrimed = false;
         source->prebuffering = source->enabled;
     }
     m_rxBufferBytes.store(0);
@@ -1942,12 +1954,12 @@ void AudioEngine::setKiwiSdrAudioEnabled(bool on)
 
 void AudioEngine::setKiwiSdrAudioSourceEnabled(const QString& sourceId, bool on)
 {
+    std::lock_guard<std::recursive_mutex> dspLock(m_dspMutex);
     ExternalRxAudioSourceState* source = externalKiwiSource(sourceId, on);
     if (!source || source->enabled == on) {
         return;
     }
 
-    std::lock_guard<std::recursive_mutex> dspLock(m_dspMutex);
     source->enabled = on;
     qCDebug(lcKiwiSdrAudio).noquote()
         << "Audio source" << (on ? "enabled" : "disabled") << source->id;
@@ -1959,6 +1971,10 @@ void AudioEngine::setKiwiSdrAudioSourceEnabled(const QString& sourceId, bool on)
     source->nr2Output.clear();
     source->rxResampler.reset();
     source->rxResamplerR.reset();
+    source->bnrUp.reset();
+    source->bnrDown.reset();
+    source->bnrOutBuf.clear();
+    source->bnrPrimed = false;
     if (on && m_nr2Enabled.load(std::memory_order_relaxed) && !source->nr2) {
         source->nr2 = std::make_unique<SpectralNR>(256, DEFAULT_SAMPLE_RATE);
         if (source->nr2->hasPlanFailed()) {
@@ -1976,6 +1992,7 @@ void AudioEngine::setKiwiSdrAudioSourceEnabled(const QString& sourceId, bool on)
 void AudioEngine::setKiwiSdrAudioSourceGain(const QString& sourceId,
                                             float gainPercent)
 {
+    std::lock_guard<std::recursive_mutex> dspLock(m_dspMutex);
     ExternalRxAudioSourceState* source = externalKiwiSource(sourceId, true);
     if (!source) {
         return;
@@ -1987,12 +2004,12 @@ void AudioEngine::setKiwiSdrAudioSourceGain(const QString& sourceId,
 void AudioEngine::setKiwiSdrAudioSourceMuted(const QString& sourceId,
                                              bool muted)
 {
+    std::lock_guard<std::recursive_mutex> dspLock(m_dspMutex);
     ExternalRxAudioSourceState* source = externalKiwiSource(sourceId, true);
     if (!source || source->muted == muted) {
         return;
     }
 
-    std::lock_guard<std::recursive_mutex> dspLock(m_dspMutex);
     source->muted = muted;
     source->rxBuffer.clear();
     source->rxPackets.clear();
@@ -2000,8 +2017,23 @@ void AudioEngine::setKiwiSdrAudioSourceMuted(const QString& sourceId,
     source->nr2Mono.clear();
     source->nr2Processed.clear();
     source->nr2Output.clear();
+    source->bnrUp.reset();
+    source->bnrDown.reset();
+    source->bnrOutBuf.clear();
+    source->bnrPrimed = false;
     source->prebuffering = !muted && source->enabled;
     updateRxBufferStats();
+}
+
+void AudioEngine::setKiwiSdrAudioSourcePan(const QString& sourceId, int pan)
+{
+    std::lock_guard<std::recursive_mutex> dspLock(m_dspMutex);
+    ExternalRxAudioSourceState* source = externalKiwiSource(sourceId, true);
+    if (!source) {
+        return;
+    }
+
+    source->pan = qBound(0, pan, 100);
 }
 
 void AudioEngine::removeKiwiSdrAudioSource(const QString& sourceId)
@@ -2057,6 +2089,10 @@ void AudioEngine::resetRxChainStateForSourceSwitch()
         source->nr2Output.clear();
         source->rxResampler.reset();
         source->rxResamplerR.reset();
+        source->bnrUp.reset();
+        source->bnrDown.reset();
+        source->bnrOutBuf.clear();
+        source->bnrPrimed = false;
         if (m_nr2Enabled && source->nr2) {
             source->nr2->reset();
         }
@@ -2108,8 +2144,12 @@ void AudioEngine::resetRxChainStateForSourceSwitch()
     if (m_bnrEnabled) {
         m_bnrUp = std::make_unique<Resampler>(24000, 48000, 16384);
         m_bnrDown = std::make_unique<Resampler>(48000, 24000, 16384);
+        m_kiwiSdrBnrUp = std::make_unique<Resampler>(24000, 48000, 16384);
+        m_kiwiSdrBnrDown = std::make_unique<Resampler>(48000, 24000, 16384);
         m_bnrOutBuf.clear();
+        m_kiwiSdrBnrOutBuf.clear();
         m_bnrPrimed = false;
+        m_kiwiSdrBnrPrimed = false;
     }
 }
 
@@ -2157,6 +2197,10 @@ void AudioEngine::processMixedRxAudioData(const QByteArray& pcm,
 {
     if (!m_audioSink) return;  // PC audio disabled
 
+    const auto sourcePan = [this, externalSource]() {
+        return externalSource ? externalSource->pan : m_rxPan.load();
+    };
+
     // feedAudioData() handles all remote_audio_rx paths: SSB/CW/digital on any
     // pan, and the zero-filled frames the radio sends for muted slices
     // (audio_mute=1 zeroes the payload; it does NOT suppress packets).
@@ -2164,7 +2208,9 @@ void AudioEngine::processMixedRxAudioData(const QByteArray& pcm,
     // Flex audio, the legacy Kiwi stream, or one virtual Kiwi antenna stream.
     // Stateful NR/output resamplers must never see alternating Flex/Kiwi or
     // different Kiwi endpoints on the same DSP state.
-    auto writeAudio = [this, source, externalSource](const QByteArray& data) {
+    auto writeAudio = [this, source, externalSource, sourcePan](
+                          const QByteArray& data,
+                          bool applyOutputPan = false) {
         if (!m_audioDevice || !m_audioDevice->isOpen()) return;
 
         // Client-side parametric EQ runs at the native 24 kHz rate, after
@@ -2268,6 +2314,15 @@ void AudioEngine::processMixedRxAudioData(const QByteArray& pcm,
             for (int i = 0; i < nSamples; ++i) dst[i] = src[i] * gain;
             output = &trimmed;
         }
+        QByteArray panned;
+        if (applyOutputPan && sourcePan() != 50) {
+            panned = *output;
+            applyRxPanInPlace(
+                reinterpret_cast<float*>(panned.data()),
+                panned.size() / (2 * static_cast<int>(sizeof(float))),
+                sourcePan());
+            output = &panned;
+        }
         QByteArray& outputBuffer = externalSource
             ? externalSource->outputBuffer
             : (source == RxDspSource::KiwiSdr ? m_kiwiSdrOutputBuffer
@@ -2276,6 +2331,11 @@ void AudioEngine::processMixedRxAudioData(const QByteArray& pcm,
         emitScopeFromFloat32Stereo(*output, scopeSampleRate, false);
         emitRxPostChainScopeFromFloat32Stereo(*output, scopeSampleRate);
         updateRxBufferStats();
+    };
+    const auto writeAudioAndLevel = [this, externalSource, &writeAudio](
+                                        const QByteArray& data) {
+        writeAudio(data, externalSource != nullptr);
+        emit levelChanged(computeRMS(data));
     };
 
     // Bypass client-side DSP during TX (#367, #1505). NR2/RN2/BNR adapt
@@ -2286,14 +2346,13 @@ void AudioEngine::processMixedRxAudioData(const QByteArray& pcm,
     {
         std::lock_guard<std::recursive_mutex> dspLock(m_dspMutex);
         if (m_radioTransmitting) {
-            writeAudio(pcm);
-            emit levelChanged(computeRMS(pcm));
+            writeAudioAndLevel(pcm);
         } else if (m_rn2Enabled && m_rn2) {
             QByteArray processed = m_rn2->process(pcm);
             // Re-apply pan lost during NR mono-mix (#1460)
             applyRxPanInPlace(reinterpret_cast<float*>(processed.data()),
                               processed.size() / (2 * static_cast<int>(sizeof(float))),
-                              m_rxPan.load());
+                              sourcePan());
             writeAudio(processed);
             emit levelChanged(computeRMS(processed));
         } else if (m_nr2Enabled && m_nr2) {
@@ -2311,7 +2370,7 @@ void AudioEngine::processMixedRxAudioData(const QByteArray& pcm,
             // Re-apply pan lost during NR mono-mix (#1460)
             applyRxPanInPlace(reinterpret_cast<float*>(processed.data()),
                               processed.size() / (2 * static_cast<int>(sizeof(float))),
-                              m_rxPan.load());
+                              sourcePan());
             writeAudio(processed);
             emit levelChanged(computeRMS(processed));
 #endif
@@ -2321,22 +2380,25 @@ void AudioEngine::processMixedRxAudioData(const QByteArray& pcm,
             // Re-apply pan lost during NR mono-mix (#1460)
             applyRxPanInPlace(reinterpret_cast<float*>(processed.data()),
                               processed.size() / (2 * static_cast<int>(sizeof(float))),
-                              m_rxPan.load());
+                              sourcePan());
             writeAudio(processed);
             emit levelChanged(computeRMS(processed));
 #endif
 #ifdef __APPLE__
         } else if (m_mnrEnabled && m_mnr) {
             QByteArray processed = m_mnr->process(pcm);
+            // Re-apply pan lost during NR mono-mix (#1460)
+            applyRxPanInPlace(reinterpret_cast<float*>(processed.data()),
+                              processed.size() / (2 * static_cast<int>(sizeof(float))),
+                              sourcePan());
             writeAudio(processed);
             emit levelChanged(computeRMS(processed));
 #endif
         } else if (m_bnrEnabled && m_bnr && m_bnr->isConnected()) {
-            processBnr(pcm);
+            processBnr(pcm, source, externalSource);
             // processBnr writes audio and emits level internally
         } else {
-            writeAudio(pcm);
-            emit levelChanged(computeRMS(pcm));
+            writeAudioAndLevel(pcm);
         }
     }
 }
@@ -4615,8 +4677,12 @@ void AudioEngine::setBnrEnabled(bool on)
         // so use a large maxBlockSamples to avoid r8brain buffer overflow.
         m_bnrUp   = std::make_unique<Resampler>(24000, 48000, 16384);
         m_bnrDown = std::make_unique<Resampler>(48000, 24000, 16384);
+        m_kiwiSdrBnrUp = std::make_unique<Resampler>(24000, 48000, 16384);
+        m_kiwiSdrBnrDown = std::make_unique<Resampler>(48000, 24000, 16384);
         m_bnrOutBuf.clear();
+        m_kiwiSdrBnrOutBuf.clear();
         m_bnrPrimed = false;
+        m_kiwiSdrBnrPrimed = false;
         // Set flag AFTER objects are fully constructed
         m_bnrEnabled = true;
 
@@ -4636,6 +4702,10 @@ void AudioEngine::setBnrEnabled(bool on)
                         m_bnr.reset();
                         m_bnrUp.reset();
                         m_bnrDown.reset();
+                        m_kiwiSdrBnrUp.reset();
+                        m_kiwiSdrBnrDown.reset();
+                        m_kiwiSdrBnrOutBuf.clear();
+                        m_kiwiSdrBnrPrimed = false;
                         m_bnrEnabled = false;
                         emit bnrEnabledChanged(false);
                     }
@@ -4656,6 +4726,10 @@ void AudioEngine::setBnrEnabled(bool on)
         m_bnr.reset();
         m_bnrUp.reset();
         m_bnrDown.reset();
+        m_kiwiSdrBnrUp.reset();
+        m_kiwiSdrBnrDown.reset();
+        m_kiwiSdrBnrOutBuf.clear();
+        m_kiwiSdrBnrPrimed = false;
     }
     qCDebug(lcAudio) << "AudioEngine: BNR (NVIDIA NIM)" << (on ? "enabled" : "disabled");
     emit bnrEnabledChanged(on);
@@ -4681,21 +4755,50 @@ bool AudioEngine::bnrConnected() const
     return m_bnr && m_bnr->isConnected();
 }
 
-void AudioEngine::processBnr(const QByteArray& stereoPcm)
+void AudioEngine::processBnr(const QByteArray& stereoPcm,
+                             RxDspSource source,
+                             ExternalRxAudioSourceState* externalSource)
 {
     // ── Feed input to BNR container (non-blocking) ───────────────────────
+    std::vector<float>& monoScratch =
+        externalSource ? externalSource->nr2Mono : m_nr2Mono;
+    std::unique_ptr<Resampler>& bnrUp =
+        externalSource
+            ? externalSource->bnrUp
+            : (source == RxDspSource::KiwiSdr ? m_kiwiSdrBnrUp : m_bnrUp);
+    std::unique_ptr<Resampler>& bnrDown =
+        externalSource
+            ? externalSource->bnrDown
+            : (source == RxDspSource::KiwiSdr ? m_kiwiSdrBnrDown : m_bnrDown);
+    QByteArray& bnrOutBuf =
+        externalSource
+            ? externalSource->bnrOutBuf
+            : (source == RxDspSource::KiwiSdr ? m_kiwiSdrBnrOutBuf : m_bnrOutBuf);
+    bool& bnrPrimed =
+        externalSource
+            ? externalSource->bnrPrimed
+            : (source == RxDspSource::KiwiSdr ? m_kiwiSdrBnrPrimed : m_bnrPrimed);
+
+    if (!bnrUp) {
+        bnrUp = std::make_unique<Resampler>(24000, 48000, 16384);
+    }
+    if (!bnrDown) {
+        bnrDown = std::make_unique<Resampler>(48000, 24000, 16384);
+    }
 
     // 1. 24kHz stereo float32 → 24kHz mono float32 (average L+R)
     const auto* src = reinterpret_cast<const float*>(stereoPcm.constData());
     const int stereoFrames = stereoPcm.size() / (2 * static_cast<int>(sizeof(float)));
 
-    if (static_cast<int>(m_nr2Mono.size()) < stereoFrames)
-        m_nr2Mono.resize(stereoFrames);
-    for (int i = 0; i < stereoFrames; ++i)
-        m_nr2Mono[i] = (src[2 * i] + src[2 * i + 1]) * 0.5f;
+    if (static_cast<int>(monoScratch.size()) < stereoFrames) {
+        monoScratch.resize(stereoFrames);
+    }
+    for (int i = 0; i < stereoFrames; ++i) {
+        monoScratch[i] = (src[2 * i] + src[2 * i + 1]) * 0.5f;
+    }
 
     // 2. 24kHz mono float32 → 48kHz mono float32 (r8brain)
-    QByteArray mono48k = m_bnrUp->process(m_nr2Mono.data(), stereoFrames);
+    QByteArray mono48k = bnrUp->process(monoScratch.data(), stereoFrames);
 
     // 3. Already float32 — pass directly to BNR
     const auto* mono48kSrc = reinterpret_cast<const float*>(mono48k.constData());
@@ -4711,7 +4814,7 @@ void AudioEngine::processBnr(const QByteArray& stereoPcm)
         const auto* df = reinterpret_cast<const float*>(denoised.constData());
         const int dn = denoised.size() / static_cast<int>(sizeof(float));
 
-        QByteArray mono24k = m_bnrDown->process(df, dn);
+        QByteArray mono24k = bnrDown->process(df, dn);
 
         // 6. Mono float32 → stereo float32 (duplicate L=R)
         const auto* m24 = reinterpret_cast<const float*>(mono24k.constData());
@@ -4723,34 +4826,45 @@ void AudioEngine::processBnr(const QByteArray& stereoPcm)
             ds[2 * i + 1] = m24[i];
         }
 
-        m_bnrOutBuf.append(stereo);
+        bnrOutBuf.append(stereo);
 
         // Cap jitter buffer at ~500ms (24kHz stereo float32 = 192000 bytes/sec)
         constexpr int maxBufBytes = 96000;  // 500ms
-        if (m_bnrOutBuf.size() > maxBufBytes)
-            m_bnrOutBuf.remove(0, m_bnrOutBuf.size() - maxBufBytes);
+        if (bnrOutBuf.size() > maxBufBytes) {
+            bnrOutBuf.remove(0, bnrOutBuf.size() - maxBufBytes);
+        }
     }
 
     // ── Play from jitter buffer ──────────────────────────────────────────
 
     // Wait for ~50ms of buffered audio before starting playback (priming)
     constexpr int primeBytes = 9600;  // 50ms of 24kHz stereo float32
-    if (!m_bnrPrimed) {
-        if (m_bnrOutBuf.size() >= primeBytes)
-            m_bnrPrimed = true;
-        else
+    if (!bnrPrimed) {
+        if (bnrOutBuf.size() >= primeBytes) {
+            bnrPrimed = true;
+        } else {
             return;  // still priming — silence (no audio output)
+        }
     }
 
     // Play the same amount of audio as the incoming chunk to maintain sync
     const int wantBytes = stereoPcm.size();
-    if (m_bnrOutBuf.size() >= wantBytes) {
-        QByteArray chunk = m_bnrOutBuf.left(wantBytes);
-        m_bnrOutBuf.remove(0, wantBytes);
+    if (bnrOutBuf.size() >= wantBytes) {
+        QByteArray chunk = bnrOutBuf.left(wantBytes);
+        bnrOutBuf.remove(0, wantBytes);
+
+        const int pan = externalSource ? externalSource->pan : m_rxPan.load();
+        applyRxPanInPlace(
+            reinterpret_cast<float*>(chunk.data()),
+            chunk.size() / (2 * static_cast<int>(sizeof(float))),
+            pan);
 
         if (m_audioDevice && m_audioDevice->isOpen()) {
             const int scopeSampleRate = m_rxOutputRate.load();
-            const QByteArray& resampled = (m_rxOutputRate.load() != DEFAULT_SAMPLE_RATE) ? resampleStereo(chunk) : chunk;
+            const QByteArray& resampled =
+                (m_rxOutputRate.load() != DEFAULT_SAMPLE_RATE)
+                    ? resampleStereo(chunk, source, externalSource)
+                    : chunk;
             const QByteArray* output = &resampled;
             QByteArray trimmed;
             const float trimDb = m_rxOutputTrimDb.load();
@@ -4760,10 +4874,17 @@ void AudioEngine::processBnr(const QByteArray& stereoPcm)
                 const auto* src = reinterpret_cast<const float*>(resampled.constData());
                 auto* dst = reinterpret_cast<float*>(trimmed.data());
                 const int nSamples = resampled.size() / static_cast<int>(sizeof(float));
-                for (int i = 0; i < nSamples; ++i) dst[i] = src[i] * gain;
+                for (int i = 0; i < nSamples; ++i) {
+                    dst[i] = src[i] * gain;
+                }
                 output = &trimmed;
             }
-            m_rxOutputBuffer.append(*output);
+            QByteArray& outputBuffer =
+                externalSource
+                    ? externalSource->outputBuffer
+                    : (source == RxDspSource::KiwiSdr ? m_kiwiSdrOutputBuffer
+                                                       : m_rxOutputBuffer);
+            outputBuffer.append(*output);
             emitScopeFromFloat32Stereo(*output, scopeSampleRate, false);
             emitRxPostChainScopeFromFloat32Stereo(*output, scopeSampleRate);
             updateRxBufferStats();
@@ -4880,7 +5001,8 @@ void AudioEngine::processNr2(const QByteArray& stereoPcm,
         dst[2 * i]     = s;
         dst[2 * i + 1] = s;
     }
-    applyRxPanInPlace(dst, stereoFrames, m_rxPan.load());
+    const int pan = externalSource ? externalSource->pan : m_rxPan.load();
+    applyRxPanInPlace(dst, stereoFrames, pan);
 }
 
 QByteArray AudioEngine::applyBoost(const QByteArray& pcm, float gain) const
