@@ -86,6 +86,50 @@ QString statusPreflightFailureMessage(int firstHttpStatus,
                            "connect. Try again later.");
 }
 
+// Source-attributed badp labels are documented in the KiwiSDR design note.
+QString badpMessage(int badp, const QString& identityDiagnostic)
+{
+    switch (badp) {
+    case 1:
+        return trKiwiSdrClient("KiwiSDR rejected this authentication attempt "
+                               "(badp=1). %1 This endpoint may require a "
+                               "password or site-specific login.")
+            .arg(identityDiagnostic);
+    case 2:
+        return trKiwiSdrClient("This KiwiSDR is still determining whether this "
+                               "client is local (badp=2). Try again in a few "
+                               "moments.");
+    case 3:
+        return trKiwiSdrClient("This KiwiSDR does not allow access from this IP "
+                               "address (badp=3).");
+    case 4:
+        return trKiwiSdrClient("This KiwiSDR does not allow remote admin access "
+                               "because no admin password is set (badp=4).");
+    case 5:
+        return trKiwiSdrClient("KiwiSDR rejected public receive access (badp=5). "
+                               "This can mean the server does not allow another "
+                               "connection from this IP address; some deployed "
+                               "receivers have also returned it for public-access "
+                               "rejection. %1 This endpoint may require a password "
+                               "or site-specific login.")
+            .arg(identityDiagnostic);
+    case 6:
+        return trKiwiSdrClient("This KiwiSDR is temporarily unavailable while "
+                               "its database is updating (badp=6). Try again "
+                               "in about a minute.");
+    case 7:
+        return trKiwiSdrClient("This KiwiSDR already has an admin connection "
+                               "open (badp=7).");
+    default:
+        return trKiwiSdrClient("KiwiSDR rejected public receive access "
+                               "(badp=%1). %2 This endpoint may require a "
+                               "password, site-specific login, or a different "
+                               "public access policy.")
+            .arg(badp)
+            .arg(identityDiagnostic);
+    }
+}
+
 quint32 readLittleEndianU32(const char* data)
 {
     const auto* bytes = reinterpret_cast<const uchar*>(data);
@@ -1801,11 +1845,9 @@ void KiwiSdrClient::handleMessage(StreamKind stream, const QByteArray& frame)
 void KiwiSdrClient::handleTextMessage(StreamKind stream, const QString& text)
 {
     traceInboundText(stream, text);
-    const QString message = text.startsWith(QStringLiteral("MSG"))
-        ? text.mid(3).trimmed()
-        : text.trimmed();
+    const QVector<KiwiSdrProtocol::MsgToken> msgTokens =
+        KiwiSdrProtocol::parseMsgTokens(text);
 
-    const QStringList parts = message.split(QLatin1Char(' '), Qt::SkipEmptyParts);
     auto setSoundSampleRate = [this](double value) {
         if (!std::isfinite(value) || value < 8000.0 || value > 48000.0) {
             return;
@@ -1819,11 +1861,10 @@ void KiwiSdrClient::handleTextMessage(StreamKind stream, const QString& text)
             m_soundResampler.reset();
         }
     };
-    auto messageValue = [&parts](const QString& requestedKey) {
-        for (const QString& candidate : parts) {
-            const int candidateEq = candidate.indexOf(QLatin1Char('='));
-            if (candidateEq > 0 && candidate.left(candidateEq) == requestedKey) {
-                return candidate.mid(candidateEq + 1);
+    auto messageValue = [&msgTokens](const QString& requestedKey) {
+        for (const KiwiSdrProtocol::MsgToken& candidate : msgTokens) {
+            if (candidate.hasValue && candidate.key == requestedKey) {
+                return candidate.value;
             }
         }
         return QString();
@@ -1845,19 +1886,24 @@ void KiwiSdrClient::handleTextMessage(StreamKind stream, const QString& text)
         }
         return trKiwiSdrClient("KiwiSDR endpoint is disabled.");
     };
-    for (const QString& part : parts) {
-        const int eq = part.indexOf(QLatin1Char('='));
-        if (eq <= 0) {
-            continue;
+    for (const KiwiSdrProtocol::MsgToken& token : msgTokens) {
+        const QString& key = token.key;
+        const QString& valueText = token.value;
+        if (token.hasValue) {
+            qCDebug(lcKiwiSdr).noquote()
+                << "KiwiSDR MSG"
+                << QStringLiteral("endpoint=%1").arg(logEndpoint())
+                << key << "=" << abbreviatedMsgValue(valueText);
+            traceProtocolEvent(QStringLiteral("PARSED %1 %2=%3")
+                .arg(streamLabel(stream), key, abbreviatedMsgValue(valueText)));
+        } else {
+            qCDebug(lcKiwiSdr).noquote()
+                << "KiwiSDR MSG"
+                << QStringLiteral("endpoint=%1").arg(logEndpoint())
+                << key;
+            traceProtocolEvent(QStringLiteral("PARSED %1 %2")
+                .arg(streamLabel(stream), key));
         }
-        const QString key = part.left(eq);
-        const QString valueText = part.mid(eq + 1);
-        qCDebug(lcKiwiSdr).noquote()
-            << "KiwiSDR MSG"
-            << QStringLiteral("endpoint=%1").arg(logEndpoint())
-            << key << "=" << abbreviatedMsgValue(valueText);
-        traceProtocolEvent(QStringLiteral("PARSED %1 %2=%3")
-            .arg(streamLabel(stream), key, abbreviatedMsgValue(valueText)));
         if (key == QStringLiteral("too_busy")) {
             bool busyOk = false;
             const int busyValue = valueText.toInt(&busyOk);
@@ -1896,6 +1942,22 @@ void KiwiSdrClient::handleTextMessage(StreamKind stream, const QString& text)
                 return;
             }
             continue;
+        }
+        if (key == QStringLiteral("wb_only")) {
+            setState(
+                State::Error,
+                tr("This KiwiSDR is configured for wideband use only and does "
+                   "not accept normal receiver connections."));
+            cleanupSockets();
+            return;
+        }
+        if (key == QStringLiteral("exclusive_use")) {
+            setState(
+                State::Error,
+                tr("This KiwiSDR is locked for exclusive use by another "
+                   "operation. Try again later or choose another receiver."));
+            cleanupSockets();
+            return;
         }
         if (key == QStringLiteral("camp_disconnect")) {
             setState(State::Error,
@@ -1938,6 +2000,40 @@ void KiwiSdrClient::handleTextMessage(StreamKind stream, const QString& text)
             cleanupSockets();
             return;
         }
+        if (key == QStringLiteral("inactivity_timeout")) {
+            bool minutesOk = false;
+            const int minutes = valueText.toInt(&minutesOk);
+            setState(
+                State::Error,
+                minutesOk && minutes > 0
+                    ? tr("This KiwiSDR disconnected the session after %1 "
+                         "minutes without tuning or activity.")
+                          .arg(minutes)
+                    : tr("This KiwiSDR disconnected the session for inactivity."));
+            cleanupSockets();
+            return;
+        }
+        if (key == QStringLiteral("password_timeout")) {
+            setState(
+                State::Error,
+                tr("This KiwiSDR timed out waiting for password authentication."));
+            cleanupSockets();
+            return;
+        }
+        if (key == QStringLiteral("kiwi_kick")) {
+            const QString decoded =
+                QUrl::fromPercentEncoding(valueText.toUtf8()).trimmed();
+            const int comma = decoded.indexOf(QLatin1Char(','));
+            const QString reason =
+                comma >= 0 ? decoded.mid(comma + 1).trimmed() : QString();
+            setState(State::Error,
+                     reason.isEmpty()
+                         ? tr("This KiwiSDR disconnected this client.")
+                         : tr("This KiwiSDR disconnected this client: %1")
+                               .arg(reason));
+            cleanupSockets();
+            return;
+        }
         if (key == QStringLiteral("audio_init")) {
             // audio_init confirms setup progress, not usable decoded audio.
             // Wait for the first accepted SND frame so camping/silent sessions
@@ -1956,14 +2052,8 @@ void KiwiSdrClient::handleTextMessage(StreamKind stream, const QString& text)
                 m_startupTrace.badpNonzeroSeen = true;
             }
             if (badp != 0) {
-                setState(
-                    State::Error,
-                    tr("KiwiSDR rejected public receive access (badp=%1). "
-                       "%2 This endpoint may require a password, "
-                       "site-specific login, or a different public access "
-                       "policy.")
-                        .arg(badp)
-                        .arg(identityDiagnosticText()));
+                setState(State::Error,
+                         badpMessage(badp, identityDiagnosticText()));
                 cleanupSockets();
                 return;
             }
