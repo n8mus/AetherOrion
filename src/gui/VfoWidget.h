@@ -19,8 +19,11 @@ class QLineEdit;
 class QStackedWidget;
 class QSlider;
 class QComboBox;
+class QCheckBox;
+class QGraphicsOpacityEffect;
 class QDoubleSpinBox;
 class QGridLayout;
+class QPainter;
 
 namespace AetherSDR {
 
@@ -30,6 +33,7 @@ class RadioModel;
 class PhaseKnob;
 class RxApplet;
 class KiwiSdrManager;
+class SmartMtrWidget;
 
 // Floating VFO info panel attached to the VFO marker on the spectrum display.
 // Shows slice info (antennas, frequency, signal level, filter width, TX/SPLIT)
@@ -55,6 +59,12 @@ public:
     void setSignalLevel(float dbm);
     void setReceiveMeterReading(
         const AetherSDR::KiwiSdrProtocol::MeterReading& reading);
+    // SmartMTR feeds: live mic level + separately-measured mic peak (both dBFS)
+    // and global TX (MOX) state. The SmartMTR view shows mic level on this VFO's
+    // TX slice while transmitting (peak marker driven by micPeak), and received
+    // signal otherwise.
+    void setMicLevel(float micDbfs, float micPeakDbfs);
+    void setTransmitting(bool tx);
 
     // Split mode: call whenever TX assignment or active slice changes.
     //   isTxSlice  — this VFO's slice has tx=1
@@ -73,6 +83,13 @@ public:
 
     // Reposition relative to VFO marker x coordinate.
     void updatePosition(int vfoX, int specTop, FlagDir dir = Auto);
+
+    // Draw this flag's SmartMTR extremes value labels (min/max or current signal,
+    // gated by the meter options) onto the spectrum painter, in the band just
+    // below the flag. Called by SpectrumWidget's overlay pass so the labels land
+    // on top of the slice markers. No-op unless the SmartMTR meter + value labels
+    // are active and the flag is expanded. Coordinates are SpectrumWidget-local.
+    void drawSmartMtrLabels(QPainter& p) const;
 
     // Client-side DSP buttons (NR2 / NR4 / MNR / BNR / DFNR / RN2) were
     // removed from the VFO DSP grid; that family lives in the spectrum
@@ -156,6 +173,10 @@ Q_SIGNALS:
     // (no center line / no top triangle, passband only), 1 = 1 px line,
     // 3 = 3 px line.
     void markerStyleChanged(int markerWidth, bool filterEdgesHidden);
+    // The SmartMTR value labels need a repaint (meter values/options changed).
+    // SpectrumWidget connects this to markOverlayDirty() so the spectrum overlay
+    // (which draws the labels) refreshes. Throttled at the source.
+    void smartMtrLabelsChanged();
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -167,13 +188,31 @@ protected:
 private:
     void updateSignalMeterTarget();
     void animateSignalMeter();
+    // Build and push the current MeterInput (signal vs mic by TX state) to the
+    // SmartMTR widget. Cheap; safe to call on every level/state update.
+    void pushSmartMtrInput();
+    // Read the global extremes options (MeterViewController) and push them to the
+    // SmartMTR widget; show/hide + reposition the value-label overlay. Called on
+    // construction, on extremesChanged() broadcast, and on meter-view switch.
+    void pushSmartMtrOptions();
+    // Throttled bridge from the meter's repaint to a spectrum-overlay refresh.
+    void onSmartMtrRepainted();
     bool usesUnavailableSignalMeter() const;
     static float signalDbmToMeterFraction(float dbm);
 
     void buildUI();
     void buildTabContent();
+    // Meter view (standard S-Meter vs SmartMTR component).  Driven globally by
+    // MeterViewController; m_meterStack switches pages and meterBarRect() locates
+    // the painted bar.  The inline selector row (m_meterMenuRow) is revealed by
+    // clicking the meter strip; syncMeterMenuButtons() reflects the choice.
+    void applyMeterView(bool smartMtr);
+    void syncMeterMenuButtons();
+    void setMeterMenuOpen(bool open);  // open/close the S-Meter/SmartMTR selector
+    QRect meterBarRect() const;
     void updateTxBadgeStyle(bool isTx);
     void showTab(int index);
+    void closeActiveTab();  // close any open DSP/Mode/... tab panel
     void updateFreqLabel();
     bool cancelDirectEntry();
     void updateFilterLabel();
@@ -243,6 +282,46 @@ private:
     QLineEdit* m_freqEdit{nullptr};
     QStackedWidget* m_freqStack{nullptr};
     QLabel* m_dbmLabel{nullptr};
+    // Meter strip: page 0 = standard S-meter (painted bar + dBm label),
+    // page 1 = SmartMTR component.  m_smartMtr mirrors the current page.
+    QStackedWidget* m_meterStack{nullptr};
+    bool m_smartMtr{false};
+    SmartMtrWidget* m_smartMtrWidget{nullptr};
+    // The SmartMTR extremes value labels are drawn by SpectrumWidget's overlay
+    // pass (so they sit on top of the slice). This clock throttles how often the
+    // meter's repaint asks the spectrum overlay to refresh.
+    QElapsedTimer m_labelDirtyClock;
+    qint64 m_lastLabelDirtyMs{-1};
+    float m_micDbfs{-40.0f}; // latest mic level (dBFS); SmartMTR TX scale
+    float m_micPeakDbfs{-40.0f}; // latest mic peak (dBFS, radio MICPEAK stat)
+    bool m_transmitting{false}; // global MOX state
+    // Inline selector row revealed by clicking the meter strip (not a popup),
+    // shown between the meter and the tab bar.
+    QWidget* m_meterMenuRow{nullptr};
+    QPushButton* m_sMeterOptBtn{nullptr};
+    QPushButton* m_smartMtrOptBtn{nullptr};
+    // SmartMTR-only display options, shown vertically below the selector
+    // buttons. Disabled while the standard S-meter is selected. "Extremes
+    // speed" is further gated on "Show extremes" being checked.
+    QCheckBox* m_showExtremesChk{nullptr};
+    QComboBox* m_extremesSpeedCmb{nullptr};
+    QComboBox* m_showValuesCmb{nullptr};
+    // Which meter to show while transmitting: None (stay on RX signal) or Mic
+    // Level. Disabled while the standard S-meter is selected.
+    QComboBox* m_txMeterCmb{nullptr};
+    // Opacity effects over each select row (label + combo), dimmed when the
+    // row is disabled so the disabled state is obvious (the custom combo
+    // stylesheet has no :disabled variant).  Matched to the disabled-checkbox
+    // label dimming.
+    QGraphicsOpacityEffect* m_extremesSpeedFade{nullptr};
+    QGraphicsOpacityEffect* m_showValuesFade{nullptr};
+    QGraphicsOpacityEffect* m_txMeterFade{nullptr};
+    // Enable/disable the SmartMTR-only options per the current meter view and
+    // the "Show extremes" checkbox state (see implementation for the rules).
+    void syncSmartMtrSettingsState();
+    // Thin spacer between the meter and the tab bar, shown only while the meter
+    // selector is open, to give the curved underline room below the indicator.
+    QWidget* m_meterUnderlineRoom{nullptr};
     QString m_directEntrySource{"vfo-direct-entry"};
 
     // Sub-menu tabs
