@@ -614,9 +614,14 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
             update();
         }
     });
-    if (m_gpuFlagMode) {
-        m_flagRefreshTimer->start();
-    }
+    // #3746: the re-raster timer runs only while the panadapter is actually
+    // presented.  attachFlagTimerWindowWatcher() watches the top-level for
+    // minimize/restore; updateFlagRefreshTimer() starts/stops on
+    // visible + not-minimized.  Re-evaluated on Show/Hide/ParentChange in
+    // event() and on WindowStateChange in eventFilter().  At construction the
+    // widget isn't shown yet, so the timer stays stopped until the first Show.
+    attachFlagTimerWindowWatcher();
+    updateFlagRefreshTimer();
 #endif
 
     m_tnfHoverPopup = new QLabel(this);
@@ -830,6 +835,12 @@ SpectrumWidget::~SpectrumWidget()
 void SpectrumWidget::prepareForTopLevelChange()
 {
 #ifdef AETHER_GPU_SPECTRUM
+    // #3746: the watched top-level is about to change — detach now; the next
+    // Show/ParentChange re-attaches the WindowStateChange watcher to the new one.
+    if (m_flagTimerFilteredWindow && m_flagTimerFilteredWindow != this) {
+        m_flagTimerFilteredWindow->removeEventFilter(this);
+    }
+    m_flagTimerFilteredWindow = nullptr;
 #ifdef Q_OS_MAC
     // QRhiWidget registers a cleanup callback with the current top-level
     // backing-store QRhi. Direct splitter/floating-window reparenting can miss
@@ -990,6 +1001,17 @@ VfoWidget* SpectrumWidget::addVfoWidget(int sliceId)
     m_overlayMenu->raiseAll();  // keep overlay + panels on top of all VFO widgets
     if (m_interlockNotificationLabel && m_interlockNotificationLabel->isVisible())
         m_interlockNotificationLabel->raise();
+#ifdef AETHER_GPU_SPECTRUM
+    // #3746(2) diagnostic: the gap from this FlagCreated to the slice's first
+    // FlagFirstGrab is the "blank" window. Gated aether.perf trace, kept so the
+    // fix below stays verifiable (measured ~41 ms gap without it -> ~3 ms with).
+    if (m_gpuFlagMode && lcPerf().isDebugEnabled())
+        qCDebug(lcPerf).nospace() << "FlagCreated slice=" << sliceId;
+    // #3746(2) fix: rasterize the new flag's sprite immediately (off-frame, safe)
+    // so a non-live new slice isn't blank until the next refresh-timer tick.
+    // repositionVfoFlags() positions the quad next frame.
+    grabFlagSprites();
+#endif
     return w;
 }
 
@@ -1175,6 +1197,49 @@ void SpectrumWidget::setLiveFlag(int sliceId)
     update();
 }
 
+// #3746: (re)attach the WindowStateChange watcher to the current top-level.
+// The window can change when a panadapter floats/docks (reparent), so this is
+// re-run on Show/ParentChange.  We never filter ourselves (top == this before
+// the widget is parented into a window).
+void SpectrumWidget::attachFlagTimerWindowWatcher()
+{
+    QWidget* top = window();
+    if (top == m_flagTimerFilteredWindow) {
+        return;
+    }
+    if (m_flagTimerFilteredWindow && m_flagTimerFilteredWindow != this) {
+        m_flagTimerFilteredWindow->removeEventFilter(this);
+    }
+    m_flagTimerFilteredWindow = top;
+    if (top && top != this) {
+        top->installEventFilter(this);
+    }
+}
+
+// #3746: run the flag re-raster timer ONLY while the panadapter is actually
+// presented — visible and not minimized.  A minimized window keeps isVisible()
+// true (measured), so the WindowStateChange watcher drives this for the
+// minimize case; Show/Hide/ParentChange drive it for the hidden-tab/reparent
+// cases.  Stopping the timer eliminates both the 12.5 Hz wakeup and the
+// off-screen grab (~2 ms/tick for 4 flags, measured) when nobody can see it.
+void SpectrumWidget::updateFlagRefreshTimer()
+{
+    if (!m_flagRefreshTimer) {
+        return;
+    }
+    QWidget* top = window();
+    const bool present = m_gpuFlagMode && isVisible()
+                         && !(top && top->isMinimized());
+    const bool active = m_flagRefreshTimer->isActive();
+    if (present && !active) {
+        m_flagRefreshTimer->start();
+        qCDebug(lcPerf) << "FlagRefreshTimer START (panadapter presented)";
+    } else if (!present && active) {
+        m_flagRefreshTimer->stop();
+        qCDebug(lcPerf) << "FlagRefreshTimer STOP (hidden/minimized)";
+    }
+}
+
 // #3617: rasterize each non-live flag into its own CPU image.  MUST run OUTSIDE
 // the QRhi render callback (QWidget::render inside an active frame re-enters the
 // renderer and crashes) — called from the refresh timer and on live-flag change.
@@ -1183,6 +1248,13 @@ void SpectrumWidget::grabFlagSprites()
     if (!m_gpuFlagMode) {
         return;
     }
+    // #3746 instrumentation (aether.perf): time the idle re-raster, count the
+    // flags actually re-rasterized this tick, and record whether the panadapter
+    // is visible -- to quantify the 12.5 Hz grab cost and the hidden-while-
+    // grabbing waste before/after the idle-pause + dirty-skip optimizations.
+    QElapsedTimer grabTimer;
+    grabTimer.start();
+    int grabbed = 0;
     // Rasterize each flag at EXACTLY its on-screen device-pixel size (1:1), so
     // the sprite texture maps one texel per screen pixel — drawn pixel-aligned
     // with NEAREST sampling that gives crisp text (no scaling = no blur).  An
@@ -1194,6 +1266,7 @@ void SpectrumWidget::grabFlagSprites()
         if (!f || f->size().isEmpty() || id == m_liveFlagSliceId) {
             continue;   // the live flag is shown as a real widget, not grabbed
         }
+        const bool firstGrab = !m_flagSprites.contains(id);   // #3746(2) measure: first sprite for this slice?
         FlagSprite& s = m_flagSprites[id];   // inserts a blank sprite if absent
         const QSize devSize(qMax(1, static_cast<int>(std::lround(f->width() * dpr))),
                             qMax(1, static_cast<int>(std::lround(f->height() * dpr))));
@@ -1204,7 +1277,19 @@ void SpectrumWidget::grabFlagSprites()
         s.img.fill(Qt::transparent);
         f->render(&s.img, QPoint(0, 0));   // off-frame raster — safe
         s.imgDirty = true;
+        ++grabbed;
+        // #3746(2) measure: log the first sprite render for a slice, so the
+        // latency from FlagCreated (in addVfoWidget) to here -- the "80 ms
+        // blank" gap -- can be read from the log timestamps.
+        if (firstGrab && lcPerf().isDebugEnabled())
+            qCDebug(lcPerf).nospace() << "FlagFirstGrab slice=" << id;
     }
+    if (lcPerf().isDebugEnabled())
+        qCDebug(lcPerf).nospace()
+            << "FlagGrab grabbed=" << grabbed
+            << " flags=" << m_vfoWidgets.size()
+            << " ms=" << (grabTimer.nsecsElapsed() / 1.0e6)
+            << " visible=" << (isVisible() ? 1 : 0);
 }
 
 void SpectrumWidget::releaseFlagSprite(FlagSprite& s)
@@ -6521,7 +6606,17 @@ bool SpectrumWidget::event(QEvent* ev)
     // surface loses mouse tracking and mouseMoveEvent stops firing.
     if (ev->type() == QEvent::WinIdChange || ev->type() == QEvent::ParentChange) {
         setMouseTracking(true);
+#ifdef AETHER_GPU_SPECTRUM
+        attachFlagTimerWindowWatcher();   // #3746 — top-level may have changed (float/dock)
+        updateFlagRefreshTimer();
+#endif
     }
+#ifdef AETHER_GPU_SPECTRUM
+    if (ev->type() == QEvent::Show || ev->type() == QEvent::Hide) {
+        attachFlagTimerWindowWatcher();   // #3746 — pause/resume flag re-raster on
+        updateFlagRefreshTimer();         // panadapter show/hide (e.g. hidden tab)
+    }
+#endif
 
     if (ev->type() == QEvent::NativeGesture) {
         auto* ge = static_cast<QNativeGestureEvent*>(ev);
@@ -6559,6 +6654,15 @@ bool SpectrumWidget::event(QEvent* ev)
 
 bool SpectrumWidget::eventFilter(QObject* watched, QEvent* event)
 {
+#ifdef AETHER_GPU_SPECTRUM
+    // #3746: a minimized top-level keeps our child widgets isVisible()==true, so
+    // we watch the window's WindowStateChange explicitly to pause/resume the flag
+    // re-raster timer on minimize/restore.  Not consumed.
+    if (watched == m_flagTimerFilteredWindow
+        && event->type() == QEvent::WindowStateChange) {
+        updateFlagRefreshTimer();
+    }
+#endif
     QWidget* widget = qobject_cast<QWidget*>(watched);
     if (!widget || anyDragActive()) {
         return SPECTRUM_BASE_CLASS::eventFilter(watched, event);
