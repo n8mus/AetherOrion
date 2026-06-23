@@ -107,6 +107,13 @@ public:
     bool isCollapsed() const { return m_collapsed; }
     void setCollapsed(bool collapsed);
 
+    // Spoken summary of this flag for AT tools (slice, frequency, TX state).
+    // Consumed by VfoWidgetAccessible — the QAccessibleInterface implemented
+    // for this widget in VfoWidget.cpp — so collapsed flags, whose slice/TX
+    // badges are custom-painted with no child-widget equivalent, aren't opaque
+    // to screen readers. (#3754)
+    QString accessibleSummary() const;
+
     // Lean render mode: drop WA_TranslucentBackground so the panel composites
     // as an opaque, cacheable layer instead of being alpha-blended over the
     // whole window every frame (the dominant idle CPU cost — see #3283).
