@@ -204,6 +204,14 @@ static QString hz11(qint64 hz)
     return QStringLiteral("%1").arg(hz, 11, 10, QChar('0'));
 }
 
+// Does this port have a usable VFO B? ZZFB returns its frequency when present, or
+// "?" (NOT_ENABLED) on a single-VFO port / when the VFO B slice isn't open. Single
+// definition so the split-section gates can't drift apart.
+static bool hasVfoB(CatClient& c)
+{
+    return c.query(QStringLiteral("ZZFB")).startsWith(QLatin1String("ZZFB"));
+}
+
 static bool isDigits(const QString& s, int n)
 {
     if (s.size() != n) return false;
@@ -368,8 +376,12 @@ void section3(CatClient& c, Runner& r)
     r.section(QStringLiteral("Section 3 — ZZFB — VFO-B Frequency"));
 
     QString resp = c.query(QStringLiteral("ZZFB"));
-    r.check(QStringLiteral("3.1  ZZFB; returns \"ZZFB\" + 11-digit Hz"),
-            resp.startsWith(QLatin1String("ZZFB")) && isDigits(resp.mid(4), 11), repr(resp));
+    // Dual port → "ZZFB"+11-digit Hz; single-VFO (or VFO B slice absent) → "?"
+    // (NOT_ENABLED, no VFO-A fallback, #3633). Accept either so the suite is clean
+    // on both port types.
+    r.check(QStringLiteral("3.1  ZZFB; → \"ZZFB\"+11-digit Hz, or \"?\" when no VFO B (#3633)"),
+            (resp.startsWith(QLatin1String("ZZFB")) && isDigits(resp.mid(4), 11))
+                || resp == QLatin1String("?"), repr(resp));
 
     QString fbResp = c.query(QStringLiteral("FB"));
     r.check(QStringLiteral("3.2  ZZFB; and FB; agree"),
@@ -589,6 +601,32 @@ void section7(CatClient& c, Runner& r)
 void section8(CatClient& c, Runner& r)
 {
     r.section(QStringLiteral("Section 8 — ZZSW — Split"));
+
+    // The dual-VFO tests below assume a usable VFO B. On a single-VFO port (or a
+    // port whose VFO B slice isn't open) split cannot engage, so enable commands
+    // return "?" (NOT_ENABLED) instead of a silent ack — which would desync the
+    // read stream if issued with send(). Detect VFO B; when absent, verify the
+    // NOT_ENABLED behavior with query() (consuming the "?") and return, keeping
+    // the stream in sync.
+    const bool vfoB = hasVfoB(c);
+    if (!vfoB) {
+        const QString sw0 = c.query(QStringLiteral("ZZSW"));
+        r.check(QStringLiteral("8.1  ZZSW; → ZZSW0 (split off, single VFO)"),
+                sw0 == QLatin1String("ZZSW0"), repr(sw0));
+        const QString sw1 = c.query(QStringLiteral("ZZSW1"));
+        r.check(QStringLiteral("8.2  ZZSW1; with no VFO B → \"?\" (NOT_ENABLED)"),
+                sw1 == QLatin1String("?"), repr(sw1));
+        const QString ft1 = c.query(QStringLiteral("FT1"));
+        r.check(QStringLiteral("8.3  FT1; with no VFO B → \"?\" (NOT_ENABLED)"),
+                ft1 == QLatin1String("?"), repr(ft1));
+        const QString zft1 = c.query(QStringLiteral("ZZFT1"));
+        r.check(QStringLiteral("8.4  ZZFT1; with no VFO B → \"?\" (NOT_ENABLED)"),
+                zft1 == QLatin1String("?"), repr(zft1));
+        const QString sw0b = c.query(QStringLiteral("ZZSW"));
+        r.check(QStringLiteral("8.5  split still off (ZZSW0) after rejected enables"),
+                sw0b == QLatin1String("ZZSW0"), repr(sw0b));
+        return;
+    }
 
     QString resp = c.query(QStringLiteral("ZZSW"));
     r.check(QStringLiteral("8.1  ZZSW; → ZZSW0 (split off initially)"),
@@ -829,15 +867,25 @@ void section12(CatClient& c, Runner& r)
     setAndPollMode(QStringLiteral("12.6 set mode via ZZMD09 (DIGL)"),
                    QStringLiteral("ZZMD09"), QStringLiteral("ZZMD09"), QStringLiteral("MD6"));
 
-    c.send(QStringLiteral("FT1"));
-    resp = c.query(QStringLiteral("ZZSW"));
-    r.check(QStringLiteral("12.7 set split via FT1; → ZZSW; → ZZSW1"),
-            resp == QLatin1String("ZZSW1"), repr(resp));
+    // 12.7/12.8 cross-check FT<->ZZSW split agreement — needs a usable VFO B. On a
+    // single-VFO port split can't engage (FT1 → "?"), so skip to avoid desyncing
+    // the stream; the NOT_ENABLED behavior is covered in section 8.
+    if (hasVfoB(c)) {
+        c.send(QStringLiteral("FT1"));
+        resp = c.query(QStringLiteral("ZZSW"));
+        r.check(QStringLiteral("12.7 set split via FT1; → ZZSW; → ZZSW1"),
+                resp == QLatin1String("ZZSW1"), repr(resp));
 
-    c.send(QStringLiteral("ZZSW0"));
-    resp = c.query(QStringLiteral("FT"));
-    r.check(QStringLiteral("12.8 clear split via ZZSW0; → FT; → FT0"),
-            resp == QLatin1String("FT0"), repr(resp));
+        c.send(QStringLiteral("ZZSW0"));
+        resp = c.query(QStringLiteral("FT"));
+        r.check(QStringLiteral("12.8 clear split via ZZSW0; → FT; → FT0"),
+                resp == QLatin1String("FT0"), repr(resp));
+    } else {
+        r.skip(QStringLiteral("12.7 set split via FT1 (FT<->ZZSW cross-check)"),
+               QStringLiteral("no VFO B (single-VFO port)"));
+        r.skip(QStringLiteral("12.8 clear split via ZZSW0 (FT<->ZZSW cross-check)"),
+               QStringLiteral("no VFO B (single-VFO port)"));
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1072,32 +1120,30 @@ void section13(CatClient& c, Runner& r)
     c.send(origBi);
     QThread::msleep(200);
 
-    // ── ZZFR: RX VFO select (0=A, 1=B) — bare form is a READ, not a swap ──────
+    // ── ZZFR: unsupported per the SmartSDR CAT spec → "?;" (RX-VFO selection is
+    //    the Kenwood FR command; see the TS-2000 suite). The old swap-based
+    //    selector — which std::swap'd VFO A/B with no SmartSDR equivalent — was
+    //    removed. All forms (read and set) return "?;" and must NOT move any VFO.
     QString faBefore = c.query(QStringLiteral("ZZFA"));
-    QString fbBefore = c.query(QStringLiteral("ZZFB"));
-    // 13.34r REGRESSION: bare "ZZFR;" reads the selector and must NOT swap VFOs.
+    // 13.34r bare "ZZFR;" → "?" (unsupported) and does not swap VFOs.
     QString zzfrRead = c.query(QStringLiteral("ZZFR"));
     QThread::msleep(50);
     QString faUnchanged = c.query(QStringLiteral("ZZFA"));
-    r.check(QStringLiteral("13.34r bare ZZFR; reads selector ('ZZFR0') without swapping"),
-            zzfrRead == QLatin1String("ZZFR0") && faUnchanged.mid(4) == faBefore.mid(4),
+    r.check(QStringLiteral("13.34r ZZFR; → \"?\" (unsupported) and does not swap VFOs"),
+            zzfrRead == QLatin1String("?") && faUnchanged.mid(4) == faBefore.mid(4),
             QStringLiteral("read=%1 ZZFA before=%2 after=%3")
                 .arg(repr(zzfrRead), repr(faBefore.mid(4)), repr(faUnchanged.mid(4))));
-    // 13.34 explicit select: ZZFR1 selects VFO B as RX → new ZZFA matches old ZZFB.
-    c.send(QStringLiteral("ZZFR1"));
+    // 13.34 ZZFR1; / ZZFR0; are also unsupported → "?" and leave VFO A untouched.
+    // (query, not send: these now reply "?;" — must be consumed or the read stream
+    //  desyncs.)
+    QString zzfr1 = c.query(QStringLiteral("ZZFR1"));
     QThread::msleep(50);
     QString faAfter = c.query(QStringLiteral("ZZFA"));
-    QString zzfrAfter = c.query(QStringLiteral("ZZFR"));
-    // If VFO A and B differ, after ZZFR1 the new ZZFA should match old ZZFB.
-    // If they're equal (single-slice session), the swap is a no-op — treat as pass.
-    const bool zzfrOk = (faBefore.mid(4) == fbBefore.mid(4))
-                        ? true
-                        : (faAfter.mid(4) == fbBefore.mid(4));
-    r.check(QStringLiteral("13.34 ZZFR1; selects VFO B — new ZZFA matches old ZZFB; ZZFR; → 'ZZFR1'"),
-            zzfrOk && zzfrAfter == QLatin1String("ZZFR1"),
-            QStringLiteral("before: ZZFA=%1 ZZFB=%2 after ZZFA=%3 sel=%4")
-                .arg(repr(faBefore.mid(4)), repr(fbBefore.mid(4)), repr(faAfter.mid(4)), repr(zzfrAfter)));
-    c.send(QStringLiteral("ZZFR0"));  // select VFO A again (swap back)
+    r.check(QStringLiteral("13.34 ZZFR1; → \"?\" (unsupported) and does not change VFO A"),
+            zzfr1 == QLatin1String("?") && faAfter.mid(4) == faBefore.mid(4),
+            QStringLiteral("ZZFR1=%1 ZZFA before=%2 after=%3")
+                .arg(repr(zzfr1), repr(faBefore.mid(4)), repr(faAfter.mid(4))));
+    c.query(QStringLiteral("ZZFR0"));  // also "?;" — consume the reply
     QThread::msleep(50);
 
     // ── ZZAR: VFO A AGC threshold (0-100, 3-digit) ───────────────────────────
@@ -1428,6 +1474,15 @@ void section15pty(Runner& r, const QString& ptyPath)
 }
 #endif
 
+// Skipped form when --pty was not passed: don't try the round-trip (it would just
+// time out against a PTY that isn't wired up) — skip cleanly instead.
+void section15skip(Runner& r)
+{
+    r.section(QStringLiteral("Section 15 — PTY round-trip (skipped — pass --pty PATH to enable)"));
+    for (const char* name : { "15.1 PTY ID;", "15.2 PTY ZZFA;", "15.3 PTY PS;" })
+        r.skip(QString::fromLatin1(name), QStringLiteral("--pty not set"));
+}
+
 } // namespace
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1462,6 +1517,7 @@ int main(int argc, char* argv[])
     const int     timeout = parser.value(QStringLiteral("timeout")).toInt();
     const bool    doPtt   = parser.isSet(QStringLiteral("ptt"));
     const bool    doCw    = parser.isSet(QStringLiteral("cw"));
+    const bool    doPty   = parser.isSet(QStringLiteral("pty"));
 
     std::cout << '\n' << bold(QStringLiteral("AetherSDR FlexCAT (ZZ-extension) Test Suite")).toStdString() << '\n'
               << "Connecting to " << host.toStdString() << ':' << port << " ...\n";
@@ -1506,7 +1562,7 @@ int main(int argc, char* argv[])
     section13(c, r);
     if (doCw) { section14cw(c, r); } else { section14skip(r); }
     section16(c, r);
-    section15pty(r, parser.value(QStringLiteral("pty")));
+    if (doPty) { section15pty(r, parser.value(QStringLiteral("pty"))); } else { section15skip(r); }
 
     // Restore radio state
     c.send(QStringLiteral("ZZAI00"));
