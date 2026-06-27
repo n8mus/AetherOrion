@@ -1,5 +1,6 @@
 #include "SMeterWidget.h"
 #include "MeterSmoother.h"  // shared lean-mode repaint gate (#3283)
+#include "core/ThemeManager.h"
 
 #include <QAccessible>
 #include <QPainter>
@@ -612,6 +613,35 @@ void SMeterWidget::paintEvent(QPaintEvent*)
     }
     }
 
+    // Pivot cover radius — shared by the backlight glow and the cover itself.
+    const float pivotCoverR = qMax(13.5f, w * 0.0975f);
+
+    // -- Pivot backlight glow -------------------------------------------------
+    // A warm radial glow behind the pivot, as if a lamp sits behind the mask.
+    // Drawn before the needle/cover; the cover masks the bright centre, leaving
+    // a soft halo spilling out from behind the moulding.
+    {
+        const float glowR = pivotCoverR * 3.4f;
+        const float edge = pivotCoverR / glowR;
+        const float mid  = edge + (1.0f - edge) * 0.45f;
+        QColor glowColor =
+            ThemeManager::instance().color(QStringLiteral("color.meter.pivot.glow"));
+        auto glowAlpha = [&glowColor](int a) {
+            QColor c = glowColor;
+            c.setAlpha(a);
+            return c;
+        };
+        QRadialGradient glow(QPointF(cx, h), glowR, QPointF(cx, h));
+        glow.setColorAt(0.0f,  glowAlpha(80));
+        glow.setColorAt(edge,  glowAlpha(80));
+        glow.setColorAt(mid,   glowAlpha(28));
+        glow.setColorAt(1.0f,  glowAlpha(0));
+        p.setPen(Qt::NoPen);
+        p.setBrush(glow);
+        p.drawChord(QRectF(cx - glowR, h - glowR, glowR * 2.0f, glowR * 2.0f),
+                    0, 180 * 16);
+    }
+
     // -- Draw needle ----------------------------------------------------------
     // Needle originates from needleCy (just below widget) rather than the
     // arc center, so the pivot is barely out of frame.
@@ -631,6 +661,24 @@ void SMeterWidget::paintEvent(QPaintEvent*)
         // Needle
         p.setPen(QPen(QColor(0xff, 0xff, 0xff), 2));
         p.drawLine(QPointF(cx, needleCy), QPointF(tipX, tipY));
+    }
+
+    // -- Needle pivot cover ---------------------------------------------------
+    // A filled half-disc at the bottom-centre hides where the needle pivots,
+    // like the moulded bump on a classic analog VU meter. Drawn after the
+    // needle so it masks the base; the needle appears to emerge from under it.
+    {
+        const float coverR = pivotCoverR;
+        const QRectF coverRect(cx - coverR, h - coverR, coverR * 2.0f, coverR * 2.0f);
+        p.setPen(Qt::NoPen);
+        p.setBrush(ThemeManager::instance().color(
+            QStringLiteral("color.meter.pivot.fill")));   // moulding
+        p.drawChord(coverRect, 0, 180 * 16);              // upper half-disc (flat edge at bottom)
+        // Subtle glossy rim along the curved top edge.
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(ThemeManager::instance().color(
+            QStringLiteral("color.meter.pivot.rim")), 1));
+        p.drawArc(coverRect, 0, 180 * 16);
     }
 
     // Draw peak marker (small triangle) — only in RX S-Meter Peak mode
