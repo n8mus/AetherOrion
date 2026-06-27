@@ -46,6 +46,10 @@ public:
     enum class MeterValues { None, Signal, Extremes };
     void setExtremesOptions(bool show, ExtremesSpeed speed, MeterValues values);
 
+    // Draw the short meter-type label (MIC/SWR/PWR/COMP) inside the hole for TX
+    // meters. Re-rasters the static layers (the label lives in the cached layer).
+    void setShowTypeLabel(bool on);
+
     // One min/max marker's data for the parent's value-label overlay. position is
     // a hole-local UNIT center (SmartMtrUnits::kScaleMin..kScaleMax); the parent
     // maps it through the live geometry. Two text lines: primary = S-unit (e.g.
@@ -88,6 +92,11 @@ private:
     void drawIndicator(QPainter& p, const SmartMtrGeometry& g) const;
     void drawInsetShadow(QPainter& p, const SmartMtrGeometry& g) const;
     void drawMarkers(QPainter& p, const SmartMtrGeometry& g) const;
+    // Short meter-type label (MIC/SWR/PWR/COMP) inside the hole — right side
+    // normally, left for the reversed compression meter. TX meters only; gated on
+    // m_showTypeLabel. Baked into the below-bar cached layer so it sits above the
+    // hole background but below the indicator bar.
+    void drawTypeLabel(QPainter& p, const SmartMtrGeometry& g) const;
     void drawExtremes(QPainter& p, const SmartMtrGeometry& g) const;
 
     // Render the static layers (everything except the moving bar and the
@@ -142,6 +151,12 @@ private:
     QElapsedTimer m_clock;
     MeterKind m_kind = MeterKind::Signal; // last kind, to snap across scale changes
 
+    // Active scale config (markers + value->position). For the static kinds this
+    // is a copy of the registry entry; for Power the markers are radio-aware, so
+    // it is rebuilt from the pushed full scale in setMeterInput(). Both the marker
+    // draw and the raw->units mapping read it instead of the registry directly.
+    MeterConfig m_activeCfg;
+
     // Extremes (min/max peak-hold markers): a sliding-window envelope tracker that
     // glides at a constant linear slew (distinct from the bar's exponential
     // ballistic). Ticked alongside the smoother in advance(). Free-running clock
@@ -150,6 +165,7 @@ private:
     QElapsedTimer m_extremesClock;
     bool m_extremesEnabled = false;
     MeterValues m_showValues = MeterValues::None;
+    bool m_showTypeLabel = false; // draw the MIC/SWR/PWR/COMP label inside the hole
 
     // Repaint cadence for a returning marker, independent of the bar's lean
     // repaint gate (which throttles to 12 Hz and would step the slow glide).
@@ -167,6 +183,10 @@ private:
     QSize m_cacheSize;                       // logical widget size of the cache
     qreal m_cacheDpr = 0.0;                  // device-pixel ratio of the cache
     MeterKind m_cacheKind = MeterKind::Signal; // kind the markers were built for
+    // Power's markers depend on the pushed full scale, so a radio swap (barefoot
+    // <-> Aurora <-> amp) must re-raster even though the kind is unchanged.
+    double m_cacheMin = 0.0;
+    double m_cacheMax = 0.0;
     bool m_cacheValid = false;
 };
 

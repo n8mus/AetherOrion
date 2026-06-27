@@ -51,9 +51,12 @@ public:
     enum class MeterValues { None, Signal, Extremes };
 
     // What the SmartMTR meter shows while transmitting. None = keep the RX
-    // signal scale (don't switch on TX); MicLevel = swap to the mic-level (dBFS)
-    // scale for the duration of TX. Default None.
-    enum class TxMeter { None, MicLevel };
+    // signal scale (don't switch on TX); the rest swap to a TX scale for the
+    // duration of TX: MicLevel (dBFS), SWR (ratio), Power (forward watts,
+    // radio-aware full scale), Compression (dB). Default None. Appended values
+    // keep their ordinals; deserialisation is token-based so old configs and
+    // downgrades fall back to None on an unknown token.
+    enum class TxMeter { None, MicLevel, SWR, Power, Compression };
 
     // Show the peak/trough "extremes" markers on the SmartMTR meter.
     static bool showExtremes()
@@ -64,6 +67,19 @@ public:
     {
         QJsonObject o = readObj();
         o["showExtremes"] = on ? QStringLiteral("True") : QStringLiteral("False");
+        write(o);
+    }
+
+    // Show the meter-type label (MIC/SWR/PWR/COMP) inside the SmartMTR hole while a
+    // TX meter is active. Default False.
+    static bool showTxMeterType()
+    {
+        return readObj().value("showTxMeterType").toString("False") == "True";
+    }
+    static void setShowTxMeterType(bool on)
+    {
+        QJsonObject o = readObj();
+        o["showTxMeterType"] = on ? QStringLiteral("True") : QStringLiteral("False");
         write(o);
     }
 
@@ -102,6 +118,9 @@ public:
     {
         const QString s = readObj().value("txMeter").toString("None");
         if (s == QStringLiteral("MicLevel")) return TxMeter::MicLevel;
+        if (s == QStringLiteral("SWR")) return TxMeter::SWR;
+        if (s == QStringLiteral("Power")) return TxMeter::Power;
+        if (s == QStringLiteral("Compression")) return TxMeter::Compression;
         return TxMeter::None;
     }
     static void setTxMeter(TxMeter v)
@@ -133,6 +152,9 @@ public:
     {
         switch (v) {
         case TxMeter::MicLevel: return QStringLiteral("MicLevel");
+        case TxMeter::SWR: return QStringLiteral("SWR");
+        case TxMeter::Power: return QStringLiteral("Power");
+        case TxMeter::Compression: return QStringLiteral("Compression");
         case TxMeter::None: break;
         }
         return QStringLiteral("None");

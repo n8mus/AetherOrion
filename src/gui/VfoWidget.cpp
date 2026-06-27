@@ -1065,20 +1065,25 @@ void VfoWidget::buildUI()
 
     meterMenuOuter->addWidget(makeSeparator());
 
+    // Shared styling for the SmartMTR option checkboxes.
+    auto styleMeterCheck = [](QCheckBox* c) {
+        c->setCursor(Qt::PointingHandCursor);
+        c->setStyleSheet(
+            "QCheckBox { background: transparent; color: #c8d8e8; font-size: 12px; "
+            "spacing: 5px; }"
+            "QCheckBox::indicator { width: 13px; height: 13px; border-radius: 2px; "
+            "border: 1px solid #304050; background: #1a2a3a; }"
+            "QCheckBox::indicator:checked { background: #0070c0; "
+            "border: 1px solid #0090e0; }"
+            "QCheckBox:disabled { color: #5a6a78; }"
+            "QCheckBox::indicator:disabled { border: 1px solid #243240; "
+            "background: #141f2a; }");
+    };
+
     // Show extremes — checkbox.
     m_showExtremesChk = new QCheckBox(tr("Show extremes"));
     m_showExtremesChk->setChecked(DS::showExtremes());
-    m_showExtremesChk->setCursor(Qt::PointingHandCursor);
-    m_showExtremesChk->setStyleSheet(
-        "QCheckBox { background: transparent; color: #c8d8e8; font-size: 12px; "
-        "spacing: 5px; }"
-        "QCheckBox::indicator { width: 13px; height: 13px; border-radius: 2px; "
-        "border: 1px solid #304050; background: #1a2a3a; }"
-        "QCheckBox::indicator:checked { background: #0070c0; "
-        "border: 1px solid #0090e0; }"
-        "QCheckBox:disabled { color: #5a6a78; }"
-        "QCheckBox::indicator:disabled { border: 1px solid #243240; "
-        "background: #141f2a; }");
+    styleMeterCheck(m_showExtremesChk);
     meterMenuOuter->addWidget(m_showExtremesChk);
 
     // Extremes speed — Slow / Medium / Fast.
@@ -1133,11 +1138,22 @@ void VfoWidget::buildUI()
     m_txMeterCmb = new QComboBox;
     m_txMeterCmb->addItem(tr("None"), int(DS::TxMeter::None));
     m_txMeterCmb->addItem(tr("Mic Level"), int(DS::TxMeter::MicLevel));
+    m_txMeterCmb->addItem(tr("SWR"), int(DS::TxMeter::SWR));
+    m_txMeterCmb->addItem(tr("Power"), int(DS::TxMeter::Power));
+    m_txMeterCmb->addItem(tr("Compression"), int(DS::TxMeter::Compression));
     m_txMeterCmb->setCurrentIndex(m_txMeterCmb->findData(int(DS::txMeter())));
     AetherSDR::applyComboStyle(m_txMeterCmb);
     txMeterLayout->addWidget(m_txMeterCmb, 1);
     m_txMeterRow = txMeterRow;
     meterMenuOuter->addWidget(txMeterRow);
+
+    // Show meter type — checkbox. Draws a short label (MIC/SWR/PWR/COMP) inside the
+    // SmartMTR hole identifying the active TX meter. Only meaningful with a TX meter
+    // selected, so it disables for None (see syncSmartMtrSettingsState).
+    m_showTxMeterTypeChk = new QCheckBox(tr("Show meter type"));
+    m_showTxMeterTypeChk->setChecked(DS::showTxMeterType());
+    styleMeterCheck(m_showTxMeterTypeChk);
+    meterMenuOuter->addWidget(m_showTxMeterTypeChk);
 
     // Persist + re-evaluate enable/disable rules on change.  Toggling "Show
     // extremes" off disables "Extremes speed" and, if "Show values" is set to
@@ -1163,6 +1179,10 @@ void VfoWidget::buildUI()
         MeterViewController::instance().setTxMeter(
             static_cast<DisplaySettings::TxMeter>(
                 m_txMeterCmb->currentData().toInt()));
+    });
+    connect(m_showTxMeterTypeChk, &QCheckBox::toggled, this, [this](bool on) {
+        MeterViewController::instance().setShowTxMeterType(on);
+        syncSmartMtrSettingsState();
     });
 
     syncSmartMtrSettingsState();  // initial enable/disable per current state
@@ -3341,6 +3361,14 @@ void VfoWidget::syncSmartMtrSettingsState()
     if (m_txMeterCmb) {
         m_txMeterCmb->setEnabled(smart);
     }
+    if (m_showTxMeterTypeChk) {
+        // The meter-type label only means something with a TX meter active, so
+        // disable it for None (and whenever the standard S-meter is selected).
+        m_showTxMeterTypeChk->setEnabled(
+            smart
+            && MeterViewController::instance().txMeter()
+                   != DisplaySettings::TxMeter::None);
+    }
     if (m_showValuesCmb) {
         m_showValuesCmb->setEnabled(smart);
         // The "Extremes" value is meaningless without the extremes markers, so
@@ -3397,6 +3425,10 @@ void VfoWidget::syncSmartMtrSettingsControls()
         const QSignalBlocker b(m_txMeterCmb);
         m_txMeterCmb->setCurrentIndex(m_txMeterCmb->findData(int(mv.txMeter())));
     }
+    if (m_showTxMeterTypeChk) {
+        const QSignalBlocker b(m_showTxMeterTypeChk);
+        m_showTxMeterTypeChk->setChecked(mv.showTxMeterType());
+    }
     syncSmartMtrSettingsState();  // re-evaluate enable/disable for the new state
 }
 
@@ -3425,19 +3457,59 @@ void VfoWidget::pushSmartMtrInput()
         return;
 
     MeterInput in;
-    // Only swap to the mic-level scale on TX when the operator opted in via the
-    // "TX meter" setting; otherwise the meter stays on the RX signal scale.
-    const bool showMic = m_transmitting && m_slice && m_slice->isTxSlice()
-        && MeterViewController::instance().txMeter()
-            == DisplaySettings::TxMeter::MicLevel;
-    if (showMic) {
-        in.kind = MeterKind::MicLevel;
-        in.value = m_micDbfs;
-        in.min = -40.0; // dBFS — scale start
-        in.max = 0.0;   // dBFS — full scale / clip (linear scale)
-        // Peak marker is the radio's separate MICPEAK stat, not a local window max.
-        in.hasPeak = true;
-        in.peak = m_micPeakDbfs;
+    // On TX, swap to the operator-selected TX meter for the duration of the
+    // transmission; otherwise (RX, or TX meter == None) stay on the RX signal
+    // scale. The selection is global, owned by MeterViewController.
+    const bool txActive = m_transmitting && m_slice && m_slice->isTxSlice();
+    const DisplaySettings::TxMeter txMeter =
+        MeterViewController::instance().txMeter();
+    if (txActive && txMeter != DisplaySettings::TxMeter::None) {
+        switch (txMeter) {
+        case DisplaySettings::TxMeter::MicLevel:
+            in.kind = MeterKind::MicLevel;
+            in.value = m_micDbfs;
+            in.min = -40.0; // dBFS — scale start
+            in.max = 0.0;   // dBFS — full scale / clip (linear scale)
+            // Peak marker is the radio's separate MICPEAK stat, not a window max.
+            in.hasPeak = true;
+            in.peak = m_micPeakDbfs;
+            break;
+        case DisplaySettings::TxMeter::SWR:
+            in.kind = MeterKind::SWR;
+            in.value = m_swr;
+            in.min = 1.0; // 1:1 match
+            in.max = 3.0; // top of the nonlinear scale
+            // No radio peak stat for SWR — the widget's window envelope marks the
+            // worst excursion (hasPeak stays false).
+            break;
+        case DisplaySettings::TxMeter::Power:
+            in.kind = MeterKind::Power;
+            in.value = m_fwdPowerW;
+            in.min = 0.0;
+            in.max = txPowerFullScaleW(); // radio-aware: rated power x headroom
+            // Peak marker uses the sliding-window envelope (hasPeak left false), so
+            // it holds the recent max and decays slowly like the signal meter's
+            // peak, rather than tracking the instantaneous sample tightly. (mic's
+            // external peak only decays slowly because its source — the radio's
+            // MICPEAK — is itself a held stat; forward power has no such held peak.)
+            break;
+        case DisplaySettings::TxMeter::Compression: {
+            in.kind = MeterKind::Compression;
+            in.min = -25.0; // dB — max compression (full, scale start)
+            in.max = 0.0;   // dB — no compression (empty, scale end)
+            // Compression only reads true while transmitting with the speech
+            // processor engaged; otherwise (incl. the quiescent TX-chain meters
+            // some radios publish) park at 0. Mirrors PhoneCwApplet's gate; the
+            // m_transmitting/isTxSlice check above covers the transmitting half.
+            // The radio reports a positive amount — negate onto the -25..0
+            // gain-reduction face (the config draws it as a reversed fill).
+            const bool active = m_txModel && m_txModel->speechProcessorEnable();
+            in.value = active ? -m_compPeakDb : 0.0;
+            break;
+        }
+        case DisplaySettings::TxMeter::None:
+            break; // guarded above; keeps the switch exhaustive
+        }
         in.hasValue = true;
     } else {
         in.kind = MeterKind::Signal;
@@ -3485,6 +3557,7 @@ void VfoWidget::pushSmartMtrOptions()
     }
 
     m_smartMtrWidget->setExtremesOptions(show, speed, values);
+    m_smartMtrWidget->setShowTypeLabel(mv.showTxMeterType());
     emit smartMtrLabelsChanged(); // refresh the spectrum-drawn value labels
 }
 
@@ -3619,6 +3692,41 @@ void VfoWidget::setMicLevel(float micDbfs, float micPeakDbfs)
     m_micPeakDbfs = micPeakDbfs;
     if (m_transmitting && m_slice && m_slice->isTxSlice())
         pushSmartMtrInput();
+}
+
+void VfoWidget::setTxSwr(float swr)
+{
+    m_swr = swr;
+    if (m_transmitting && m_slice && m_slice->isTxSlice())
+        pushSmartMtrInput();
+}
+
+void VfoWidget::setTxPower(float fwdPowerW)
+{
+    m_fwdPowerW = fwdPowerW;
+    if (m_transmitting && m_slice && m_slice->isTxSlice())
+        pushSmartMtrInput();
+}
+
+void VfoWidget::setTxCompression(float compPeakDb)
+{
+    m_compPeakDb = compPeakDb;
+    if (m_transmitting && m_slice && m_slice->isTxSlice())
+        pushSmartMtrInput();
+}
+
+double VfoWidget::txPowerFullScaleW() const
+{
+    // Exciter forward-power scale, mirroring TxApplet::setPowerScale (which shows
+    // exciter power and ignores the amplifier — amp output lives in the AMP
+    // applet). Rated power comes from the same source the radio gauges use, with
+    // the Aurora model-name bump MainWindow_Wiring applies; the scale top then
+    // sits kPowerHeadroom above rated (red zone begins at rated, in buildPowerConfig).
+    int ratedW = m_txModel ? m_txModel->maxPowerLevel() : 100;
+    if (ratedW <= 100 && m_radioModel
+        && m_radioModel->model().startsWith(QStringLiteral("AU-")))
+        ratedW = 500;
+    return ratedW * kPowerHeadroom;
 }
 
 void VfoWidget::setTransmitting(bool tx)
