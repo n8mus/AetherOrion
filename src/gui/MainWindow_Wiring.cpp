@@ -574,16 +574,45 @@ void MainWindow::onSliceAdded(SliceModel* s)
         // HID encoder frequency tuning routes through applyFlexControlWheelAction,
         // so m_flexCoalesceTimer above already covers it.
         const bool memoryRevealPending = (m_pendingMemoryRevealSliceId == s->sliceId());
-        if (activeTuning && s->sliceId() == m_activeSliceId && !memoryRevealPending)
+        SliceModel* active = m_radioModel.slice(m_activeSliceId);
+        const bool activeDiversityPartner = isSameDiversityReceivePair(active, s);
+        SliceModel* dragTarget = m_radioModel.slice(m_sliceDragTargetSliceId);
+        const bool dragDiversityPartner = isSameDiversityReceivePair(dragTarget, s);
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        const bool dragEchoHoldActive =
+            m_sliceDragInProgress
+            || (m_sliceDragEchoHoldUntilMs > 0 && nowMs < m_sliceDragEchoHoldUntilMs);
+        const bool dragTargetSlice =
+            m_sliceDragTargetSliceId >= 0
+            && (s->sliceId() == m_sliceDragTargetSliceId || dragDiversityPartner);
+        if (dragEchoHoldActive && dragTargetSlice
+            && m_sliceDragTargetMhz > 0.0 && !memoryRevealPending) {
+            const int sliceId = s->sliceId();
+            QTimer::singleShot(0, this, [this, sliceId]() {
+                const double displayMhz = m_sliceDragTargetMhz;
+                if (displayMhz <= 0.0) {
+                    return;
+                }
+                if (!m_sliceDragInProgress
+                    && QDateTime::currentMSecsSinceEpoch() >= m_sliceDragEchoHoldUntilMs) {
+                    return;
+                }
+                SliceModel* slice = m_radioModel.slice(sliceId);
+                if (!slice) {
+                    return;
+                }
+                pushSliceFrequencyToOverlays(slice, displayMhz);
+            });
             return;
+        }
+        if (activeTuning
+            && (s->sliceId() == m_activeSliceId || activeDiversityPartner)
+            && !memoryRevealPending) {
+            return;
+        }
 
         m_updatingFromModel = true;
-        if (auto* sw = spectrumForSlice(s))
-            sw->setSliceOverlay(s->sliceId(), mhz,
-                s->filterLow(), s->filterHigh(), s->isTxSlice(),
-                s->sliceId() == m_activeSliceId,
-                s->mode(), s->rttyMark(), s->rttyShift(),
-                s->ritOn(), s->ritFreq(), s->xitOn(), s->xitFreq());
+        pushSliceFrequencyToOverlays(s, mhz);
         m_updatingFromModel = false;
         if (s->isTxSlice())
             syncTxWaterfallSliceToSpectrums();
@@ -637,7 +666,9 @@ void MainWindow::onSliceAdded(SliceModel* s)
         sw->setSliceOverlay(s->sliceId(), s->frequency(),
             lo, hi, s->isTxSlice(), s->sliceId() == m_activeSliceId,
             s->mode(), s->rttyMark(), s->rttyShift(),
-            s->ritOn(), s->ritFreq(), s->xitOn(), s->xitFreq());
+            s->ritOn(), s->ritFreq(), s->xitOn(), s->xitFreq(),
+            s->diversity(), s->isDiversityParent(),
+            s->isDiversityChild(), s->diversityIndex());
         if (s->isTxSlice())
             syncTxWaterfallSliceToSpectrums();
     });
@@ -688,7 +719,9 @@ void MainWindow::onSliceAdded(SliceModel* s)
                 s->filterLow(), s->filterHigh(), tx,
                 s->sliceId() == m_activeSliceId,
                 s->mode(), s->rttyMark(), s->rttyShift(),
-                s->ritOn(), s->ritFreq(), s->xitOn(), s->xitFreq());
+                s->ritOn(), s->ritFreq(), s->xitOn(), s->xitFreq(),
+                s->diversity(), s->isDiversityParent(),
+                s->isDiversityChild(), s->diversityIndex());
         syncTxWaterfallSliceToSpectrums();
         updateSplitState();
 
@@ -2557,15 +2590,31 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             }
         }
         queueActiveSliceForSpectrumTarget(target->sliceId());
+        m_sliceDragTargetSliceId = target->sliceId();
+        m_sliceDragTargetMhz = sliceFreqMhz;
+        m_sliceDragEchoHoldUntilMs = 0;
+        pushSliceFrequencyToOverlays(target, sliceFreqMhz);
         target->setFrequency(sliceFreqMhz);
-        mirrorDiversityChildFrequency(target, sliceFreqMhz);  // keep diversity child in step
     });
     // Pan Follow ("Pan Lock") stands down for the whole duration of a slice drag
     // so it doesn't fight the drag (in-window tune or edge auto-pan) with per-tick
     // recenters; on release it recenters once so Pan Lock re-asserts. (user-reported)
     connect(sw, &SpectrumWidget::sliceDragActiveChanged, this, [this](bool active) {
         m_sliceDragInProgress = active;
+        if (active) {
+            m_sliceDragTargetSliceId = -1;
+            m_sliceDragTargetMhz = 0.0;
+            m_sliceDragEchoHoldUntilMs = 0;
+            return;
+        }
         if (!active) {
+            if (m_sliceDragTargetSliceId >= 0 && m_sliceDragTargetMhz > 0.0) {
+                if (SliceModel* target = m_radioModel.slice(m_sliceDragTargetSliceId)) {
+                    pushSliceFrequencyToOverlays(target, m_sliceDragTargetMhz);
+                    target->setFrequency(m_sliceDragTargetMhz);
+                }
+                m_sliceDragEchoHoldUntilMs = QDateTime::currentMSecsSinceEpoch() + 350;
+            }
             recenterPanFollowOnSlice0();   // re-assert Pan Lock on release (self-guards if off)
         }
     });
@@ -3153,7 +3202,8 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
                 m_radioModel.slice(sliceId));
         }
     });
-    connect(s, &SliceModel::diversityChanged, this, [this](bool) {
+    connect(s, &SliceModel::diversityChanged, this, [this, s](bool) {
+        pushSliceOverlay(s);
         syncKiwiSdrDiversityEscControls();
     });
     connect(w, &VfoWidget::closeSliceRequested, this, [this, sliceId]() {

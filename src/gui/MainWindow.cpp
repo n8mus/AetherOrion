@@ -301,6 +301,15 @@ void setStatusBarStationText(QLabel* label, const QString& text)
     label->setMinimumWidth(label->sizeHint().width() + 2);
 }
 
+QString vfoFrequencyText(double mhz)
+{
+    const long long hz = static_cast<long long>(std::round(mhz * 1e6));
+    return QString("%1.%2.%3")
+        .arg(static_cast<int>(hz / 1000000))
+        .arg(static_cast<int>((hz / 1000) % 1000), 3, 10, QChar('0'))
+        .arg(static_cast<int>(hz % 1000), 3, 10, QChar('0'));
+}
+
 #ifdef HAVE_HIDAPI
 // tmate2*DefaultAction helpers moved to MainWindow_Controllers.cpp (#3351 Phase 2a).
 #endif
@@ -428,6 +437,24 @@ int windowsResizeBorderThickness(HWND hwnd)
 // Pure formatting / parsing helpers formerly defined here as file-scope
 // statics now live in MainWindowHelpers.{h,cpp} (#3351 Phase 0). Only
 // helpers coupled to the mutable shortcut-lease state below remain.
+
+bool MainWindow::isSameDiversityReceivePair(const SliceModel* slice,
+                                            const SliceModel* other)
+{
+    if (!slice || !other || slice == other
+        || !slice->diversity() || !other->diversity()) {
+        return false;
+    }
+
+    const bool parentChildPair =
+        (slice->isDiversityParent() && other->isDiversityChild())
+        || (slice->isDiversityChild() && other->isDiversityParent());
+    if (parentChildPair) {
+        return true;
+    }
+
+    return !slice->panId().isEmpty() && slice->panId() == other->panId();
+}
 
 // ─── Shortcut guard (file-scope for use as std::function<bool()>) ───────────
 
@@ -5683,31 +5710,44 @@ void MainWindow::logTunePolicyDecision(const char* source, TuneIntent intent,
         << " animationMs=" << result.animationDurationMs;
 }
 
-void MainWindow::mirrorDiversityChildFrequency(SliceModel* slice, double mhz)
+void MainWindow::pushSliceFrequencyToOverlays(SliceModel* slice, double mhz)
 {
-    if (!slice || !slice->isDiversityParent())
+    if (!slice) {
         return;
+    }
 
-    long long hz = static_cast<long long>(std::round(mhz * 1e6));
-    const QString freqStr = QString("%1.%2.%3")
-        .arg(static_cast<int>(hz / 1000000))
-        .arg(static_cast<int>((hz / 1000) % 1000), 3, 10, QChar('0'))
-        .arg(static_cast<int>(hz % 1000), 3, 10, QChar('0'));
-
-    for (auto* other : m_radioModel.slices()) {
-        if (!other->isDiversityChild() || other->sliceId() == slice->sliceId())
-            continue;
-        auto* sw = spectrumForSlice(other);
-        if (!sw)
-            continue;
-        if (auto* vfo = sw->vfoWidget(other->sliceId()))
+    const QString freqStr = vfoFrequencyText(mhz);
+    auto pushOne = [this, mhz, &freqStr](SliceModel* s) {
+        if (!s) {
+            return;
+        }
+        SpectrumWidget* sw = spectrumForSlice(s);
+        if (!sw) {
+            return;
+        }
+        if (VfoWidget* vfo = sw->vfoWidget(s->sliceId())) {
             vfo->freqLabel()->setText(freqStr);
-        sw->setSliceOverlay(other->sliceId(), mhz,
-            other->filterLow(), other->filterHigh(),
-            other->isTxSlice(), false,
-            other->mode(), other->rttyMark(), other->rttyShift(),
-            other->ritOn(), other->ritFreq(),
-            other->xitOn(), other->xitFreq());
+        }
+        sw->setSliceOverlay(s->sliceId(), mhz,
+            s->filterLow(), s->filterHigh(),
+            s->isTxSlice(), s->sliceId() == m_activeSliceId,
+            s->mode(), s->rttyMark(), s->rttyShift(),
+            s->ritOn(), s->ritFreq(),
+            s->xitOn(), s->xitFreq(),
+            s->diversity(), s->isDiversityParent(),
+            s->isDiversityChild(), s->diversityIndex());
+    };
+
+    pushOne(slice);
+    if (!slice->diversity()) {
+        return;
+    }
+
+    for (SliceModel* other : m_radioModel.slices()) {
+        if (!isSameDiversityReceivePair(slice, other)) {
+            continue;
+        }
+        pushOne(other);
     }
 }
 
@@ -5775,7 +5815,7 @@ bool MainWindow::tuneBlockedByGuards(SliceModel* slice)
         auto* sw = spectrumForSlice(slice);
         if (slice->sliceId() == m_activeSliceId && sw) {
             m_updatingFromModel = true;
-            sw->setVfoFrequency(slice->frequency());
+            pushSliceFrequencyToOverlays(slice, slice->frequency());
             m_updatingFromModel = false;
         }
         return true;
@@ -5792,7 +5832,6 @@ void MainWindow::applyTuneRequest(SliceModel* slice, double mhz,
         return;
 
     const double oldFreqMhz = slice->frequency();
-    auto* sw = spectrumForSlice(slice);
 
     // Absolute-target intents (typed VFO entry, spectrum click, spot recall,
     // bandstack recall) must invalidate any in-flight encoder accumulator.
@@ -5809,16 +5848,14 @@ void MainWindow::applyTuneRequest(SliceModel* slice, double mhz,
 #endif
     }
 
-    if (slice->sliceId() == m_activeSliceId && sw)
-        sw->setVfoFrequency(mhz);
+    pushSliceFrequencyToOverlays(slice, mhz);
 
     const BandStackPreselectResult bandPreselect =
         (intent == TuneIntent::CommandedTargetCenter)
             ? preselectBandStackForTune(slice, mhz, source)
             : BandStackPreselectResult::NotNeeded;
     if (bandPreselect == BandStackPreselectResult::Unsupported) {
-        if (slice->sliceId() == m_activeSliceId && sw)
-            sw->setVfoFrequency(oldFreqMhz);
+        pushSliceFrequencyToOverlays(slice, oldFreqMhz);
         return;
     }
 
@@ -5829,12 +5866,8 @@ void MainWindow::applyTuneRequest(SliceModel* slice, double mhz,
             auto* pendingSlice = m_radioModel.slice(sliceId);
             if (!pendingSlice || pendingSlice->isLocked() || m_swrSweep.running)
                 return;
-            if (pendingSlice->sliceId() == m_activeSliceId) {
-                if (auto* pendingSw = spectrumForSlice(pendingSlice))
-                    pendingSw->setVfoFrequency(mhz);
-            }
+            pushSliceFrequencyToOverlays(pendingSlice, mhz);
             pendingSlice->tuneAndRecenter(mhz);
-            mirrorDiversityChildFrequency(pendingSlice, mhz);
 
             const QByteArray sourceUtf8 = sourceName.toUtf8();
             const char* delayedSource = sourceUtf8.constData();
@@ -5849,7 +5882,6 @@ void MainWindow::applyTuneRequest(SliceModel* slice, double mhz,
     }
 
     slice->setFrequency(mhz);
-    mirrorDiversityChildFrequency(slice, mhz);
 
     const TuneCenteringResult result =
         (intent == TuneIntent::IncrementalTune)
@@ -5974,7 +6006,9 @@ void MainWindow::setActiveSliceInternal(int sliceId, bool revealOffscreen)
             sw->setSliceOverlay(sl->sliceId(), sl->frequency(),
                 sl->filterLow(), sl->filterHigh(), sl->isTxSlice(), isActive,
                 sl->mode(), sl->rttyMark(), sl->rttyShift(),
-                sl->ritOn(), sl->ritFreq(), sl->xitOn(), sl->xitFreq());
+                sl->ritOn(), sl->ritFreq(), sl->xitOn(), sl->xitFreq(),
+                sl->diversity(), sl->isDiversityParent(),
+                sl->isDiversityChild(), sl->diversityIndex());
     }
 
     // QSO recorder: track active slice for frequency/mode metadata (#1297)
@@ -6138,7 +6172,9 @@ void MainWindow::pushSliceOverlay(SliceModel* s)
         s->filterLow(), s->filterHigh(), s->isTxSlice(),
         s->sliceId() == m_activeSliceId,
         s->mode(), s->rttyMark(), s->rttyShift(),
-        s->ritOn(), s->ritFreq(), s->xitOn(), s->xitFreq());
+        s->ritOn(), s->ritFreq(), s->xitOn(), s->xitFreq(),
+        s->diversity(), s->isDiversityParent(),
+        s->isDiversityChild(), s->diversityIndex());
 }
 
 void MainWindow::syncTxWaterfallSliceToSpectrums()
@@ -7463,7 +7499,7 @@ void MainWindow::centerActiveSliceInPanadapter(bool forceRadioCenter, double cen
     // Keep the local spectrum centered immediately so the active slice marker
     // is visible before the radio's status echo arrives.
     sw->setFrequencyRange(targetMhz, bandwidthMhz);
-    sw->setVfoFrequency(targetMhz);
+    pushSliceFrequencyToOverlays(s, targetMhz);
 
     if (forceRadioCenter && m_radioModel.isConnected()) {
         m_radioModel.sendCommand(
