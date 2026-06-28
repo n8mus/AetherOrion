@@ -361,6 +361,32 @@ opened menu. A button with no menu returns an error.
 ← {"ok":true,"target":"Theme actions","class":"QPushButton","deferred":true}
 ```
 
+### `contextMenu`
+Trigger a widget's **custom right-click context menu** — the kind built on demand
+in a `customContextMenuRequested` handler (`Qt::CustomContextMenu`) or an
+overridden `contextMenuEvent` (`Qt::DefaultContextMenu`), which `showMenu` can't
+reach because it only follows `QToolButton`/`QPushButton::menu()`. We synthesize a
+`QContextMenuEvent` at the widget center (or an optional `x y` local offset) and
+route it through the widget's `event()`, so Qt dispatches by the widget's context
+policy automatically — `CustomContextMenu` emits `customContextMenuRequested`,
+`DefaultContextMenu` calls the overridden `contextMenuEvent`. Like `showMenu`, the
+trigger is posted onto the GUI event loop with the owning window raised first (the
+handler pops a `QMenu` that runs its own event loop). Returns `deferred:true`;
+`dumpTree` to read the opened menu, then `invoke` an item by text/path.
+
+```json
+→ {"cmd":"contextMenu","target":"SMeterWidget"}
+← {"ok":true,"target":"SMeterWidget","class":"SMeterWidget","x":40,"y":12,"deferred":true}
+
+→ {"cmd":"contextMenu","target":"SMeterWidget","value":"40 12"}
+← {"ok":true,"target":"SMeterWidget","class":"SMeterWidget","x":40,"y":12,"deferred":true}
+```
+
+Section-title rows (a disabled `QWidgetAction` + `QLabel`, the app's idiom for
+menu headers since `QMenu::addSection` text doesn't render under the app styling)
+serialize with `"type":"header"` and the label's text, so titles are assertable
+instead of blank rows.
+
 ### `pan`
 Panadapter lifecycle — create or tear down a pan regardless of how it was opened.
 

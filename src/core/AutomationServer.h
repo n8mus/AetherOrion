@@ -128,6 +128,11 @@ class AudioEngine;
 //                                     posted onto the GUI loop with the window
 //                                     raised (crash-safe on backgrounded macOS).
 //                                     `openMenu` is an alias.
+//   contextMenu <target> [x y]     -> trigger a custom right-click context menu
+//                                     (CustomContextMenu / overridden
+//                                     contextMenuEvent) via a synthesized
+//                                     QContextMenuEvent; deferred, then dumpTree
+//                                     to read it and invoke to drive it.
 //   pan add                        -> create a new panadapter (panafall); the
 //                                     only UI path is an unaddressable QLabel.
 //   pan close <id|index|active|all>-> tear down a panadapter regardless of how it
@@ -234,6 +239,13 @@ private:
     // popup from inside the socket-read callback re-enters Cocoa and segfaults on
     // a backgrounded macOS instance. (#3646 fidelity)
     QJsonObject doShowMenu(const QString& target) const;
+    // contextMenu <target> [x y]: trigger a widget's custom right-click context
+    // menu by synthesizing a QContextMenuEvent (routed through event() so the
+    // CustomContextMenu / overridden contextMenuEvent paths both fire). Posted
+    // onto the GUI loop with the owning window raised, like showMenu, because the
+    // handler pops a QMenu that runs its own event loop. The popped menu is read
+    // via dumpTree and driven via invoke, no extra inspection code needed. (#3858)
+    QJsonObject doContextMenu(const QString& target, const QString& value) const;
     // pan close <panId|index|active|all>: tear down a panadapter regardless of
     // how it was opened. Sends `display pan remove` AND `display panafall remove`
     // (the FlexLib-correct pair) so a panafall-created pan closes too. The

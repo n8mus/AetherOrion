@@ -51,6 +51,8 @@
 #include <QProgressBar>
 #include <QPushButton>   // doShowMenu: QPushButton::menu()
 #include <QToolButton>   // doShowMenu: QToolButton::menu()
+#include <QWidgetAction>  // describeAction: header rows (disabled QWidgetAction + QLabel)
+#include <QContextMenuEvent>  // doContextMenu: synthesize a right-click menu trigger
 
 #ifdef AETHER_GPU_SPECTRUM
 #include <QRhiWidget>
@@ -131,10 +133,27 @@ QJsonObject describeAction(const QAction* action, const QMenu* owner)
         o[QStringLiteral("objectName")] = action->objectName();
     }
 
-    const QString text = actionDisplayText(action);
+    // Section/header rows: a disabled QWidgetAction whose default widget is a
+    // QLabel is the app's idiom for a menu section title (QMenu::addSection text
+    // doesn't render under the app styling, so the S-meter context menu uses a
+    // QLabel instead). actionDisplayText() is empty for a QWidgetAction, so such
+    // rows would otherwise serialize blank. Read the label text and tag the row
+    // as a header so a driver can assert section titles instead of empty rows
+    // (#3858).
+    QString headerText;
+    if (auto* wa = qobject_cast<const QWidgetAction*>(action)) {
+        if (auto* lbl = qobject_cast<const QLabel*>(wa->defaultWidget()))
+            headerText = lbl->text();
+    }
+
+    const QString text = headerText.isEmpty() ? actionDisplayText(action) : headerText;
     if (!text.isEmpty()) {
         o[QStringLiteral("text")] = text;
         o[QStringLiteral("accessibleName")] = text;
+    }
+    if (!headerText.isEmpty()) {
+        o[QStringLiteral("role")] = QStringLiteral("header");
+        o[QStringLiteral("type")] = QStringLiteral("header");
     }
 
     const QString val = actionValue(action);
@@ -1384,7 +1403,7 @@ bool AutomationServer::start(const QString& serverName)
         << "automation bridge listening on" << fullServerName()
         << "(verbs: ping, dumpTree, floors, grab, grab pan, grab pan-visible, invoke, get, connect, disconnect,"
         << "txtest, atu, slice, tune, pan, streams, audioCapture, txwaterfall, key, cwx, station, resize,"
-        << "menu, close, drag, showMenu, whoami, log, mark)";
+        << "menu, close, drag, showMenu, contextMenu, whoami, log, mark)";
     return true;
 }
 
@@ -1680,6 +1699,9 @@ QJsonObject AutomationServer::handleLine(const QByteArray& line, QLocalSocket* s
         } else if (cmd == QLatin1String("drag") || cmd == QLatin1String("mouse")) {
             target = tok(1);
             value = tok(2) + QLatin1Char(' ') + tok(3);  // "drag sizeGrip 80 60"
+        } else if (cmd == QLatin1String("contextMenu")) {
+            target = tok(1);
+            value = tok(2) + QLatin1Char(' ') + tok(3);  // "contextMenu SMeterWidget [x y]"
         } else {  // whoami and friends
             target = tok(1); path = tok(2);
         }
@@ -1722,6 +1744,11 @@ QJsonObject AutomationServer::handleLine(const QByteArray& line, QLocalSocket* s
         if (target.isEmpty())
             return err(QStringLiteral("showMenu requires a target button"));
         return doShowMenu(target);
+    }
+    if (cmd == QLatin1String("contextMenu")) {
+        if (target.isEmpty())
+            return err(QStringLiteral("contextMenu requires a target widget"));
+        return doContextMenu(target, value);
     }
     if (cmd == QLatin1String("invoke")) {
         if (target.isEmpty() || action.isEmpty())
@@ -3194,8 +3221,19 @@ QJsonArray describeMenuActions(QMenu* menu)
     for (QAction* a : menu->actions()) {
         if (a->isSeparator())
             continue;
-        QJsonObject o{{QStringLiteral("text"), actionDisplayText(a)},
+        // Section headers (disabled QWidgetAction + QLabel) read their text from
+        // the label, not the empty action text — same idiom doDumpTree handles
+        // via describeAction (#3858).
+        QString headerText;
+        if (auto* wa = qobject_cast<const QWidgetAction*>(a)) {
+            if (auto* lbl = qobject_cast<const QLabel*>(wa->defaultWidget()))
+                headerText = lbl->text();
+        }
+        QJsonObject o{{QStringLiteral("text"),
+                       headerText.isEmpty() ? actionDisplayText(a) : headerText},
                       {QStringLiteral("enabled"), a->isEnabled()}};
+        if (!headerText.isEmpty())
+            o[QStringLiteral("type")] = QStringLiteral("header");
         if (a->isCheckable()) {
             o[QStringLiteral("checkable")] = true;
             o[QStringLiteral("checked")] = a->isChecked();
@@ -3410,6 +3448,69 @@ QJsonObject AutomationServer::doShowMenu(const QString& target) const
         {QStringLiteral("ok"), true},
         {QStringLiteral("target"), target},
         {QStringLiteral("class"), shortClassName(w)},
+        {QStringLiteral("deferred"), true},   // popup runs next turn; dumpTree to read it
+    };
+}
+
+// ── Custom right-click context menu (#3858) ─────────────────────────────────
+// `contextMenu <target> [x y]` triggers a widget's custom right-click menu —
+// the kind built on demand in a customContextMenuRequested handler or an
+// overridden contextMenuEvent, which showMenu can't reach (it only follows
+// QToolButton/QPushButton::menu()). We synthesize a QContextMenuEvent at the
+// widget center (or an optional local offset) and route it through the widget's
+// event() so Qt dispatches by the widget's contextMenuPolicy automatically:
+// CustomContextMenu emits customContextMenuRequested(pos); DefaultContextMenu
+// calls the overridden contextMenuEvent(). Sending the event (not calling
+// contextMenuEvent() directly) is what makes the CustomContextMenu path fire.
+// Like doShowMenu, the trigger is POSTED onto the GUI loop with the owning
+// window raised+activated first — the handler usually pops a QMenu that runs its
+// own event loop, and showing a native popup from inside the socket-read
+// callback re-enters Cocoa and segfaults on a backgrounded macOS instance.
+// Inspection + invoke come for free: the popped QMenu is a visible top-level
+// menu, which doDumpTree already serializes and invoke already drives by
+// text/path.
+QJsonObject AutomationServer::doContextMenu(const QString& target,
+                                            const QString& value) const
+{
+    QWidget* w = resolveWidget(target);
+    if (!w)
+        return err(QStringLiteral("widget not found: ") + target);
+    if (!w->isVisible())
+        return err(QStringLiteral("refused: '") + target + QStringLiteral("' is not visible"));
+
+    // Optional "<x> <y>" local offset; default to the widget center, which is
+    // where a position-insensitive handler expects the menu anchored.
+    QPoint local = w->rect().center();
+    const QStringList parts = value.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (parts.size() >= 2) {
+        bool okx = false, oky = false;
+        const int x = parts.at(0).toInt(&okx);
+        const int y = parts.at(1).toInt(&oky);
+        if (!okx || !oky)
+            return err(QStringLiteral("contextMenu offset x/y must be integers"));
+        local = QPoint(x, y);
+    }
+
+    QPointer<QWidget> wp = w;
+    QPointer<QWidget> win = w->window();
+    QTimer::singleShot(0, qApp, [wp, win, local]() {
+        if (!wp)
+            return;
+        if (win && win->isVisible()) {   // realize + activate so Cocoa has an anchor
+            win->raise();
+            win->activateWindow();
+        }
+        QContextMenuEvent ev(QContextMenuEvent::Mouse, local, wp->mapToGlobal(local));
+        QApplication::sendEvent(wp, &ev);
+    });
+    qCInfo(lcAutomation).noquote() << "contextMenu on" << target << "at" << local;
+
+    return QJsonObject{
+        {QStringLiteral("ok"), true},
+        {QStringLiteral("target"), target},
+        {QStringLiteral("class"), shortClassName(w)},
+        {QStringLiteral("x"), local.x()},
+        {QStringLiteral("y"), local.y()},
         {QStringLiteral("deferred"), true},   // popup runs next turn; dumpTree to read it
     };
 }
