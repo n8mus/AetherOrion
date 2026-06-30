@@ -1319,15 +1319,6 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_audio, &AudioEngine::cwRecordingActiveChanged,
             m_qsoRecorder, &QsoRecorder::onMoxChanged);
 
-    // ── BNR container autostart ─────────────────────────────────────────
-#ifdef HAVE_BNR
-    if (AppSettings::instance().value("BnrAutostart", "False").toString() == "True") {
-        QString container = AppSettings::instance().value("BnrContainerName", "maxine-bnr").toString();
-        qDebug() << "BNR: autostarting container" << container;
-        QProcess::startDetached("docker", {"start", container});
-    }
-#endif
-
     // ── CW decoder: feed audio ──────────────────────────────────────────
     // Audio feed is global (same audio for all pans).
     // Text/stats output is routed to the pan owning the active slice
@@ -2091,7 +2082,7 @@ MainWindow::~MainWindow()
         QMetaObject::invokeMethod(audio, [audio]() {
             audio->setNr2Enabled(false);
             audio->setRn2Enabled(false);
-            audio->setBnrEnabled(false);
+            audio->setNvAfxEnabled(false);
             audio->stopRxStream();
             audio->stopTxStream();
         }, Qt::BlockingQueuedConnection);

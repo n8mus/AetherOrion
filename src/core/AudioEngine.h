@@ -37,8 +37,8 @@ namespace AetherSDR {
 
 class SpecbleachFilter;
 class RNNoiseFilter;
-class NvidiaBnrFilter;
 class DeepFilterFilter;
+class NvidiaAfxFilter;
 class Resampler;
 class ClientEq;
 class ClientComp;
@@ -239,21 +239,17 @@ public:
     void setMnrStrength(float normalized);
     float mnrStrength() const;
 
-    // Client-side BNR (NVIDIA NIM GPU noise removal)
-    Q_INVOKABLE void setBnrEnabled(bool on);
-    bool bnrEnabled() const { return m_bnrEnabled.load(); }
-    void setBnrAddress(const QString& addr);
-    QString bnrAddress() const { return m_bnrAddress; }
-    void setBnrIntensity(float ratio);
-    float bnrIntensity() const;
-    bool bnrConnected() const;
-
     // Client-side DFNR (DeepFilterNet3 neural noise reduction)
     Q_INVOKABLE void setDfnrEnabled(bool on);
     bool dfnrEnabled() const { return m_dfnrEnabled.load(); }
     void setDfnrAttenLimit(float db);
     float dfnrAttenLimit() const;
     void setDfnrPostFilterBeta(float beta);
+
+    // Optional NVIDIA Maxine AFX GPU denoiser (runtime-loaded; NVIDIA RTX/GeForce).
+    Q_INVOKABLE void setNvAfxEnabled(bool on);
+    bool nvAfxEnabled() const { return m_nvAfxEnabled.load(); }
+    void setNvAfxIntensity(float ratio);
 
     // Client-side parametric EQ. Two instances: one on the RX audio path
     // (post-NR, pre-write to sink), one on the TX path (post-mic, pre-
@@ -560,9 +556,8 @@ signals:
     void mnrEnabledChanged(bool on);
     void rn2EnabledChanged(bool on);
     void rn2TxEnabledChanged(bool on);   // RN2 on the TX mic pre-amp (#2813)
-    void bnrEnabledChanged(bool on);
-    void bnrConnectionChanged(bool connected);
     void dfnrEnabledChanged(bool on);
+    void nvAfxEnabledChanged(bool on);
     void txRawPcmReady(const QByteArray& pcm);  // raw 24kHz stereo int16 PCM for RADEEngine
     // Post-final-limiter TX monitor PCM (24 kHz stereo int16) — the exact stream
     // packetised to the radio. Fires for all phone/SSB TX (unlike txRawPcmReady,
@@ -649,16 +644,12 @@ private:
         std::unique_ptr<SpectralNR> nr2;
         std::unique_ptr<Resampler> rxResampler;
         std::unique_ptr<Resampler> rxResamplerR;
-        std::unique_ptr<Resampler> bnrUp;
-        std::unique_ptr<Resampler> bnrDown;
-        QByteArray bnrOutBuf;
         float gain{1.0f};
         int pan{50};
         int presentationDelayMs{0};
         bool enabled{false};
         bool muted{false};
         bool prebuffering{false};
-        bool bnrPrimed{false};
     };
 
     struct AutomationAudioCaptureChunk {
@@ -911,27 +902,18 @@ private:
     // Audio-thread only — grows once to steady state, then alloc-free.
     QByteArray m_rn2TxF32In;
 
-    // Client-side BNR (NVIDIA NIM)
-    std::unique_ptr<NvidiaBnrFilter> m_bnr;
-    std::unique_ptr<Resampler> m_bnrUp;    // 24k→48k mono
-    std::unique_ptr<Resampler> m_bnrDown;  // 48k→24k mono
-    std::unique_ptr<Resampler> m_kiwiSdrBnrUp;
-    std::unique_ptr<Resampler> m_kiwiSdrBnrDown;
-    std::atomic<bool> m_bnrEnabled{false};
-    QString m_bnrAddress{"localhost:8001"};
-    QByteArray m_bnrOutBuf;  // jitter buffer: denoised 24kHz stereo int16
-    QByteArray m_kiwiSdrBnrOutBuf;
-    bool m_bnrPrimed{false}; // true after enough denoised data accumulated
-    bool m_kiwiSdrBnrPrimed{false};
-    void processBnr(const QByteArray& stereoPcm,
-                    RxDspSource source,
-                    ExternalRxAudioSourceState* externalSource = nullptr);
-
     // Client-side DFNR (DeepFilterNet3)
 #ifdef HAVE_DFNR
     std::unique_ptr<DeepFilterFilter> m_dfnr;
 #endif
     std::atomic<bool> m_dfnrEnabled{false};
+
+    // Optional NVIDIA AFX GPU denoiser (runtime-loaded; flag always present so
+    // mutual-exclusion in the other NR setters compiles regardless of the build).
+#ifdef HAVE_NVIDIA_AFX
+    std::unique_ptr<NvidiaAfxFilter> m_nvAfx;
+#endif
+    std::atomic<bool> m_nvAfxEnabled{false};
 
     // Client-side parametric EQ, independent instances for RX and TX.
     std::unique_ptr<ClientEq> m_clientEqRx;
