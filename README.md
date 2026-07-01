@@ -171,6 +171,30 @@ cmake --build build -j$(nproc)
 RADE-enabled builds use a vendored Opus snapshot, so no additional Opus download
 is required during configure or build.
 
+### Windows 11
+
+Prerequisites: Visual Studio 2022 (Build Tools, Community, or higher) with the
+MSVC C++ workload, CMake 3.25+, Ninja, and Qt 6.7+ (`msvc2022_64`; the release
+binaries ship 6.8.3 LTS).
+
+```bat
+:: 1. Activate the MSVC environment. Adjust the edition (BuildTools / Community /
+::    Professional / Enterprise) to match your install; run "vswhere" if unsure.
+"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+
+:: 2. Generate the single-precision FFTW import lib (needed by NR4/libspecbleach)
+powershell -File scripts\setup\setup-fftw.ps1
+
+:: 3. Configure. Ninja is required: the default Visual Studio generator is
+::    multi-config (it ignores CMAKE_BUILD_TYPE) and takes a different
+::    manifest-embed path. Point CMAKE_PREFIX_PATH at your Qt kit so
+::    find_package(Qt6) resolves.
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH="C:/Qt/6.8.3/msvc2022_64"
+
+:: 4. Build
+cmake --build build --target AetherSDR
+```
+
 ### Qt 6.7+ for GPU Spectrum Rendering
 
 GPU-accelerated spectrum/waterfall rendering requires Qt 6.7 or greater. If your distribution ships with an older version (e.g., Ubuntu 24.04, Debian 12, or Mint 21–22 include Qt 6.4.2), the build system automatically disables GPU rendering and falls back to the CPU-based `QPainter` path. (Release binaries ship Qt 6.8.3 LTS; the 6.7 floor is the source-build minimum for QRhi.)
