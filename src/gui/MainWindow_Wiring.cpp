@@ -1573,6 +1573,9 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             return;
         }
 
+        // #3977 ownership note: foreign-owned pans are refused at the handler
+        // entry (before the local decoder commit) and again centrally in
+        // RadioModel::sendCommand — no per-command gate needed here.
         m_radioModel.sendCommand(
             QString("display pan set %1 min_dbm=%2 max_dbm=%3")
                 .arg(applet->panId())
@@ -1915,6 +1918,16 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             return;
         }
 
+        // #3977: refuse the WHOLE operation — local decoder commit included —
+        // when this session no longer owns the pan. Gating only the outbound
+        // command (RadioModel::sendCommand backstop) would leave the local
+        // FFT decoder committed to a range the radio never adopted, with no
+        // levelChanged echo to ever resync it.
+        if (auto* pan = m_radioModel.panadapter(applet->panId());
+            pan && !pan->ownedByClient(m_radioModel.ourClientHandle())) {
+            return;
+        }
+
         pendingDbm->active = true;
         pendingDbm->minDbm = minDbm;
         pendingDbm->maxDbm = maxDbm;
@@ -1923,11 +1936,17 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         sendDbmRangeCommand(minDbm, maxDbm);
     });
     connect(sw, &SpectrumWidget::dbmRangeDragFinished,
-            this, [sw, pendingDbm, setStreamDbmRange, sendDbmRangeCommand](float minDbm, float maxDbm) {
+            this, [this, applet, sw, pendingDbm, setStreamDbmRange, sendDbmRangeCommand](float minDbm, float maxDbm) {
         if (sw->kiwiSdrWaterfallActive()) {
             sw->setDbmRange(minDbm, maxDbm);
             sw->prepareForFftScaleChange();
             sw->reacquireNoiseFloorLock();
+            return;
+        }
+
+        // #3977: same whole-operation refusal as dbmRangeChangeRequested.
+        if (auto* pan = m_radioModel.panadapter(applet->panId());
+            pan && !pan->ownedByClient(m_radioModel.ourClientHandle())) {
             return;
         }
 

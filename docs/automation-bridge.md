@@ -143,6 +143,7 @@ transmit-gated verbs (refused unless `AETHER_AUTOMATION_ALLOW_TX=1` — see
 | | [`get radio \| transmit \| eq \| meters`](#get) | Radio / TX-chain / EQ / meters snapshots. |
 | | [`get slice[s] \| pan[s]`](#get) | Slice & panadapter model snapshots. |
 | | [`get panstats`](#get-panstats) | Per-panadapter render-cost counters (profiling). |
+| | [`get clients`](#get-clients) | Radio client roster + foreign-pan-write forensics (#3977). |
 | | [`get sync`](#get-sync) | Receive-Sync (Auto Assist) state. |
 | | [`get wavestats`](#get-wavestats) | WAVE/strip scope paint-cost counters. |
 | **Connection** | [`connect …`](#connect--disconnect) | list / show / hide / local / ip / wait. |
@@ -429,6 +430,7 @@ connects).
 | `pan` | `active` (default) / `<panId>` e.g. `0x40000000` | one pan (centerMhz, bandwidthMhz, min/maxDbm, rxAntenna, rfGain, fps) |
 | `panstats` | `<panIndex>` / `<objectName>` (default: all) | per-panadapter render-cost counters — see [`get panstats`](#get-panstats) |
 | `wavestats` | `—` / scope objectName | waveform-scope paint/append counters — see [`get wavestats`](#get-wavestats) |
+| `clients` | — | connected-client roster, per-pan ownership, foreign dBm-write counters and evictions — see [`get clients`](#get-clients) |
 
 Add a trailing **property** name to any single-object form to get just that
 field: `get slice active mode` → `{"value":"LSB"}`.
@@ -466,6 +468,46 @@ cost a few integer adds per frame.
 `selector` filters by pan index (`get panstats 0`) or objectName. `property`
 `reset` zeroes the counters after the read so successive reads measure
 disjoint intervals: `get panstats 0 reset`.
+
+### `get clients`
+Multi-session forensics (#3977/#3951): every client connected to the radio,
+which of them have written **our** pans' dBm range, and which stale
+predecessor sessions this client has evicted. `get pans` shows the symptom
+(`minDbm` drifting between polls); this shows the culprit. Pan snapshots
+(`get pan`/`pans`) also carry `clientHandle` + `ownedByUs` for ownership
+assertions.
+
+```json
+→ {"cmd":"get","model":"clients"}
+← {"ok":true,"model":"clients","evictionEnabled":false,
+   "ourHandle":"0x443a5d3c","station":"Shack",
+   "clients":[
+     {"handle":"0x443a5d3c","station":"Shack","program":"AetherSDR","source":"","isUs":true},
+     {"handle":"0x42ffe1c4","station":"Shack","program":"AetherSDR","source":"","isUs":false}],
+   "foreignPanWrites":[
+     {"handle":"0x42ffe1c4","dbmWrites":3,"lastPanId":"0x40000000",
+      "lastMs":1783125692000,"evicted":true}],
+   "evictedHandles":["0x42ffe1c4"]}
+```
+
+| field | meaning |
+|---|---|
+| `clients` | radio's client roster (from `sub client all`): handle, station, program, `isUs` |
+| `foreignPanWrites` | per-handle tally of `min_dbm`/`max_dbm` status writes some OTHER client made against a pan whose radio-confirmed owner is us — the #3951 zombie signature |
+| `evictedHandles` | stale same-station/same-program sessions whose `client disconnect` the radio **acknowledged** (confirmed, not merely attempted), via pan-reclaim or the 3-strike foreign-write rule |
+| `evictionEnabled` | whether the 3-strike eviction may act. **Off by default** — detection and forensics always run; the force-disconnect requires `AppSettings["StaleSessionDefense"]` = `{"EvictionEnabled": true}`. The pan-reclaim eviction (scoped to our own pre-reconnect handle) is always active |
+
+Counters and eviction marks are per-connection: they reset on disconnect,
+because the radio recycles handle values across sessions.
+
+Test recipe for session-fight classes of bugs: connect a second client to the
+same pan (or replay `display pan set … min_dbm=…` from a raw TCP session —
+see `tools/zombie_session_sim.py`), then assert `foreignPanWrites`
+increments. With `EvictionEnabled` true and the offender's station+program
+matching ours (it must be a **GUI** client to appear in the roster — a
+`--bind-client-id` non-GUI zombie is tallied and logged but never evicted),
+`evicted` flips true once the radio acknowledges the disconnect and the
+offender's connection drops.
 
 ### `get dsp`
 Client-side **AetherDSP** noise-reduction state — the counterpart to the

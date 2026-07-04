@@ -1077,10 +1077,17 @@ QJsonObject sliceSnapshot(const SliceModel* s)
     };
 }
 
-QJsonObject panSnapshot(const PanadapterModel* p)
+QJsonObject panSnapshot(const PanadapterModel* p, quint32 ourHandle)
 {
     return QJsonObject{
         {QStringLiteral("panId"),        p->panId()},
+        // #3977: radio-authoritative owner of this pan; assertions on
+        // multi-session tests key off these two fields. Empty string (not
+        // "0x") when the radio has not yet attributed the pan.
+        {QStringLiteral("clientHandle"),
+         p->clientHandle().isEmpty() ? QString()
+                                     : QStringLiteral("0x") + p->clientHandle()},
+        {QStringLiteral("ownedByUs"),    p->ownedByClient(ourHandle)},
         {QStringLiteral("centerMhz"),    p->centerMhz()},
         {QStringLiteral("bandwidthMhz"), p->bandwidthMhz()},
         {QStringLiteral("minDbm"),       p->minDbm()},
@@ -2677,6 +2684,64 @@ QJsonObject AutomationServer::doGet(const QString& model, const QString& selecto
                            {QStringLiteral("model"), model},
                            {QStringLiteral("dsp"), data}};
     }
+    if (model == QLatin1String("clients")) {
+        // #3977: the multi-session forensics snapshot — who is connected to
+        // the radio, which sessions have written OUR pans' dBm range, and
+        // which stale predecessors we have evicted. `get pans` shows the
+        // symptom (minDbm drifting); this shows the culprit.
+        RadioModel* radio = m_radioModel;
+        if (!radio) {
+            return err(QStringLiteral("no radio model available"));
+        }
+        QJsonArray clients;
+        const auto& infoMap = radio->clientInfoMap();
+        for (auto it = infoMap.cbegin(); it != infoMap.cend(); ++it) {
+            clients.append(QJsonObject{
+                {QStringLiteral("handle"),
+                 QStringLiteral("0x") + QString::number(it.key(), 16)},
+                {QStringLiteral("station"), it.value().station},
+                {QStringLiteral("program"), it.value().program},
+                {QStringLiteral("source"), it.value().source},
+                {QStringLiteral("isUs"), it.key() == radio->ourClientHandle()},
+            });
+        }
+        QJsonArray foreign;
+        const auto& writes = radio->foreignPanWrites();
+        for (auto it = writes.cbegin(); it != writes.cend(); ++it) {
+            foreign.append(QJsonObject{
+                {QStringLiteral("handle"),
+                 QStringLiteral("0x") + QString::number(it.key(), 16)},
+                {QStringLiteral("dbmWrites"), it.value().count},
+                {QStringLiteral("lastPanId"), it.value().panId},
+                {QStringLiteral("lastMs"), it.value().lastMs},
+                {QStringLiteral("evicted"),
+                 radio->evictedPredecessorHandles().contains(it.key())},
+            });
+        }
+        QJsonArray evicted;
+        for (quint32 h : radio->evictedPredecessorHandles()) {
+            evicted.append(QStringLiteral("0x") + QString::number(h, 16));
+        }
+        return QJsonObject{
+            {QStringLiteral("ok"), true},
+            {QStringLiteral("model"), model},
+            // evictedHandles lists radio-CONFIRMED disconnects only; eviction
+            // itself is opt-in (StaleSessionDefense.EvictionEnabled) — when
+            // false, strikes are tallied and logged but nothing is disconnected.
+            {QStringLiteral("evictionEnabled"), radio->staleSessionEvictionEnabled()},
+            {QStringLiteral("ourHandle"),
+             QStringLiteral("0x")
+                 + QString::number(radio->ourClientHandle(), 16)},
+            {QStringLiteral("station"),
+             [&] {  // radio-authoritative, falling back to the local intent
+                 const QString reported =
+                     infoMap.value(radio->ourClientHandle()).station;
+                 return reported.isEmpty() ? radio->ourStationName() : reported;
+             }()},
+            {QStringLiteral("clients"), clients},
+            {QStringLiteral("foreignPanWrites"), foreign},
+            {QStringLiteral("evictedHandles"), evicted}};
+    }
     if (model == QLatin1String("panstats")) {
         // Per-panadapter frame-cost counters from every SpectrumWidget, for
         // before/after rendering-cost proofs without a profiler attach.
@@ -2810,7 +2875,9 @@ QJsonObject AutomationServer::doGet(const QString& model, const QString& selecto
         return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("slices"), arr}};
     } else if (model == QLatin1String("pans")) {
         QJsonArray arr;
-        for (const PanadapterModel* p : radio->panadapters()) arr.append(panSnapshot(p));
+        for (const PanadapterModel* p : radio->panadapters()) {
+            arr.append(panSnapshot(p, radio->ourClientHandle()));
+        }
         return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("pans"), arr}};
     } else if (model == QLatin1String("slice")) {
         const SliceModel* s = nullptr;
@@ -2835,10 +2902,10 @@ QJsonObject AutomationServer::doGet(const QString& model, const QString& selecto
             p = radio->panadapter(selector);   // by panId, e.g. "0x40000000"
         if (!p)
             return err(QStringLiteral("no panadapter for selector '") + selector + QStringLiteral("'"));
-        data = panSnapshot(p);
+        data = panSnapshot(p, radio->ourClientHandle());
     } else {
         return err(QStringLiteral("unknown model: ") + model
-                   + QStringLiteral(" (use audio|dsp|sync|radio|transmit|equalizer|meters|slice|slices|pan|pans|panstats|kiwi|wavestats)"));
+                   + QStringLiteral(" (use audio|dsp|sync|radio|transmit|equalizer|meters|slice|slices|pan|pans|panstats|clients|kiwi|wavestats)"));
     }
 
     if (!property.isEmpty()) {

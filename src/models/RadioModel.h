@@ -278,6 +278,23 @@ public:
         double txFreqMhz{0};
     };
     const QMap<quint32, ClientInfo>& clientInfoMap() const { return m_clientInfoMap; }
+    // #3977: per-source-handle tally of dBm-range writes made by OTHER
+    // clients against pans we own — the #3951 zombie signature. Exposed via
+    // the bridge `get clients` verb; feeds the evidence-based eviction.
+    struct ForeignPanWrite {
+        int count{0};
+        QString panId;   // last pan written
+        qint64 lastMs{0};
+    };
+    const QMap<quint32, ForeignPanWrite>& foreignPanWrites() const { return m_foreignPanWrites; }
+    // Confirmed evictions only — a handle enters this set when the radio
+    // acknowledges the `client disconnect`, never before (#3977).
+    const QSet<quint32>& evictedPredecessorHandles() const { return m_evictedPredecessorHandles; }
+    // #3977: force-disconnecting another client is opt-in
+    // (AppSettings["StaleSessionDefense"].EvictionEnabled, default false);
+    // detection and forensics always run.
+    bool staleSessionEvictionEnabled() const;
+    QString ourStationName() const;
     void    setKnownGuiClients(const QStringList& handles,
                                const QStringList& programs,
                                const QStringList& stations,
@@ -748,6 +765,17 @@ private:
 
     QMap<QString, PanadapterModel*> m_panadapters;  // panId → model
     QMap<QString, PanadapterModel*> m_stalePanadapters;  // previous session, kept alive for UI reuse
+    // #3977: eviction bookkeeping, all cleared on disconnect (handles are
+    // radio-boot-scoped and recycled). m_evictedPredecessorHandles holds
+    // radio-CONFIRMED disconnects; m_evictionsInFlight guards double-sends
+    // while a `client disconnect` reply is pending.
+    QSet<quint32> m_evictedPredecessorHandles;
+    QSet<quint32> m_evictionsInFlight;
+    QMap<quint32, ForeignPanWrite> m_foreignPanWrites;
+    void noteForeignPanWriteIfAny(const QString& object,
+                                  const QMap<QString, QString>& kvs,
+                                  quint32 sourceHandle);
+    void evictStaleSession(quint32 handle, const QString& reason);
     QString m_activePanId;       // currently active panadapter
 
     // Radio-authoritative display inventory (#3856 Layer B). Accumulated from
@@ -877,6 +905,14 @@ private:
     // Reclaim-by-ID is only valid against the same radio — slice indexes and
     // stream IDs collide near-certainly across different radios.
     QString m_staleSessionSerial;
+    // #3977: OUR handle from the PREVIOUS session (captured at registration
+    // into m_ownSessionHandle, consumed at stage time). Reclaim eviction must
+    // only fire when the staged pan still records THIS handle — pan status
+    // parsing (client_handle) can legitimately rewrite a pan's owner to
+    // another live client before we disconnect (ownership transfer), and
+    // evicting that client would kick a healthy session, not a zombie.
+    quint32 m_staleSessionOwnHandle{0};
+    quint32 m_ownSessionHandle{0};   // this session's handle, set at registration
     QMap<int, MemoryEntry> m_memories;
     QStringList m_globalProfiles;
     QString     m_activeGlobalProfile;
