@@ -400,6 +400,43 @@ RadioModel::RadioModel(QObject* parent)
     connect(m_networkThread, &QThread::started, m_panStream, &PanadapterStream::init);
     m_networkThread->start();
 
+    // Centralized DAX RX channel ownership (#3305): PanadapterStream decides
+    // WHEN a dax_rx stream must exist (refcounted acquire/release from the
+    // bridge/TCI/RADE); RadioModel is the command plane that makes it so.
+    connect(m_panStream, &PanadapterStream::daxStreamCreateNeeded,
+            this, [this](int ch) {
+        if (!isConnected()) {
+            // Dropped create (connect gap): tell the manager so the latch
+            // clears and its retry cadence re-fires — otherwise the channel
+            // wedges with createPending stuck true (the #3669 wedge class).
+            m_panStream->notifyDaxCreateFailed(ch);
+            return;
+        }
+        sendCmd(QString("stream create type=dax_rx dax_channel=%1").arg(ch),
+                [this, ch](int code, const QString& body) {
+            if (code != 0) {
+                qCWarning(lcDax) << "RadioModel: dax_rx stream create for channel"
+                                 << ch << "failed, code" << Qt::hex << code << body;
+                m_panStream->notifyDaxCreateFailed(ch);
+                return;
+            }
+            // Success needs no action here. The #1439 legacy client-
+            // registration nudge is decided in handleDaxRxStreamRegistry, when
+            // the registration status has definitively told us whether the
+            // radio auto-bound the stream (slice=<letter>) — deciding here
+            // would race that status: on WAN/SmartLink (and any firmware that
+            // binds after the create reply) the binding isn't known yet, so a
+            // reply-first ordering would fire a same-value `slice set dax=`
+            // re-assert and blip audio, the very thing the gate avoids (#4017).
+        });
+    });
+    connect(m_panStream, &PanadapterStream::daxStreamRemoveNeeded,
+            this, [this](quint32 streamId, int ch) {
+        Q_UNUSED(ch);
+        if (!isConnected()) return;
+        sendCommand(QString("stream remove 0x%1").arg(streamId, 0, 16));
+    });
+
     // RadioConnection runs on its own worker thread (#502) so TCP I/O
     // (including ping RTT measurement) is never blocked by paintEvent.
     m_connThread = new QThread(this);
@@ -2932,6 +2969,10 @@ void RadioModel::onDisconnected()
     m_announcedClientConnections.clear();
     m_startupClientConnections.clear();
     m_clientConnectionNoticeTimer.invalidate();
+    // The radio reaps all our streams on TCP disconnect; drop the DAX channel
+    // ownership table without emitting removals (#3305). Consumers re-acquire
+    // on their reconnect re-arm paths.
+    m_panStream->resetDaxChannelsForDisconnect();
     emit otherClientsChanged(0, {});
     emit connectionStateChanged(false);
     m_forcedDisconnectInProgress = false;
@@ -4403,6 +4444,58 @@ void RadioModel::traceDaxStreamStatus(const QString& object,
         << QStringLiteral("keys=%1").arg(kvs.keys().join(QLatin1Char(',')));
 }
 
+// Single registration path for dax_rx streams (#3305): every consumer used to
+// run its own statusReceived hook (bridge / TCI / RADE) with subtly different
+// filtering — RADE's had no client_handle check at all, so an external DAX
+// app's broadcast stream status could shadow the channel and suppress our own
+// `stream create` (state-machines.md §7.2: stream statuses go to ALL clients).
+void RadioModel::handleDaxRxStreamRegistry(const QString& object,
+                                           const QMap<QString, QString>& kvs)
+{
+    const auto stream = parseStreamObject(object, QStringLiteral("stream"));
+    if (!stream.valid) return;
+    if (streamStatusRemoved(stream, kvs)) {
+        // The removed form carries no type= (state-machines.md §7.6) — route
+        // by id; a non-dax_rx id is a harmless no-op in the registry.
+        m_panStream->unregisterDaxStream(stream.streamId);
+        return;
+    }
+    if (kvs.value(QStringLiteral("type")) != QStringLiteral("dax_rx")) return;
+    if (!streamStatusBelongsToUs(kvs, ourClientHandle())) {
+        qCDebug(lcDax).noquote()
+            << "RadioModel: ignoring foreign DAX RX stream"
+            << QStringLiteral("stream=%1").arg(hexId(stream.streamId))
+            << QStringLiteral("owner=%1").arg(kvs.value(QStringLiteral("client_handle")));
+        return;
+    }
+    const int ch = kvs.value(QStringLiteral("dax_channel")).toInt();
+    if (ch >= 1 && ch <= 4) {
+        m_panStream->registerDaxStream(stream.streamId, ch);
+        // #1439 client-registration re-assert — LEGACY FALLBACK ONLY, decided
+        // here (not in the create reply) because this status is the moment the
+        // stream↔slice binding is definitively known: a non-empty slice=<letter>
+        // means the radio already auto-bound them (modern firmware, ≥4.2.18) and
+        // no nudge is needed. Only when it did NOT auto-bind AND a slice carries
+        // this channel do we re-assert `slice set dax=`. Deciding here is
+        // race-free across transports (the create reply can precede this status
+        // on WAN/SmartLink); tied to a stream we own and initiated, never a
+        // status echo, so it cannot oscillate (#4009/#3305).
+        const bool autoBound =
+            !kvs.value(QStringLiteral("slice")).trimmed().isEmpty();
+        if (!autoBound && isConnected()) {
+            for (auto* s : slices()) {
+                if (s && s->daxChannel() == ch) {
+                    qCInfo(lcDax) << "RadioModel: dax_rx ch" << ch
+                                  << "not auto-bound — sending #1439 nudge";
+                    sendCommand(QString("slice set %1 dax=%2")
+                                    .arg(s->sliceId()).arg(ch));
+                    break;
+                }
+            }
+        }
+    }
+}
+
 void RadioModel::onStatusReceived(const QString& object,
                                   const QMap<QString, QString>& kvs)
 {
@@ -4411,6 +4504,7 @@ void RadioModel::onStatusReceived(const QString& object,
 
     handleRemoteAudioRxStreamStatus(object, kvs);
     traceDaxStreamStatus(object, kvs);
+    handleDaxRxStreamRegistry(object, kvs);
 
     if (object == "radio") {
         handleRadioStatus(kvs);
