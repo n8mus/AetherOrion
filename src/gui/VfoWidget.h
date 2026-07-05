@@ -571,6 +571,10 @@ private:
     class QPushButton* m_edgesBtn{nullptr};
     void loadDisplayPrefs();
     void saveDisplayPrefs();
+    // Adaptive RX filter controls (SSB-only, rebuilt with the Mode tab) — RFC #3878
+    // Reusable adaptive-RX-filter control group (shared with the RX applet);
+    // recreated on each SSB grid rebuild, bound to the slice as source of truth.
+    class AdaptiveFilterControls* m_adaptive{nullptr};
 
     QSlider* m_sqlSlider{nullptr};
     QComboBox* m_agcCmb{nullptr};

@@ -3,6 +3,7 @@
 #include "SmartMtrWidget.h"
 #include "MeterViewController.h"
 #include "DisplaySettings.h"
+#include "AdaptiveFilterControls.h"
 #include "ComboStyle.h"
 #include "FrequencyEntryParser.h"
 #include "GuardedSlider.h"
@@ -40,6 +41,8 @@
 #include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QGridLayout>
 #include <QMenu>
 #include <QDoubleSpinBox>
@@ -562,7 +565,10 @@ VfoWidget::~VfoWidget()
 void VfoWidget::buildUI()
 {
     auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(6, 2, 6, 0);
+    // Bottom margin (was 0) so the last row of any open tab/menu isn't flush
+    // against the flag's bottom edge — the painted rounded background is inset by
+    // 1px with rounded corners, so flush content spills a few px outside it.
+    root->setContentsMargins(6, 2, 6, 4);
     root->setSpacing(2);
 
     // ── Header row: ANT1(rx) ANT1(tx) 3.8K  SPLIT TX ──────────────────────
@@ -2937,6 +2943,10 @@ void VfoWidget::saveDisplayPrefs()
     s.save();
 }
 
+// Adaptive RX filter config persistence + control group moved to the reusable
+// AdaptiveFilterControls (shared with the RX applet). The filter edges themselves
+// stay radio-authoritative and are never persisted (Principle III). RFC #3878.
+
 void VfoWidget::setEscLevel(float dbm)
 {
     m_escLevelDbm = dbm;
@@ -3819,6 +3829,11 @@ void VfoWidget::setSlice(SliceModel* slice)
     // runs after wireVfoWidget() has connected markerStyleChanged (#1526).
     loadDisplayPrefs();
     emit markerStyleChanged(m_markerWidth, m_filterEdgesHidden);
+    // Restore the per-slice adaptive RX filter config (RFC #3878) — bounds and
+    // presets only; the enabled state is session-scoped and always starts off
+    // (the operator opts in each session). Single load site (the flag is always
+    // present per slice); the RX-applet copy just reflects the loaded slice.
+    AdaptiveFilterControls::loadPrefs(m_slice);
 
     // Frequency
     connect(m_slice, &SliceModel::frequencyChanged, this, [this](double) { updateFreqLabel(); });
@@ -3960,6 +3975,15 @@ void VfoWidget::setSlice(SliceModel* slice)
     connect(m_slice, &SliceModel::filterChanged, this, [this](int, int) {
         updateFilterLabel();
         updateFilterHighlight();
+    });
+    // Adaptive RX filter (RFC #3878): the filter-width label shows "AUTO" while a
+    // live fit is applied. The control group (checkbox + bounds) self-syncs from
+    // the slice inside AdaptiveFilterControls, so we only refresh the label here.
+    connect(m_slice, &SliceModel::adaptiveActiveChanged, this, [this](bool) {
+        updateFilterLabel();
+    });
+    connect(m_slice, &SliceModel::adaptiveFilterEnabledChanged, this, [this](bool) {
+        updateFilterLabel();
     });
     // Antennas
     connect(m_slice, &SliceModel::rxAntennaChanged, this, [this](const QString& ant) {
@@ -4580,6 +4604,13 @@ void VfoWidget::scheduleFrequencyAnnouncement(const QString& text)
 void VfoWidget::updateFilterLabel()
 {
     if (!m_slice) return;
+    // Adaptive RX filter: show "AUTO" while a confident live fit is applied
+    // (RFC #3878). Otherwise the normal width readout — feature off, or the
+    // weak-signal fallback to the operator's selected filter.
+    if (m_slice->adaptiveFilterEnabled() && m_slice->adaptiveActive()) {
+        m_filterWidthLbl->setText(QStringLiteral("AUTO"));
+        return;
+    }
     // Single source of truth with the RX applet's filter readout to keep both
     // labels in sync — they previously drifted (#794, #1225, #2197).
     m_filterWidthLbl->setText(RxApplet::formatFilterWidth(
@@ -4865,6 +4896,8 @@ void VfoWidget::rebuildFilterButtons()
     // Remove marker-style buttons if they exist (re-added for CW only, #1526)
     if (m_markerThicknessBtn) { delete m_markerThicknessBtn; m_markerThicknessBtn = nullptr; }
     if (m_edgesBtn)           { delete m_edgesBtn;           m_edgesBtn = nullptr; }
+    // Remove the adaptive-filter control group (re-added for SSB only, RFC #3878).
+    if (m_adaptive) { delete m_adaptive; m_adaptive = nullptr; }
 
     for (int i = 0; i < m_filterWidths.size(); ++i) {
         const int w = m_filterWidths[i];
@@ -4977,6 +5010,26 @@ void VfoWidget::rebuildFilterButtons()
             setFilterEdgesHidden(!on);
         });
         m_filterGrid->addWidget(m_edgesBtn, row, 2, 1, 2);
+    }
+
+    // ── Adaptive RX filter controls (SSB only) — RFC #3878 ───────────────
+    // Built only for USB/LSB; the grid is rebuilt on every mode change, so
+    // SSB-only visibility is handled by presence/absence (not setVisible). The
+    // controls live in the reusable AdaptiveFilterControls (shared with the RX
+    // applet); both stay in sync via the SliceModel.
+    if (m_slice && (m_slice->mode() == "USB" || m_slice->mode() == "LSB")) {
+        const int arow = (m_filterWidths.size() + 3) / 4 + 1;
+        m_adaptive = new AdaptiveFilterControls(AdaptiveFilterControls::SecAll,
+                                                /*withHeader=*/true, /*compact=*/true,
+                                                /*twoColumn=*/true);
+        m_adaptive->setSlice(m_slice);
+        // Reflow the flag when the control set shows/hides (same deferred relayout
+        // the rest of the flag uses, #3853).
+        connect(m_adaptive, &AdaptiveFilterControls::sizeChanged, this, [this] {
+            if (m_tabStack && m_tabStack->isVisible())
+                QTimer::singleShot(0, this, [this] { relayoutToCurrentContent(); });
+        });
+        m_filterGrid->addWidget(m_adaptive, arow, 0, 1, 4);
     }
 
     // Add CW autotune row spanning all 4 columns when in CW mode
