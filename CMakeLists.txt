@@ -1279,6 +1279,24 @@ if(Qt6Keychain_FOUND)
                 "$<TARGET_FILE_DIR:AetherSDR>"
         )
     endif()
+    # Same problem on macOS: a staged third_party/qtkeychain dylib is found
+    # via an absolute rpath into THIS checkout, so a bundle copied to another
+    # Mac (SFTP test deploys) fails to load it.  Ship the dylib inside the
+    # bundle and add the standard Frameworks rpath at link time (linker-added
+    # rpath keeps the ad-hoc signature valid — no install_name_tool).
+    # macdeployqt still handles release DMGs; copy_if_different is a no-op
+    # for it.
+    if(APPLE AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/qtkeychain/lib/libqt6keychain.1.dylib")
+        set_property(TARGET AetherSDR APPEND PROPERTY
+            BUILD_RPATH "@executable_path/../Frameworks")
+        add_custom_command(TARGET AetherSDR POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:AetherSDR>/Frameworks"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/third_party/qtkeychain/lib/libqt6keychain.1.dylib"
+                "$<TARGET_BUNDLE_CONTENT_DIR:AetherSDR>/Frameworks"
+        )
+    endif()
 endif()
 
 if(Qt6DBus_FOUND)
@@ -2282,12 +2300,14 @@ target_link_libraries(display_inventory_policy_test PRIVATE Qt6::Core)
 add_test(NAME display_inventory_policy_test COMMAND display_inventory_policy_test)
 
 # QRZ callsign lookup — spotter stream detection, callsign regex,
-# CallsignInfo JSON round-trip, 7-day cache TTL rule.
+# CallsignInfo JSON round-trip, 7-day cache TTL rule, and the QRZ XML
+# response parser (QrzClient.cpp needs Qt6::Network for QNetworkReply).
 add_executable(qrz_callsign_test
     tests/qrz_callsign_test.cpp
     src/core/CwCallsignSpotter.cpp
     src/core/CallsignInfo.cpp
     src/core/CtyDatParser.cpp
+    src/core/QrzClient.cpp
     # LogManager provides lcQrz (spotter's qCDebug category); it drags
     # AsyncLogWriter + AppSettings for its writer/ctor chain at link time.
     src/core/LogManager.cpp
@@ -2295,7 +2315,7 @@ add_executable(qrz_callsign_test
     src/core/AppSettings.cpp
 )
 target_include_directories(qrz_callsign_test PRIVATE src)
-target_link_libraries(qrz_callsign_test PRIVATE Qt6::Core Qt6::Test)
+target_link_libraries(qrz_callsign_test PRIVATE Qt6::Core Qt6::Network Qt6::Test)
 add_test(NAME qrz_callsign_test COMMAND qrz_callsign_test)
 
 add_executable(shortcut_manager_test
