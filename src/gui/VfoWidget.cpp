@@ -2858,9 +2858,38 @@ void VfoWidget::setSmartSdrPlus(bool has)
     if (m_slice) rebuildFilterButtons();
 }
 
+// Single source of truth for the extended firmware DSP filters' visibility
+// (NRS/RNN/NRF, 8000-series). Hidden on FM-family modes (FM/NFM/DFM); RNN is
+// additionally hidden on CW/CWL. Called from setSlice(), syncFromSlice(), and
+// setHasExtendedDsp() so those three paths can no longer drift (they had
+// disagreed on DFM). Caller must hold a valid m_slice and drive its own
+// relayoutDspGrid(). (#2177)
+void VfoWidget::updateExtendedDspVisibility()
+{
+    const QString mode = m_slice->mode();
+    const bool isFm = (mode == "FM" || mode == "NFM" || mode == "DFM");
+    const bool isCw = (mode == "CW" || mode == "CWL");
+    m_nrsBtn->setVisible(!isFm && m_hasExtendedDsp);
+    m_rnnBtn->setVisible(!isCw && !isFm && m_hasExtendedDsp);
+    m_nrfBtn->setVisible(!isFm && m_hasExtendedDsp);
+}
+
 void VfoWidget::setHasExtendedDsp(bool has)
 {
+    if (m_hasExtendedDsp == has)
+        return;
     m_hasExtendedDsp = has;
+    // The model status that gates the extended firmware filters (NRS/RNN/NRF)
+    // can arrive AFTER the slice's initial DSP layout — e.g. a GUIClientID
+    // session restore pushes the slice first, then the `model` status arrives
+    // and MainWindow re-pushes this flag. Without a refresh here the flag flips
+    // but the buttons stay hidden until the next mode change (the 8600 symptom,
+    // #2177 follow-up). Re-evaluate their visibility now. Until a slice is set,
+    // setSlice()/syncFromSlice() will read the flag on their own.
+    if (!m_slice)
+        return;
+    updateExtendedDspVisibility();
+    relayoutDspGrid();
 }
 
 // Accent the ADSP launcher when any client-side NR module is active (#3800).
@@ -3963,10 +3992,8 @@ void VfoWidget::setSlice(SliceModel* slice)
         m_nbBtn->setVisible(!isFm);
         // NRL is available on 6000-series too (#2177)
         m_nrlBtn->setVisible(!isFm);
-        // 8000-series-only firmware DSP filters (#2177)
-        m_nrsBtn->setVisible(!isFm && m_hasExtendedDsp);
-        m_rnnBtn->setVisible(!isCw && !isFm && m_hasExtendedDsp);
-        m_nrfBtn->setVisible(!isFm && m_hasExtendedDsp);
+        // 8000-series-only firmware DSP filters — shared rule (#2177)
+        updateExtendedDspVisibility();
         relayoutDspGrid();
         updateFilterLabel();
         if (m_tabStack->isVisible()) relayoutToCurrentContent();
@@ -4510,10 +4537,8 @@ void VfoWidget::syncFromSlice()
     m_nbBtn->setVisible(!isFm);
     // NRL is available on 6000-series too (#2177)
     m_nrlBtn->setVisible(!isFm);
-    // 8000-series-only firmware DSP filters (#2177)
-    m_nrsBtn->setVisible(!isFm && m_hasExtendedDsp);
-    m_rnnBtn->setVisible(!isCw && !isFm && m_hasExtendedDsp);
-    m_nrfBtn->setVisible(!isFm && m_hasExtendedDsp);
+    // 8000-series-only firmware DSP filters — shared rule (#2177)
+    updateExtendedDspVisibility();
     m_apfContainer->setVisible(isCw);
     m_digContainer->setVisible(isDig && m_slice->mode() != "NT");
     m_fmContainer->setVisible(isFm);
