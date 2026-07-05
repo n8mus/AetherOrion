@@ -91,6 +91,11 @@ void FlexBackend::setCommandSink(std::function<void(const QString&)> sink)
     m_sink = std::move(sink);
 }
 
+void FlexBackend::setSliceCommandSink(std::function<void(const QString&)> sink)
+{
+    m_sliceSink = std::move(sink);
+}
+
 void FlexBackend::setModelProvider(std::function<QString()> provider)
 {
     m_modelProvider = std::move(provider);
@@ -146,20 +151,21 @@ bool FlexBackend::isConnected() const
 
 void FlexBackend::setSliceFrequency(int sliceId, double hz)
 {
-    // Matches SliceModel::setFrequency's wire string exactly.
-    send(QStringLiteral("slice tune %1 %2 autopan=0")
-             .arg(sliceId)
-             .arg(hz / 1'000'000.0, 0, 'f', 6));
+    // Matches SliceModel::setFrequency's wire string exactly. Slice verbs use
+    // the TX-inhibit-guarded slice sink (§6), not the generic sink.
+    sendSlice(QStringLiteral("slice tune %1 %2 autopan=0")
+                  .arg(sliceId)
+                  .arg(hz / 1'000'000.0, 0, 'f', 6));
 }
 
 void FlexBackend::setSliceMode(int sliceId, const QString& mode)
 {
-    send(QStringLiteral("slice set %1 mode=%2").arg(sliceId).arg(mode));
+    sendSlice(QStringLiteral("slice set %1 mode=%2").arg(sliceId).arg(mode));
 }
 
 void FlexBackend::setSliceFilter(int sliceId, int lowHz, int highHz)
 {
-    send(QStringLiteral("filt %1 %2 %3").arg(sliceId).arg(lowHz).arg(highHz));
+    sendSlice(QStringLiteral("filt %1 %2 %3").arg(sliceId).arg(lowHz).arg(highHz));
 }
 
 void FlexBackend::setKeying(bool key)
@@ -182,9 +188,73 @@ void FlexBackend::invokeExtension(const QString& /*ns*/, const QString& /*verb*/
     }
 }
 
+void FlexBackend::decodePanCenterBandwidth(const QString& panId,
+                                           const QMap<QString, QString>& kvs)
+{
+    // Only emit when the wire carried these fields — matches the old
+    // applyPanStatus behavior of touching center/bandwidth only when present.
+    if (!kvs.contains(QStringLiteral("center"))
+        && !kvs.contains(QStringLiteral("bandwidth"))) {
+        return;
+    }
+    // The radio may send one without the other; carry the current-or-parsed
+    // value for the missing one (RadioModel resolves against the model). A
+    // sentinel of -1 means "unchanged" for the absent field.
+    const double center = kvs.contains(QStringLiteral("center"))
+        ? kvs.value(QStringLiteral("center")).toDouble() : -1.0;
+    const double bandwidth = kvs.contains(QStringLiteral("bandwidth"))
+        ? kvs.value(QStringLiteral("bandwidth")).toDouble() : -1.0;
+    emit panCenterBandwidthChanged(panId, center, bandwidth);
+}
+
+void FlexBackend::decodePanExtensions(const QString& panId,
+                                      const QMap<QString, QString>& kvs)
+{
+    // WNB (wideband noise blanker) is a Flex-specific pan feature, not core
+    // profile — carry only the keys the wire reported, namespaced under "flex".
+    QVariantMap wnb;
+    if (kvs.contains(QStringLiteral("wnb"))) {
+        wnb.insert(QStringLiteral("wnb"),
+                   kvs.value(QStringLiteral("wnb")).toInt() != 0);
+    }
+    if (kvs.contains(QStringLiteral("wnb_level"))) {
+        // Guard the numeric parse: a malformed/non-numeric wnb_level must be
+        // ignored, not applied as 0. The old inline applyPanStatus path did
+        // exactly this (toInt(&ok) + if(ok)), mirroring FlexLib's own
+        // uint.TryParse + skip-on-failure (Panadapter.cs:1244). Dropping the
+        // guard would silently snap the WNB-level UI to 0 (Principle VII).
+        bool ok = false;
+        const int level = kvs.value(QStringLiteral("wnb_level")).toInt(&ok);
+        if (ok) {
+            wnb.insert(QStringLiteral("wnb_level"), level);
+        }
+    }
+    if (kvs.contains(QStringLiteral("wnb_updating"))) {
+        // FlexLib v4.2.18 exposes wnb_updating on display pan status while the
+        // radio normalizes the SCU-level WNB threshold; it is distinct from the
+        // per-pan WNB enable flag ("wnb") above — keep them separate.
+        wnb.insert(QStringLiteral("wnb_updating"),
+                   kvs.value(QStringLiteral("wnb_updating")).toInt() != 0);
+    }
+    if (!wnb.isEmpty()) {
+        wnb.insert(QStringLiteral("panId"), panId);
+        emit extensionStatus(QStringLiteral("flex"),
+                             QStringLiteral("panWnb"), wnb);
+    }
+}
+
 void FlexBackend::send(const QString& cmd)
 {
     if (m_sink) {
+        m_sink(cmd);
+    }
+}
+
+void FlexBackend::sendSlice(const QString& cmd)
+{
+    if (m_sliceSink) {
+        m_sliceSink(cmd);
+    } else if (m_sink) {
         m_sink(cmd);
     }
 }

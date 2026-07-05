@@ -71,9 +71,45 @@ void PanadapterModel::setRfGainInfo(int low, int high, int step)
     emit rfGainInfoChanged(low, high, step);
 }
 
+void PanadapterModel::setCenterBandwidth(double centerMhz, double bandwidthMhz)
+{
+    bool changed = false;
+    if (centerMhz >= 0.0 && centerMhz != m_centerMhz) {
+        m_centerMhz = centerMhz;
+        changed = true;
+    }
+    if (bandwidthMhz >= 0.0 && bandwidthMhz != m_bandwidthMhz) {
+        m_bandwidthMhz = bandwidthMhz;
+        changed = true;
+    }
+    if (changed) {
+        emit infoChanged(m_centerMhz, m_bandwidthMhz);
+    }
+}
+
+void PanadapterModel::applyWnbExtension(const QVariantMap& fields)
+{
+    bool dirty = false;
+    if (fields.contains(QStringLiteral("wnb"))) {
+        const bool w = fields.value(QStringLiteral("wnb")).toBool();
+        if (w != m_wnbActive) { m_wnbActive = w; dirty = true; }
+    }
+    if (fields.contains(QStringLiteral("wnb_level"))) {
+        const int lvl = std::clamp(fields.value(QStringLiteral("wnb_level")).toInt(), 0, 100);
+        if (lvl != m_wnbLevel) { m_wnbLevel = lvl; dirty = true; }
+    }
+    if (fields.contains(QStringLiteral("wnb_updating"))) {
+        const bool u = fields.value(QStringLiteral("wnb_updating")).toBool();
+        if (u != m_wnbUpdating) { m_wnbUpdating = u; dirty = true; }
+    }
+    if (dirty) {
+        emit wnbChanged(m_wnbActive, m_wnbLevel);
+        emit wnbStateChanged(m_wnbActive, m_wnbLevel, m_wnbUpdating);
+    }
+}
+
 void PanadapterModel::applyPanStatus(const QMap<QString, QString>& kvs)
 {
-    bool infoChanged = false;
     bool levelChanged = false;
 
     // #3977: ownership is radio-authoritative. When another session reclaims
@@ -88,14 +124,8 @@ void PanadapterModel::applyPanStatus(const QMap<QString, QString>& kvs)
         }
     }
 
-    if (kvs.contains("center")) {
-        double c = kvs["center"].toDouble();
-        if (c != m_centerMhz) { m_centerMhz = c; infoChanged = true; }
-    }
-    if (kvs.contains("bandwidth")) {
-        double b = kvs["bandwidth"].toDouble();
-        if (b != m_bandwidthMhz) { m_bandwidthMhz = b; infoChanged = true; }
-    }
+    // center/bandwidth now decode in FlexBackend → panCenterBandwidthChanged →
+    // setCenterBandwidth() (aetherd RFC 2.3, the first converted pan touchpoint).
     if (kvs.contains("min_dbm")) {
         float v = kvs["min_dbm"].toFloat();
         if (v != m_minDbm) { m_minDbm = v; levelChanged = true; }
@@ -118,36 +148,8 @@ void PanadapterModel::applyPanStatus(const QMap<QString, QString>& kvs)
             m_preamp = pre;
         }
     }
-    // FlexLib v4.2.18 exposes wnb_updating on display pan status while the
-    // radio normalizes the SCU-level WNB threshold; keep it distinct from
-    // the per-pan WNB enable flag.
-    bool wnbStateDirty = false;
-    if (kvs.contains("wnb")) {
-        const bool w = kvs["wnb"].toInt() != 0;
-        if (w != m_wnbActive) {
-            m_wnbActive = w;
-            wnbStateDirty = true;
-        }
-    }
-    if (kvs.contains("wnb_level")) {
-        bool ok = false;
-        const int lvl = std::clamp(kvs["wnb_level"].toInt(&ok), 0, 100);
-        if (ok && lvl != m_wnbLevel) {
-            m_wnbLevel = lvl;
-            wnbStateDirty = true;
-        }
-    }
-    if (kvs.contains("wnb_updating")) {
-        const bool updating = kvs["wnb_updating"].toInt() != 0;
-        if (updating != m_wnbUpdating) {
-            m_wnbUpdating = updating;
-            wnbStateDirty = true;
-        }
-    }
-    if (wnbStateDirty) {
-        emit wnbChanged(m_wnbActive, m_wnbLevel);
-        emit wnbStateChanged(m_wnbActive, m_wnbLevel, m_wnbUpdating);
-    }
+    // WNB decode moved to FlexBackend → extensionStatus("flex","panWnb") →
+    // applyWnbExtension() (aetherd RFC 2.3 extension template).
     if (kvs.contains("wide")) {
         bool wide = kvs["wide"].toInt() != 0;
         if (wide != m_wideActive) {
@@ -219,8 +221,6 @@ void PanadapterModel::applyPanStatus(const QMap<QString, QString>& kvs)
         }
     }
 
-    if (infoChanged)
-        emit this->infoChanged(m_centerMhz, m_bandwidthMhz);
     if (levelChanged)
         emit this->levelChanged(m_minDbm, m_maxDbm);
 }

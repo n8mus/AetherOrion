@@ -107,6 +107,21 @@ signals:
     void sliceChanged(int sliceId, const QVariantMap& changes);
     void sliceRemoved(int sliceId);
     void meterUpdate(const QString& meterId, double value);
+    // Panadapter core display state (universal — every family has a pan center
+    // and span). The backend decodes it from vendor status; RadioModel drives
+    // the PanadapterModel. panId is the pan's identifier (opaque to the model).
+    // (aetherd RFC 2.3 — first converted touchpoint; the template the other
+    // universal pan fields + the other mixed models follow.)
+    void panCenterBandwidthChanged(const QString& panId,
+                                   double centerMhz, double bandwidthMhz);
+
+    // Vendor-specific status data that is NOT part of the core profile — the
+    // namespaced *extension* channel (aetherd RFC §5.5). A client that doesn't
+    // understand `ns` ignores it; `kind` names the event within the namespace
+    // and `fields` carries only the keys the wire actually reported. This is the
+    // status counterpart to invokeExtension's request/reply.
+    void extensionStatus(const QString& ns, const QString& kind,
+                         const QVariantMap& fields);
 
     // ---- data plane UP (RFC §4.2) ----
     // Declared here so backends have a normalized outlet for spectrum/waterfall/
