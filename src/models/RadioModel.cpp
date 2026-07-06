@@ -393,6 +393,15 @@ QJsonObject clientInfoToJson(quint32 handle,
 RadioModel::RadioModel(QObject* parent)
     : QObject(parent)
 {
+    // Register the typed seam-delta payloads so IRadioBackend's normalized
+    // signals survive a queued connection. Today decode*Status runs synchronously
+    // on this thread (AutoConnection → DirectConnection, no metatype needed), but
+    // if a backend is ever moved to a worker thread the connection becomes queued;
+    // without registration Qt would log "Cannot queue arguments of type …" and
+    // silently drop the emit. Idempotent + cheap. (#4071 review.)
+    qRegisterMetaType<SliceDelta>();
+    qRegisterMetaType<TransmitDelta>();
+
     // aetherd RFC step 2.2b: the radio-facing seam owns the wire objects. The
     // FlexBackend creates the RadioConnection and PanadapterStream on their
     // worker threads (in the load-bearing #502 order — panStream first) and
@@ -543,6 +552,14 @@ RadioModel::RadioModel(QObject* parent)
             s->applyChanges(delta);
         }
     });
+
+    // aetherd RFC 2.3: TransmitModel touchpoint. The backend decodes the five
+    // Flex transmit-family status planes (transmit/interlock/ATU/APD/APD-sampler)
+    // into a typed TransmitDelta; RadioModel drives the TransmitModel. Driven
+    // synchronously from the matching decode*Status() calls in the status
+    // handlers (main-thread AutoConnection → DirectConnection).
+    connect(m_backend.get(), &IRadioBackend::transmitChanged, this,
+            [this](const TransmitDelta& delta) { m_transmitModel.applyChanges(delta); });
 
     // Centralized DAX RX channel ownership (#3305): PanadapterStream decides
     // WHEN a dax_rx stream must exist (refcounted acquire/release from the
@@ -5154,7 +5171,7 @@ void RadioModel::onStatusReceived(const QString& object,
         const auto m = atuRe.match(object);
         if (m.hasMatch() && m_tunerModel.handle().isEmpty())
             m_tunerModel.setHandle(m.captured(1));
-        m_transmitModel.applyAtuStatus(kvs);
+        if (m_flexBackend) m_flexBackend->decodeAtuStatus(kvs);
         if (m_tunerModel.isPresent())
             m_tunerModel.applyStatus(kvs);
         return;
@@ -5169,7 +5186,7 @@ void RadioModel::onStatusReceived(const QString& object,
     // Our parser splits object/kvs at the last space before the first '=',
     // so any leading bare flags get absorbed into the object name.
     if (object == "apd sampler") {
-        m_transmitModel.applyApdSamplerStatus(kvs);
+        if (m_flexBackend) m_flexBackend->decodeApdSamplerStatus(kvs);
         return;
     }
     if (object == "apd" || object.startsWith("apd ")) {
@@ -5178,7 +5195,7 @@ void RadioModel::onStatusReceived(const QString& object,
             const QStringList flags = object.mid(4).split(' ', Qt::SkipEmptyParts);
             for (const auto& f : flags) merged.insert(f, QString{});
         }
-        m_transmitModel.applyApdStatus(merged);
+        if (m_flexBackend) m_flexBackend->decodeApdStatus(merged);
         return;
     }
 
@@ -5279,7 +5296,7 @@ void RadioModel::onStatusReceived(const QString& object,
 
     // Transmit status: "transmit rfpower=93 tunepower=38 tune=0 ..."
     if (object == "transmit") {
-        m_transmitModel.applyTransmitStatus(kvs);
+        if (m_flexBackend) m_flexBackend->decodeTransmitStatus(kvs);
         return;
     }
 
@@ -5403,7 +5420,7 @@ void RadioModel::onStatusReceived(const QString& object,
             m_txOwnedByUs = (txOwner == clientHandle() || txOwner == 0);
         }
         // Parse interlock timing fields into TransmitModel (#498)
-        m_transmitModel.applyInterlockStatus(kvs);
+        if (m_flexBackend) m_flexBackend->decodeInterlockStatus(kvs);
 
         // Track PTT source (#2373). The radio reports source=SW for software
         // MOX/CAT/xmit, and source=MIC|ACC|RCA for hardware-keyed PTT (mic
@@ -5517,7 +5534,7 @@ void RadioModel::onStatusReceived(const QString& object,
         } else {
             emit txOwnerChanged(false, {});  // we own TX (or nobody does)
         }
-        m_transmitModel.applyInterlockStatus(kvs);
+        if (m_flexBackend) m_flexBackend->decodeInterlockStatus(kvs);
         return;
     }
 
