@@ -529,6 +529,21 @@ RadioModel::RadioModel(QObject* parent)
     connect(m_backend.get(), &IRadioBackend::meterRemoved, this,
             [this](int index) { m_meterModel.removeMeter(index); });
 
+    // aetherd RFC 2.3: SliceModel touchpoint. The backend decodes Flex slice
+    // status into a typed SliceDelta; RadioModel routes it to the addressed slice.
+    // This is an AutoConnection: because FlexBackend shares RadioModel's thread it
+    // resolves to a synchronous DirectConnection today, so a slice just appended
+    // to m_slices is populated before the sliceAdded UI notify below. (If a
+    // backend is ever moved to a worker thread this becomes queued — the ordering
+    // guarantee would then need an explicit populate step, not Qt::DirectConnection
+    // across threads. #4068 review.)
+    connect(m_backend.get(), &IRadioBackend::sliceChanged, this,
+            [this](int sliceId, const SliceDelta& delta) {
+        if (SliceModel* s = slice(sliceId)) {
+            s->applyChanges(delta);
+        }
+    });
+
     // Centralized DAX RX channel ownership (#3305): PanadapterStream decides
     // WHEN a dax_rx stream must exist (refcounted acquire/release from the
     // bridge/TCI/RADE); RadioModel is the command plane that makes it so.
@@ -5835,7 +5850,10 @@ void RadioModel::handleSliceStatus(int id,
         }
         s->setRttyMarkDefault(m_rttyMarkDefault);
         m_slices.append(s);
-        s->applyStatus(kvs);  // populate frequency/mode before notifying UI
+        // aetherd RFC 2.3: decode Flex slice status behind the seam → the
+        // synchronous sliceChanged handler applies it to this slice (already in
+        // m_slices) before the UI notify below. (populate frequency/mode first.)
+        if (m_flexBackend) m_flexBackend->decodeSliceStatus(id, kvs);
         m_meterModel.setActiveTxSlice(activeTxSliceNum());
         enforceTransmitInhibitForSlice(s);
         if (!reclaimed) {
@@ -5850,10 +5868,13 @@ void RadioModel::handleSliceStatus(int id,
             sendCmd(QString("slice set %1 tx=1").arg(id));
         }
         emit slotOccupancyChanged(id);  // empty/foreign → ours
-        return;                // applyStatus already called below; skip second call
+        return;   // status already decoded above via decodeSliceStatus; don't
+                  // re-run the fall-through decodeSliceStatus at the end
     }
 
-    s->applyStatus(kvs);
+    // aetherd RFC 2.3: Flex slice status decodes in FlexBackend → sliceChanged →
+    // applyChanges (synchronous, main-thread) drives this slice.
+    if (m_flexBackend) m_flexBackend->decodeSliceStatus(id, kvs);
     m_meterModel.setActiveTxSlice(activeTxSliceNum());
     enforceTransmitInhibitForSlice(s);
 
