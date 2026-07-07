@@ -260,9 +260,12 @@ The dependency direction is CI-enforced (`tools/check_engine_boundary.py`,
   `src/core/backends/`) may include a **vendor header** — the
   family-specific wire classes the RFC keeps behind `IRadioBackend`
   (SmartSDR/FlexLib + KiwiSDR; the headers tagged `vendor(...)` in
-  `docs/architecture/aetherd-touchpoint-tags.json` — standalone *accessory*
-  devices like the 4O3A tuner/switch/amp are tagged `peripheral(...)`, not
-  `vendor`, so they are NOT gated by EB3). Today's coupling is
+  `docs/architecture/aetherd-touchpoint-tags.json`). Only `vendor(...)` is
+  EB3-gated: a standalone *accessory* device's own transport (the 4O3A
+  antenna switch, the Tgxl/Pgxl direct sockets) is `peripheral(...)`, a
+  USB input surface is `ui-support`, and a generic device model fused with
+  vendor relay (e.g. `TunerModel`) is `mixed(flex)` — none of those are
+  `vendor`, so none are EB3-gated. Today's coupling is
   frozen as a per-file, shrink-only baseline; a **new** above-seam vendor
   include, or an **increase** in a tracked file, errors. (RFC step 2.4;
   see "Engine boundary ratchet — EB3" below.)
@@ -295,7 +298,7 @@ you:
   decoupling can proceed without new coupling piling up behind it.
 - **The rule.** Each tracked file's baseline row is the exact **set** of
   vendor headers it may include. Adding a vendor `#include` (e.g.
-  `KiwiSdrManager.h`, `RadioConnection.h`, `TunerModel.h`) to a `gui/`,
+  `KiwiSdrManager.h`, `RadioConnection.h`, `StreamStatus.h`) to a `gui/`,
   `core/`, or `models/` file that isn't tracked — or adding a header not
   in a tracked file's set, *including a lateral swap that keeps the count
   flat* (drop `RadioConnection.h`, add `KiwiSdrManager.h`) — fails the
