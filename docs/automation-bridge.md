@@ -143,6 +143,7 @@ transmit-gated verbs (refused unless `AETHER_AUTOMATION_ALLOW_TX=1` — see
 | | [`get dsp`](#get-dsp) | Client-side AetherDSP NR state (NR2…BNR). |
 | | [`get radio \| transmit \| eq \| meters`](#get) | Radio / TX-chain / EQ / meters snapshots. |
 | | [`get slice[s] \| pan[s]`](#get) | Slice & panadapter model snapshots. |
+| | [`get cwx`](#get-cwx) | CWX keyer state + queue-drain watch (#3949). |
 | | [`get panstats`](#get-panstats) | Per-panadapter render-cost counters (profiling). |
 | | [`get clients`](#get-clients) | Radio client roster + foreign-pan-write forensics (#3977). |
 | | [`get sync`](#get-sync) | Receive-Sync (Auto Assist) state. |
@@ -434,6 +435,7 @@ connects).
 | `dsp` | — | client-side AetherDSP noise-reduction state — see [`get dsp`](#get-dsp) |
 | `radio` | — | radio snapshot (name, model, version, connected, fullDuplex, transmitting, txPower, paTemp, slice/pan counts) |
 | `transmit` | — | TX-chain snapshot: RF/tune power, mic/processor/monitor, VOX/AM/DEXP, TX filter, CW (speed/pitch/breakin/delay/sidetone/iambic/monitor), ATU, APD. Validate that a TX/Phone/CW applet control reached the radio model. |
+| `cwx` | — | CWX keyer + queue-drain watch — see [`get cwx`](#get-cwx) |
 | `equalizer` (or `eq`) | — | 8-band RX+TX graphic EQ: `rxEnabled`/`txEnabled` and `rx`/`tx` band maps keyed by label (`63`…`8k`). Validate EQ-applet slider changes. |
 | `meters` | — | `{all:[…]}` — every radio meter with `name`, `value`, `unit`, `low`/`high`, `description`, and **`age_ms`** (staleness): a meter that updates has small `age_ms` and a tracking `value`. |
 | `slices` | — | array of all slice snapshots |
@@ -447,6 +449,43 @@ connects).
 
 Add a trailing **property** name to any single-object form to get just that
 field: `get slice active mode` → `{"value":"LSB"}`.
+
+### `get cwx`
+CWX keyer state, including the **queue-drain watch** that the #3949 fix relies
+on. Firmware never emits `cwx queue=`, so the client detects a drained CWX buffer
+by capturing the `radio_index` from the final `cwx send` reply and firing
+`queueEmpty()` — which releases TX — once the live `cwx sent=` counter reaches the
+batch end. `radio_index` is the batch's **first-char** queue position (verified on
+FLEX-6500 fw 4.2.20.41343 — a 23-char send at `sent=48` replied `radio_index=49`
+and `sent=` then climbed to 71), so `cwxEndIndex` is stored as
+`radio_index + nChars - 1`. None of that state has a widget, so this is the only
+non-hardware-poll way to assert the mechanism (cf. [`get dsp`](#get-dsp)).
+
+```json
+→ {"cmd":"get","model":"cwx"}
+← {"ok":true,"model":"cwx","cwx":{
+   "active":true,"tracking":true,"cwxEndIndex":14,"sentIndex":6,
+   "speed":25,"speedStep":5,"delay":5,"qsk":false,"live":false}}
+```
+
+| field | meaning |
+|---|---|
+| `active` | `RadioModel::cwxActive` — a `cwx send` batch is in flight (TX keyed for it) |
+| `tracking` | `true` while a queue-drain watch is armed (`cwxEndIndex >= 0`) |
+| `cwxEndIndex` | the batch-end index = `radio_index + nChars - 1`, the value `sentIndex` must reach to release TX (`-1` = idle) |
+| `sentIndex` | the radio's live `cwx sent=` counter (last char keyed) |
+| `speed` / `speedStep` / `delay` / `qsk` / `live` | keyer settings |
+
+**The drain proof:** on a keyed macro, `cwxEndIndex` jumps to the batch-end N when
+the send reply arrives, `sentIndex` climbs to N as the radio keys each char, and
+the frame it reaches N `tracking` flips back to `false` and `active` clears
+(queueEmpty → `xmit 0`). Watching `cwxEndIndex` hold while `sentIndex` climbs to
+meet it — over the full keying duration, not after one char — is the direct
+evidence the batch-end index is right (radio_index is the batch **start**, so the
+end is `radio_index + nChars - 1`). ESC mid-macro ([`cwx stop`](#cwx) / `clearBuffer`) resets
+`cwxEndIndex` to `-1` so an aborted macro never triggers a spurious release. A
+trailing property narrows it: `get cwx cwxEndIndex` → `{"value":14}`. Fields are
+zero/`-1`/idle until a radio connects.
 
 ### `get panstats`
 Per-panadapter (SpectrumWidget) frame-cost counters — how much GUI-thread time
