@@ -94,10 +94,14 @@ KNOWN_WIDGETS_LEGACY = {
 # `vendor(*)` there is enforced automatically — no silent drift where the audit
 # grows a vendor family but this checker keeps permitting it.
 VENDOR_TAGS_JSON = REPO / "docs" / "architecture" / "aetherd-touchpoint-tags.json"
-# Sanity floor: the audit currently tags 26 vendor headers. If a parse yields
-# far fewer, the audit moved or its schema changed and EB3 is silently
-# under-armed — fail loudly (handled at load).
-VENDOR_STEMS_FLOOR = 20
+# Sanity floor: the audit currently tags 21 radio-family vendor headers (the
+# original 26 minus reclassified peripherals not behind the radio seam — the
+# 4O3A accessory family TunerModel/AntennaGeniusModel/Tgxl/Pgxl → peripheral(4o3a),
+# and the FlexControl USB knob → ui-support). This floor only guards against the
+# audit being moved/gutted (a parse yielding near zero), NOT the exact count —
+# deliberate reclassifications lower it over time, so keep the floor well below
+# the live count.
+VENDOR_STEMS_FLOOR = 15
 
 
 def load_vendor_vocabulary():
@@ -152,15 +156,14 @@ KNOWN_VENDOR_INCLUDE_BASELINE = {
     "src/core/TciProtocol.cpp": ["DaxIqModel"],
     "src/core/TciServer.cpp": ["DaxIqModel", "StreamStatus"],
     "src/core/WfmDemodulator.cpp": ["DaxIqModel"],
-    "src/gui/AntennaGeniusApplet.cpp": ["AntennaGeniusModel"],
     "src/gui/Ax25HfPacketDecodeDialog.cpp": ["DaxTxPolicy"],
     "src/gui/ConnectionPanel.h": ["SmartLinkClient"],
     "src/gui/DaxIqApplet.cpp": ["DaxIqModel"],
     "src/gui/DvkPanel.cpp": ["DvkWavTransfer"],
     "src/gui/KiwiPublicReceiverPicker.h": ["KiwiPublicDirectory"],
     "src/gui/KiwiSdrApplet.h": ["KiwiSdrClient"],
-    "src/gui/MainWindow.cpp": ["DvkWavTransfer", "KiwiSdrManager", "PanadapterStream", "RadioStatusOwnership", "StreamStatus", "TunerModel"],
-    "src/gui/MainWindow.h": ["AntennaGeniusModel", "FlexControlManager", "PgxlConnection", "SmartLinkClient", "TgxlConnection", "WanConnection"],
+    "src/gui/MainWindow.cpp": ["DvkWavTransfer", "KiwiSdrManager", "PanadapterStream", "RadioStatusOwnership", "StreamStatus"],
+    "src/gui/MainWindow.h": ["SmartLinkClient", "WanConnection"],
     "src/gui/MainWindowHelpers.cpp": ["PanadapterStream", "SmartLinkClient"],
     "src/gui/MainWindow_Controllers.cpp": ["KiwiSdrProtocol"],
     "src/gui/MainWindow_KiwiSdr.cpp": ["KiwiSdrClient", "KiwiSdrManager", "KiwiSdrProtocol"],
@@ -170,20 +173,17 @@ KNOWN_VENDOR_INCLUDE_BASELINE = {
     "src/gui/MemoryDialog.cpp": ["MemoryCsvCompat", "RadioConnection"],
     "src/gui/NetworkDiagnosticsDialog.h": ["PanadapterStream"],
     "src/gui/ProfileImportExportDialog.h": ["ProfileTransfer"],
-    "src/gui/RadioSetupDialog.cpp": ["AntennaGeniusModel", "FirmwareStager", "FirmwareUploader", "FlexControlManager", "KiwiSdrManager", "PanadapterStream", "PgxlConnection", "TgxlConnection", "WanConnection"],
+    "src/gui/RadioSetupDialog.cpp": ["FirmwareStager", "FirmwareUploader", "KiwiSdrManager", "PanadapterStream", "WanConnection"],
     "src/gui/RxApplet.cpp": ["KiwiSdrManager", "KiwiSdrProtocol"],
     "src/gui/SMeterWidget.h": ["KiwiSdrProtocol"],
-    "src/gui/ShackSwitchApplet.cpp": ["AntennaGeniusModel"],
     "src/gui/SpectrumOverlayMenu.cpp": ["KiwiSdrManager"],
     "src/gui/SpectrumWidget.cpp": ["KiwiSdrProtocol"],
     "src/gui/SupportDialog.cpp": ["RadioConnection"],
-    "src/gui/TunerApplet.cpp": ["TunerModel"],
-    "src/gui/TxApplet.cpp": ["TunerModel"],
     "src/gui/VfoWidget.cpp": ["KiwiSdrManager", "KiwiSdrProtocol"],
     "src/gui/VfoWidget.h": ["KiwiSdrProtocol"],
     "src/gui/WaveformsDialog.cpp": ["FlexWaveformModel", "WaveformInstaller"],
     "src/models/RadioModel.cpp": ["CommandParser", "ProfileLoadCommand", "RadioStatusOwnership", "StreamStatus"],
-    "src/models/RadioModel.h": ["CommandParser", "DaxIqModel", "DaxTxPolicy", "FlexWaveformModel", "PanadapterStream", "RadioConnection", "RadioStatusOwnership", "TunerModel", "WanConnection"],
+    "src/models/RadioModel.h": ["CommandParser", "DaxIqModel", "DaxTxPolicy", "FlexWaveformModel", "PanadapterStream", "RadioConnection", "RadioStatusOwnership", "WanConnection"],
     "src/models/SliceModel.cpp": ["KiwiSdrProtocol"],
     "src/models/TransmitInhibitPolicy.h": ["CommandParser"],
 }
