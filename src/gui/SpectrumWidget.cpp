@@ -866,6 +866,214 @@ QVariantMap SpectrumWidget::panstatsSnapshot(bool reset)
     return m;
 }
 
+QVariantMap SpectrumWidget::automationDssSnapshot() const
+{
+    QVariantMap m;
+    m[QStringLiteral("ok")] = true;
+    m[QStringLiteral("panIndex")] = m_panIndex;
+    m[QStringLiteral("visible")] = isVisible();
+    m[QStringLiteral("kiwiActive")] = m_kiwiSdrWaterfallActive;
+    m[QStringLiteral("live")] = m_wfLive;
+    m[QStringLiteral("centerMhz")] = m_centerMhz;
+    m[QStringLiteral("bandwidthMhz")] = m_bandwidthMhz;
+    m[QStringLiteral("historyOffsetRows")] = m_wfHistoryOffsetRows;
+    m[QStringLiteral("maxHistoryOffsetRows")] = maxWaterfallHistoryOffsetRows();
+    m[QStringLiteral("waterfallRows")] = m_waterfall.height();
+    m[QStringLiteral("waterfallHistoryRows")] = m_wfHistoryRowCount;
+    m[QStringLiteral("waterfallHistoryCapacityRows")] =
+        m_waterfallHistory.isNull() ? 0 : m_waterfallHistory.height();
+    m[QStringLiteral("dssVisibleRows")] = m_dss.rowCount();
+    m[QStringLiteral("dssHistoryRows")] = m_dss.historyRowCount();
+    m[QStringLiteral("dssHistoryCapacityRows")] = m_dss.historyCapacityRows();
+
+    int peakBin = -1;
+    float peakDbm = -1000.0f;
+    if (m_dss.rowCount() > 0) {
+        const float* row = m_dss.rowDataRing(m_dss.headRing());
+        for (int c = 0; c < m_dss.cols(); ++c) {
+            if (peakBin < 0 || row[c] > peakDbm) {
+                peakBin = c;
+                peakDbm = row[c];
+            }
+        }
+    }
+    m[QStringLiteral("dssVisiblePeakBin")] = peakBin;
+    m[QStringLiteral("dssVisiblePeakDbm")] = peakDbm;
+    return m;
+}
+
+QVariantMap SpectrumWidget::automationDssReset(bool kiwiStream)
+{
+    if (!qEnvironmentVariableIsSet("AETHER_AUTOMATION")) {
+        return QVariantMap{
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("error"), QStringLiteral("AETHER_AUTOMATION is not enabled")},
+        };
+    }
+
+    const int desiredWidth = !m_waterfall.isNull()
+        ? m_waterfall.width()
+        : std::max(512, width());
+    const int chromeH = freqScaleH() + DIVIDER_H;
+    const int desiredHeight = !m_waterfall.isNull()
+        ? m_waterfall.height()
+        : std::max(96, static_cast<int>(
+              std::max(160, height() - chromeH) * (1.0f - m_spectrumFrac)));
+
+    m_nativeWaterfallState = WaterfallStreamState{};
+    m_kiwiWaterfallState = WaterfallStreamState{};
+    m_kiwiProfileWaterfallStates.clear();
+    m_kiwiSdrWaterfallAvailable = kiwiStream;
+    m_kiwiSdrWaterfallActive = kiwiStream;
+    resetCurrentWaterfallRowsForSize(
+        QSize(desiredWidth, desiredHeight),
+        QSize(desiredWidth, waterfallHistoryCapacityRows()));
+    clearCurrentWaterfallRows();
+    m_kiwiSdrWaterfallAvailable = kiwiStream;
+    m_kiwiSdrWaterfallActive = kiwiStream;
+    m_hasNativeWaterfall = !kiwiStream;
+    m_lastNativeTileMs = m_hasNativeWaterfall
+        ? QDateTime::currentMSecsSinceEpoch()
+        : 0;
+    m_waterfallFallbackActive = false;
+    m_nextFallbackWaterfallRowMs = 0;
+    m_nativeWaterfallFallbackHoldUntilMs = m_hasNativeWaterfall
+        ? m_lastNativeTileMs + 60'000
+        : 0;
+    m_wfBlankerRingCount = 0;
+    m_wfBlankerRingIdx = 0;
+    m_wfLastGoodRow.clear();
+    resetDssUploadState();
+    update();
+
+    QVariantMap snap = automationDssSnapshot();
+    snap[QStringLiteral("reset")] = true;
+    return snap;
+}
+
+QVariantMap SpectrumWidget::automationDssInjectRows(int count,
+                                                    int firstPeakBin,
+                                                    int stepBin,
+                                                    bool kiwiStream,
+                                                    double rowLowMhz,
+                                                    double rowHighMhz)
+{
+    if (!qEnvironmentVariableIsSet("AETHER_AUTOMATION")) {
+        return QVariantMap{
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("error"), QStringLiteral("AETHER_AUTOMATION is not enabled")},
+        };
+    }
+    if (count <= 0) {
+        return QVariantMap{
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("error"), QStringLiteral("row count must be positive")},
+        };
+    }
+    const int maxRows = waterfallHistoryCapacityRows();
+    if (count > maxRows) {
+        return QVariantMap{
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("error"),
+             QStringLiteral("row count exceeds retained waterfall history capacity")},
+            {QStringLiteral("maxRows"), maxRows},
+        };
+    }
+
+    if (m_waterfall.isNull() || m_waterfall.width() <= 0 || m_waterfall.height() <= 1) {
+        const QVariantMap reset = automationDssReset(kiwiStream);
+        if (!reset.value(QStringLiteral("ok")).toBool()) {
+            return reset;
+        }
+    }
+
+    if (kiwiStream) {
+        setKiwiSdrWaterfallAvailable(true);
+        setKiwiSdrWaterfallActive(true);
+    } else if (m_kiwiSdrWaterfallActive) {
+        setKiwiSdrWaterfallActive(false);
+    }
+
+    const int waterfallHistoryRowsBefore = m_wfHistoryRowCount;
+    const int dssHistoryRowsBefore = m_dss.historyRowCount();
+    const bool hasKiwiFrameOverride =
+        kiwiStream && rowLowMhz >= 0.0 && rowHighMhz > rowLowMhz;
+    const double kiwiRowLowMhz = hasKiwiFrameOverride
+        ? rowLowMhz
+        : m_centerMhz - m_bandwidthMhz * 0.5;
+    const double kiwiRowHighMhz = hasKiwiFrameOverride
+        ? rowHighMhz
+        : m_centerMhz + m_bandwidthMhz * 0.5;
+    for (int i = 0; i < count; ++i) {
+        QVector<float> bins(DssRenderer::kCols, -120.0f);
+        const qint64 peakValue = static_cast<qint64>(firstPeakBin)
+            + static_cast<qint64>(i) * static_cast<qint64>(stepBin);
+        const int peak = static_cast<int>(
+            std::clamp<qint64>(peakValue, 0, DssRenderer::kCols - 1));
+        bins[peak] = -30.0f;
+
+        if (kiwiStream) {
+            updateKiwiSdrWaterfallRow(bins,
+                                      kiwiRowLowMhz,
+                                      kiwiRowHighMhz,
+                                      static_cast<quint32>(i));
+        } else {
+            pushWaterfallRow(bins, m_waterfall.width());
+        }
+    }
+
+    QVariantMap snap = automationDssSnapshot();
+    snap[QStringLiteral("injectedRows")] = count;
+    snap[QStringLiteral("waterfallHistoryRowsBefore")] = waterfallHistoryRowsBefore;
+    snap[QStringLiteral("waterfallHistoryRowsAdded")] =
+        m_wfHistoryRowCount - waterfallHistoryRowsBefore;
+    snap[QStringLiteral("dssHistoryRowsBefore")] = dssHistoryRowsBefore;
+    snap[QStringLiteral("dssHistoryRowsAdded")] =
+        m_dss.historyRowCount() - dssHistoryRowsBefore;
+    snap[QStringLiteral("stream")] = kiwiStream
+        ? QStringLiteral("kiwi")
+        : QStringLiteral("native");
+    if (kiwiStream) {
+        snap[QStringLiteral("rowLowMhz")] = kiwiRowLowMhz;
+        snap[QStringLiteral("rowHighMhz")] = kiwiRowHighMhz;
+        const double viewLowMhz = m_centerMhz - m_bandwidthMhz * 0.5;
+        const double viewHighMhz = m_centerMhz + m_bandwidthMhz * 0.5;
+        const double overlapMhz = std::max(
+            0.0,
+            std::min(kiwiRowHighMhz, viewHighMhz)
+                - std::max(kiwiRowLowMhz, viewLowMhz));
+        snap[QStringLiteral("viewCoverage")] = m_bandwidthMhz > 0.0
+            ? overlapMhz / m_bandwidthMhz
+            : 0.0;
+    }
+    return snap;
+}
+
+QVariantMap SpectrumWidget::automationDssSetScrollback(bool live,
+                                                       int offsetRows)
+{
+    if (!qEnvironmentVariableIsSet("AETHER_AUTOMATION")) {
+        return QVariantMap{
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("error"), QStringLiteral("AETHER_AUTOMATION is not enabled")},
+        };
+    }
+
+    if (live) {
+        setWaterfallLive(true);
+    } else {
+        m_wfLive = false;
+        m_wfHistoryOffsetRows =
+            std::clamp(offsetRows, 0, maxWaterfallHistoryOffsetRows());
+        rebuildWaterfallViewport();
+        markOverlayDirty();
+    }
+
+    QVariantMap snap = automationDssSnapshot();
+    snap[QStringLiteral("scrollbackSet")] = true;
+    return snap;
+}
+
 SpectrumWidget::SpectrumWidget(QWidget* parent)
     : SPECTRUM_BASE_CLASS(parent)
 {
@@ -3204,6 +3412,7 @@ void SpectrumWidget::ensureWaterfallHistory()
     }
 
     if (m_waterfallHistory.size() == desiredSize) {
+        m_dss.setHistoryCapacityRows(desiredSize.height());
         return;
     }
 
@@ -3229,6 +3438,46 @@ void SpectrumWidget::ensureWaterfallHistory()
         m_wfLive = true;
     }
     m_waterfallHistory = newHistory;
+    m_dss.setHistoryCapacityRows(desiredSize.height());
+}
+
+float SpectrumWidget::dssHistoryFallbackDbm() const
+{
+    return m_kiwiSdrWaterfallActive
+        ? kKiwiSdrWaterfallMinDbm
+        : m_refLevel - m_dynamicRange;
+}
+
+void SpectrumWidget::appendDssHistoryRow(const QVector<float>& binsDbm,
+                                         double frameCenterMhz,
+                                         double frameBandwidthMhz)
+{
+    const double stampCenterMhz = (frameCenterMhz > 0.0 && frameBandwidthMhz > 0.0)
+        ? frameCenterMhz
+        : m_centerMhz;
+    const double stampBandwidthMhz = frameBandwidthMhz > 0.0
+        ? frameBandwidthMhz
+        : m_bandwidthMhz;
+    m_dss.appendHistoryRow(binsDbm, stampCenterMhz, stampBandwidthMhz,
+                           dssHistoryFallbackDbm());
+}
+
+void SpectrumWidget::appendDssWaterfallRow(const QVector<float>& binsDbm,
+                                           double frameCenterMhz,
+                                           double frameBandwidthMhz,
+                                           bool updateLiveSurface)
+{
+    // Keep live DSS and retained scrollback DSS on the same waterfall-row cadence.
+    if (m_wfLive && updateLiveSurface) {
+        m_dss.pushRow(binsDbm);
+    }
+    appendDssHistoryRow(binsDbm, frameCenterMhz, frameBandwidthMhz);
+}
+
+void SpectrumWidget::appendLatestDssWaterfallRow(double frameCenterMhz,
+                                                 double frameBandwidthMhz)
+{
+    appendDssWaterfallRow(displaySpectrumBins(), frameCenterMhz, frameBandwidthMhz);
 }
 
 void SpectrumWidget::appendVisibleRow(const QRgb* rowData)
@@ -3427,6 +3676,20 @@ void SpectrumWidget::rebuildWaterfallViewport()
     rebuildWaterfallViewportForFrame(m_centerMhz, m_bandwidthMhz);
 }
 
+void SpectrumWidget::rebuildDssViewportFromHistory()
+{
+    rebuildDssViewportFromHistoryForFrame(m_centerMhz, m_bandwidthMhz);
+}
+
+void SpectrumWidget::rebuildDssViewportFromHistoryForFrame(double centerMhz,
+                                                           double bandwidthMhz)
+{
+    m_dss.rebuildVisibleFromHistory(m_wfHistoryOffsetRows,
+                                    centerMhz, bandwidthMhz,
+                                    dssHistoryFallbackDbm());
+    resetDssUploadState();
+}
+
 void SpectrumWidget::rebuildWaterfallViewportForFrame(double centerMhz,
                                                       double bandwidthMhz)
 {
@@ -3464,6 +3727,9 @@ void SpectrumWidget::rebuildWaterfallViewportForFrame(double centerMhz,
 #endif
     if (PerfTelemetry::instance().enabled())
         PerfTelemetry::instance().recordWaterfallRebuild();
+    if (!m_wfLive) {
+        rebuildDssViewportFromHistoryForFrame(centerMhz, bandwidthMhz);
+    }
     update();
 }
 
@@ -3477,6 +3743,7 @@ void SpectrumWidget::setWaterfallLive(bool live)
     }
     m_wfLive = live;
     rebuildWaterfallViewport();
+    rebuildDssViewportFromHistory();
     markOverlayDirty();
 }
 
@@ -3501,9 +3768,13 @@ void SpectrumWidget::handleWaterfallFrequencyFrameChange(double oldCenterMhz,
         const float dssFallback = kiwiStream
             ? kKiwiSdrWaterfallMinDbm
             : m_refLevel - m_dynamicRange;
-        m_dss.reprojectFrequencyFrame(oldCenterMhz, oldBandwidthMhz,
-                                      newCenterMhz, newBandwidthMhz,
-                                      dssFallback);
+        if (m_wfLive || m_dss.historyRowCount() <= 0) {
+            m_dss.reprojectFrequencyFrame(oldCenterMhz, oldBandwidthMhz,
+                                          newCenterMhz, newBandwidthMhz,
+                                          dssFallback);
+        } else {
+            rebuildDssViewportFromHistoryForFrame(newCenterMhz, newBandwidthMhz);
+        }
         resetDssUploadState();
     };
 
@@ -3639,12 +3910,14 @@ void SpectrumWidget::resetCurrentWaterfallRowsForSize(
         m_wfHistoryTimestamps = QVector<qint64>(desiredHistorySize.height(), 0);
         m_wfHistoryRowCenterMhz = QVector<double>(desiredHistorySize.height(), 0.0);
         m_wfHistoryRowBwMhz = QVector<double>(desiredHistorySize.height(), 0.0);
+        m_dss.setHistoryCapacityRows(desiredHistorySize.height());
     } else {
         m_waterfallHistory = QImage();
         m_waterfallHistoryStreamSizeHint = QSize();
         m_wfHistoryTimestamps.clear();
         m_wfHistoryRowCenterMhz.clear();
         m_wfHistoryRowBwMhz.clear();
+        m_dss.setHistoryCapacityRows(0);
     }
 
     clearCurrentWaterfallRows();
@@ -5088,15 +5361,6 @@ void SpectrumWidget::updateSpectrum(const QVector<float>& binsDbm)
     }
     m_bins = *spectrumBins;
 
-    // Feed the rolling history every frame (not only in 3D) so toggling to 3D
-    // shows a populated surface immediately instead of filling over ~96 frames.
-    // The resample is cheap; the renderer only rebuilds its cache when the 3D
-    // surface is drawn. KiwiSDR feeds via updateKiwiSdrWaterfallRow() instead.
-    // Raw bins (renderer does its own spatial/temporal smoothing + impulse reject).
-    if (!m_kiwiSdrWaterfallActive && !m_bins.isEmpty()) {
-        m_dss.pushRow(m_bins);
-    }
-
     if (!m_kiwiSdrWaterfallActive) {
         // ── Live noise floor measurement (two-pass trimmed mean) ─────────
         // Same technique as the waterfall auto-black: compute the mean of ALL
@@ -5356,6 +5620,7 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
         }
 
         appendHistoryRow(interpolatedRow.constData(), nowMs);
+        appendLatestDssWaterfallRow();
         if (m_wfLive) {
             appendVisibleRow(interpolatedRow.constData());
         } else {
@@ -5604,6 +5869,10 @@ void SpectrumWidget::updateKiwiSdrWaterfallRow(const QVector<float>& binsDbm,
     if (destWidth <= 0) {
         return;
     }
+    const int destHeight = m_waterfall.height();
+    if (destHeight <= 1) {
+        return;
+    }
 
     double rowLowMhz = lowFreqMhz;
     double rowHighMhz = highFreqMhz;
@@ -5614,6 +5883,9 @@ void SpectrumWidget::updateKiwiSdrWaterfallRow(const QVector<float>& binsDbm,
     const double rowBandwidthMhz = rowHighMhz - rowLowMhz;
     const double centerToleranceMhz = std::max(1.0e-9, rowBandwidthMhz * 1.0e-6);
     const double bandwidthToleranceMhz = std::max(1.0e-9, rowBandwidthMhz * 1.0e-6);
+    if (m_kiwiSdrWaterfallActive) {
+        ensureWaterfallHistory();
+    }
     const bool sameWaterfallFrame = m_kiwiSdrLastWaterfallFrameValid
         && std::abs(rowCenterMhz - m_kiwiSdrLastWaterfallCenterMhz) <= centerToleranceMhz
         && std::abs(rowBandwidthMhz - m_kiwiSdrLastWaterfallBandwidthMhz) <= bandwidthToleranceMhz;
@@ -5644,7 +5916,8 @@ void SpectrumWidget::updateKiwiSdrWaterfallRow(const QVector<float>& binsDbm,
     // Keep the trace/3DSS smoothing local to those consumers; the scrolling
     // waterfall below uses decoded bins so narrow Kiwi carriers stay sharp.
     const QVector<float> smoothedBins = smoothKiwiSdrWaterfallBins(binsDbm);
-    if (m_kiwiSdrWaterfallActive && rowHasUsableTraceCoverage) {
+    bool appendedKiwiDssHistory = false;
+    if (m_kiwiSdrWaterfallActive) {
         // 3DSS rows must be in the visible panadapter frequency frame. Raw Kiwi
         // rows often span a wider quantized server window, so feeding them
         // directly makes the stacked trace drift away from the remapped waterfall.
@@ -5652,7 +5925,9 @@ void SpectrumWidget::updateKiwiSdrWaterfallRow(const QVector<float>& binsDbm,
             smoothedBins, DssRenderer::kCols, rowCenterMhz, rowBandwidthMhz,
             m_centerMhz, m_bandwidthMhz, kKiwiSdrWaterfallMinDbm);
         if (!kiwiDssTrace.isEmpty()) {
-            m_dss.pushRow(kiwiDssTrace);
+            appendDssWaterfallRow(kiwiDssTrace, -1.0, -1.0,
+                                  rowHasUsableTraceCoverage);
+            appendedKiwiDssHistory = true;
         }
     }
     if (m_kiwiSdrWaterfallActive && destWidth > 0 && rowHasUsableTraceCoverage) {
@@ -5737,6 +6012,9 @@ void SpectrumWidget::updateKiwiSdrWaterfallRow(const QVector<float>& binsDbm,
                 updateAutoSquelchFromBins(m_kiwiSdrFftTrace);
             }
         }
+    }
+    if (m_kiwiSdrWaterfallActive && !appendedKiwiDssHistory) {
+        appendDssWaterfallRow(QVector<float>{}, -1.0, -1.0, false);
     }
     pushKiwiSdrWaterfallRow(binsDbm, destWidth,
                             rowCenterMhz, rowBandwidthMhz);
@@ -8039,6 +8317,7 @@ void SpectrumWidget::pushWaterfallRow(const QVector<float>& bins, int destWidth,
     }
 
     appendHistoryRow(scanline.constData(), QDateTime::currentMSecsSinceEpoch());
+    appendDssWaterfallRow(bins);
     if (m_wfLive) {
         appendVisibleRow(scanline.constData());
     } else {
