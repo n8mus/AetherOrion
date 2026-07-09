@@ -137,6 +137,7 @@ transmit-gated verbs (refused unless `AETHER_AUTOMATION_ALLOW_TX=1` — see
 | | [`showMenu <target>`](#showmenu-alias-openmenu) | Pop a button's drop-down menu (alias `openMenu`). |
 | | [`contextMenu <target> [x y]`](#contextmenu) | Trigger a custom right-click menu. |
 | | [`hitTest <target> [x y]`](#hittest) | Read Qt's widget owner for a target-local point. |
+| | [`clickAt [<target>] <x> <y>`](#clickat) | Click at a global (or target-local) point — fallback when name matching is ambiguous (TX-guarded). |
 | | [`menu list \| open <name>`](#menu) | Enumerate / pop a menu-bar menu. |
 | | [`resize <w> <h> [target]`](#resize) | Resize a window (drives panadapter `x_pixels`). |
 | | [`window <state> [target]`](#window) | maximize / restore / minimize / fullscreen. |
@@ -856,6 +857,62 @@ owner at the same screen point.
    "childAt":{"class":"VfoWidget",...},
    "widgetAt":{"class":"VfoWidget",...}}
 ```
+
+### `clickAt`
+Synthesize a real left-click (`press`→`release`) at a **point** rather than at a
+named widget. This is the escape hatch for when `invoke`/name matching can't reach
+the control you want — most commonly because several widgets share the same
+`accessibleName` (every side-panel tile's close button is `containerClose`, its
+float toggle `containerFloatToggle`, etc.), so `invoke` can only ever hit the
+**first** match. `dumpTree` reports widget `geometry` in **global (screen)**
+coordinates, so clicking the centre of a tile's dumpTree rect clicks exactly that
+tile's control.
+
+Two forms:
+- **`clickAt <x> <y>`** — `x y` are **global** screen coordinates. The bridge
+  clicks whatever `QApplication::widgetAt(x, y)` resolves (the topmost widget at
+  that point).
+- **`clickAt <target> <x> <y>`** — `x y` are **local** to `<target>` (like
+  `hitTest`); the point must lie inside the target's rect, and the click is
+  routed to the deepest `childAt` that point.
+
+The click is **TX-guarded** like `invoke`, but stricter: the guard walks the
+**whole ancestor chain** of the widget under the point (Qt propagates an
+unaccepted press to parents, so a click on a passive child of a keying control
+must be refused too) and is refused unless `AETHER_AUTOMATION_ALLOW_TX=1` — a
+coordinate click is never a hole around the keying gate. Clicks on the RF/Tune
+power sliders are refused while `AETHER_AUTOMATION_TX_MAX_POWER` is armed (a
+groove click can't be clamped — use `invoke … setValue`, which is). A disabled
+widget under the point is refused (`"disabled":true`), same as `invoke`.
+
+Delivery is deferred one main-loop turn (`"deferred":true`), so any popup/dialog
+it raises runs on a clean stack; follow with `dumpTree`/`grab` to read the
+result. Because the reply is sent **before** delivery, anything already queued
+(a relayout, a pan re-center) can change what that pixel means by the time the
+press lands — re-`dumpTree` right before `clickAt` and don't interleave other
+mutating verbs in between.
+
+In the reply, `localX`/`localY` are local to the widget the click was **routed
+to** (`clicked`) — the deepest child — not to the named `<target>`, so for the
+target-local form they generally differ from the `x y` you sent.
+
+```json
+→ {"cmd":"clickAt","x":1420,"y":210}          // global point (or "value":"1420 210")
+← {"ok":true,"clicked":{"class":"QPushButton","accessibleName":"containerClose",…},
+   "globalX":1420,"globalY":210,"localX":7,"localY":6,"deferred":true}
+
+→ {"cmd":"clickAt","target":"AppletPanel","value":"12 34"}   // point local to a widget
+← {"ok":true,"clicked":{"class":"…"},"globalX":1318,"globalY":97,
+   "localX":5,"localY":3,"deferred":true}     // local to `clicked`, not to AppletPanel
+```
+
+The JSON `x`/`y` fields must both be present and JSON-numeric; a missing or
+string-typed coordinate is rejected rather than coerced to 0 (which would click
+the screen edge).
+
+Recipe — close a **specific** side-panel tile (not just the first `containerClose`):
+read the target tile's `containerClose` rect from `dumpTree`, compute its centre in
+global coordinates, and `clickAt` that point.
 
 ### `menu`
 Enumerate or pop a **menu-bar** menu. On macOS the native menu bar reparents its
