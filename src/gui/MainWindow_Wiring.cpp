@@ -1860,19 +1860,18 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         m_radioModel.sendCommand(
             QString("display pan set %1 center=%2").arg(applet->panId()).arg(center, 0, 'f', 6));
     });
+    // Band/Segment Zoom toggle off the pan's radio-authoritative model state
+    // (togglePanZoomModeForPan) — shared with the keyboard/MIDI shortcuts
+    // (MainWindow_Shortcuts.cpp) and the RC28/FlexControl paths
+    // (MainWindow_Controllers.cpp), and per-pan by construction. This right-click
+    // menu targets THIS applet's pan, not the active slice's. (#4057)
     connect(sw, &SpectrumWidget::bandZoomRequested,
-            this, [this, applet, bandZoomOn = std::make_shared<bool>(false)]() mutable {
-        *bandZoomOn = !*bandZoomOn;
-        m_radioModel.sendCommand(
-            QString("display pan set %1 band_zoom=%2")
-                .arg(applet->panId()).arg(*bandZoomOn ? 1 : 0));
+            this, [this, applet]() {
+        togglePanZoomModeForPan(applet->panId(), /*segmentZoom=*/false);
     });
     connect(sw, &SpectrumWidget::segmentZoomRequested,
-            this, [this, applet, segZoomOn = std::make_shared<bool>(false)]() mutable {
-        *segZoomOn = !*segZoomOn;
-        m_radioModel.sendCommand(
-            QString("display pan set %1 segment_zoom=%2")
-                .arg(applet->panId()).arg(*segZoomOn ? 1 : 0));
+            this, [this, applet]() {
+        togglePanZoomModeForPan(applet->panId(), /*segmentZoom=*/true);
     });
     connect(sw, &SpectrumWidget::filterChangeRequested,
             this, [this](int lo, int hi) {

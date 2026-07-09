@@ -140,6 +140,7 @@ transmit-gated verbs (refused unless `AETHER_AUTOMATION_ALLOW_TX=1` — see
 | | [`menu list \| open <name>`](#menu) | Enumerate / pop a menu-bar menu. |
 | | [`resize <w> <h> [target]`](#resize) | Resize a window (drives panadapter `x_pixels`). |
 | | [`window <state> [target]`](#window) | maximize / restore / minimize / fullscreen. |
+| | [`shortcut <id>`](#shortcut) | Fire a ShortcutManager/MIDI action by id (TX-guarded). |
 | | [`scrollTo <target>`](#scrollto-alias-ensurevisible) | Scroll a widget into its scroll-area viewport. |
 | **State (`get`)** | [`get audio`](#get) | Audio-engine stream/buffer snapshot. |
 | | [`get dsp`](#get-dsp) | Client-side AetherDSP NR state (NR2…BNR). |
@@ -914,6 +915,45 @@ State changes are synchronous (no nested event loop), so the reply's
 `windowState` is authoritative. `resize` and `window` share window-target
 resolution (`topLevelWindowForTarget`): a child `target` resolves to its
 `window()`.
+
+### `shortcut`
+Fire a registered `ShortcutManager` action by id — the **exact** path a MIDI
+controller mapping takes (`fireShortcut` → `action(id)->handler()` in
+`MainWindow_Controllers.cpp`). Many actions carry no default key sequence **and**
+no menu entry — Band Zoom, Segment Zoom, and every MIDI-only trigger — so they're
+otherwise unreachable by `invoke` (no widget), a key event (no `QKeySequence`), or
+`menu` (no menu item). This verb drives them directly. The id is the shortcut's
+registration id (as in the Configure Shortcuts list / MIDI mapping short id), e.g.
+`band_zoom`, `segment_zoom`, `split_toggle`, `filter_widen`.
+
+```json
+→ {"cmd":"shortcut","target":"band_zoom"}
+← {"ok":true,"shortcut":"band_zoom","fired":true}
+```
+
+(JSON form: the id rides the `target` field; a `target` present alongside other
+fields wins.) The handler runs synchronously on the GUI thread. An unknown id
+replies `{"ok":false,"error":"unknown shortcut action id: …"}`.
+
+**`fired:true` means the handler ran, not that anything happened.** Handlers
+validate their own preconditions exactly like a physical MIDI press — no radio
+connection, no active slice, or no resolvable pan is a silent no-op. Assert
+effects through `get`/`dumpTree` (e.g. `get pans` for the zoom actions), not
+from the reply.
+
+**Momentary key actions can't be fired by id.** `ptt_hold` and the CW
+straight-key/paddle ids appear in the Configure Shortcuts list but register
+null handlers on purpose — they're driven by the app-level event filter, which
+needs key **release** edges. The bridge replies with a distinct
+`event-filter-driven` error for these, not `unknown id`.
+
+**TX-safety:** actions registered as transmit-keying (`keysTx` at their
+`registerAction` site — `mox_toggle`, `tune_toggle`, `two_tone_tune`,
+`atu_start`, `ptt_hold`, and the CW key ids) are refused unless
+`AETHER_AUTOMATION_ALLOW_TX=1`, mirroring the [`invoke`](#invoke) /
+[`key`](#key) TX guard. The gate reads the registration flag — one source of
+truth, no bridge-side id list to drift. RX-only actions (the zoom shortcuts
+included) need no flag.
 
 ### `pan`
 Panadapter lifecycle — create or tear down a pan regardless of how it was opened.
