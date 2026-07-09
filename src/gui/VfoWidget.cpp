@@ -4770,7 +4770,7 @@ static const ModeFilterPresets& filterPresetsFor(const QString& mode)
     // From docs/data/vfo_mode_filters.csv — 8 presets per mode, 4x2 grid
     static const ModeFilterPresets usb{{1800, 2100, 2400, 2700, 2900, 3300, 4000, 6000}};
     static const ModeFilterPresets am {{5600, 6000, 8000, 10000, 12000, 14000, 16000, 20000}};
-    static const ModeFilterPresets cw {{50, 100, 250, 400}};
+    static const ModeFilterPresets cw {{50, 100, 250, 400, 500, 600, 800, 1000}};
     static const ModeFilterPresets dig{{100, 300, 600, 1000, 1500, 2000, 3000, 6000}};
     static const ModeFilterPresets rtty{{250, 300, 350, 400, 500, 1000, 1500, 3000}};
     static const ModeFilterPresets dfm{{6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000}};
