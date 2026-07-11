@@ -29,6 +29,20 @@ namespace AetherSDR {
 //     spelling migrated by the now-removed TitleBarSettings helper.
 class DisplaySettings {
 public:
+    // Global panadapter marker overlay preference. Default False preserves the
+    // waterfall as signal history unless the operator opts into the overlay.
+    static bool extendedPassband()
+    {
+        return readObj().value("extendedPassband").toString("False") == "True";
+    }
+
+    static void setExtendedPassband(bool on)
+    {
+        QJsonObject o = readObj();
+        o["extendedPassband"] = on ? QStringLiteral("True") : QStringLiteral("False");
+        write(o);
+    }
+
     // VFO meter view: false = standard S-meter, true = SmartMTR component.
     // Global (not per-slice) — see MeterViewController for the live-broadcast
     // layer that fans this choice out to every open VFO flag.

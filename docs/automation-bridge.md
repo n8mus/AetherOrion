@@ -132,12 +132,11 @@ transmit-gated verbs (refused unless `AETHER_AUTOMATION_ALLOW_TX=1` — see
 | | [`floors`](#floors) | Per-pan measured noise + display floor (dBm). |
 | | [`whoami`](#whoami) | This bridge instance: pid, socket, label, station, `txAllowed`. |
 | **Drive** | [`invoke <target> <action> [v]`](#invoke) | Click/toggle/set/selectRow/submit/trigger a control (TX-guarded). |
-| | [`shortcut <id>`](#shortcut) | Invoke a registered keyboard shortcut action by id. |
 | | [`close <target>`](#close) | Close the target's top-level window. |
 | | [`drag <target> "<dx> <dy>"`](#drag-alias-mouse) | Synthesize press→move→release (alias `mouse`). |
 | | [`showMenu <target>`](#showmenu-alias-openmenu) | Pop a button's drop-down menu (alias `openMenu`). |
 | | [`contextMenu <target> [x y]`](#contextmenu) | Trigger a custom right-click menu. |
-| | [`rightClick <target> [x y]`](#rightclick) | Send a real right-button mouse press/release to a widget. |
+| | [`rightClick <target> [x y]`](#rightclick) | Trigger a mousePressEvent-based right-click menu. |
 | | [`hitTest <target> [x y]`](#hittest) | Read Qt's widget owner for a target-local point. |
 | | [`clickAt [<target>] <x> <y>`](#clickat) | Click at a global (or target-local) point — fallback when name matching is ambiguous (TX-guarded). |
 | | [`menu list \| open <name>`](#menu) | Enumerate / pop a menu-bar menu. |
@@ -918,26 +917,31 @@ handler pops a `QMenu` that runs its own event loop). Returns `deferred:true`;
 ← {"ok":true,"target":"SMeterWidget","class":"SMeterWidget","x":40,"y":12,"deferred":true}
 ```
 
+### `rightClick`
+Trigger a widget path that handles right-clicks directly in `mousePressEvent`,
+rather than through Qt's `contextMenuEvent`/`customContextMenuRequested` policy.
+The panadapter's `SpectrumWidget` menu is the main use case: it is position
+sensitive and built from a real right-button press, so [`contextMenu`](#contextmenu)
+cannot reach it.
+
+```json
+→ {"cmd":"rightClick","target":"Panadapter spectrum display"}
+← {"ok":true,"target":"Panadapter spectrum display","class":"SpectrumWidget",
+   "x":939,"y":735,"deferred":true}
+
+→ {"cmd":"rightClick","target":"Panadapter spectrum display","value":"940 730"}
+← {"ok":true,"target":"Panadapter spectrum display","class":"SpectrumWidget",
+   "x":940,"y":730,"deferred":true}
+```
+
+The verb posts a right-button `MouseButtonPress` onto the GUI event loop with the
+owning window raised, then returns immediately. Follow with `dumpTree` to inspect
+the visible `QMenu`, and `invoke <menu item text> trigger` to choose an action.
+
 Section-title rows (a disabled `QWidgetAction` + `QLabel`, the app's idiom for
 menu headers since `QMenu::addSection` text doesn't render under the app styling)
 serialize with `"type":"header"` and the label's text, so titles are assertable
 instead of blank rows.
-
-### `rightClick`
-Send a real right-button press/release pair to a widget at its center, or at an
-optional target-local `x y` point. Use this for widgets that build their menu
-inside `mousePressEvent` instead of `contextMenuEvent`; `contextMenu` intentionally
-exercises the Qt context-menu path, while `rightClick` exercises the mouse path.
-The gesture is posted onto the GUI event loop with the owning window raised first.
-Returns `deferred:true`; follow with `dumpTree` to inspect any open menu.
-
-```json
-→ {"cmd":"rightClick","target":"SpectrumWidget"}
-← {"ok":true,"target":"SpectrumWidget","class":"SpectrumWidget","x":640,"y":260,"deferred":true}
-
-→ {"cmd":"rightClick","target":"SpectrumWidget","value":"280 180"}
-← {"ok":true,"target":"SpectrumWidget","class":"SpectrumWidget","x":280,"y":180,"deferred":true}
-```
 
 ### `hitTest`
 Read-only Qt hit-test probe for overlay/input-mask regressions. The point is

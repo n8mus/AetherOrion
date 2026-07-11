@@ -156,6 +156,7 @@ def main():
                "  automation_probe.py hover E\n"
                "  automation_probe.py tooltip E\n"
                "  automation_probe.py hitTest SpectrumWidget 80 80\n"
+               "  automation_probe.py rightClick 'Panadapter spectrum display'\n"
                "  automation_probe.py clickAt 1420 210          # global point (dumpTree geometry)\n"
                "  automation_probe.py clickAt AppletPanel 12 34  # point local to a widget\n"
                "  automation_probe.py resize 1600 900\n"
@@ -173,7 +174,7 @@ def main():
                              "connect", "disconnect", "slice", "tune", "shortcut",
                              "actions", "contextMenu", "rightClick", "audioCapture",
                              "record", "testtone", "tci", "panmessage",
-                             "hover", "tooltip", "hitTest", "clickAt", "resize", "dss",
+                             "hover", "tooltip", "hitTest", "rightClick", "clickAt", "resize", "dss",
                              "pan", "layout", "scale"],
                     help="verb to run (default: demo = dumpTree + panadapter grab)")
     ap.add_argument("rest", nargs="*",
@@ -186,6 +187,7 @@ def main():
                          "contextMenu <target> [x y] | "
                          "rightClick <target> [x y] | "
                          "hitTest <target> [x y] | "
+                         "rightClick <target> [x y] | "
                          "clickAt <x> <y> | clickAt <target> <x> <y> | "
                          "resize <w> <h> [target] | "
                          "connect <list|show|hide|local|ip|wait> [args] | "
@@ -257,6 +259,14 @@ def main():
             if not args.rest:
                 sys.exit("error: hitTest needs <target> [x y]")
             req = {"cmd": "hitTest", "target": args.rest[0]}
+            if len(args.rest) > 1:
+                req["value"] = " ".join(args.rest[1:])
+            print(json.dumps(bridge.request(req), indent=2))
+
+        elif args.command == "rightClick":
+            if not args.rest:
+                sys.exit("error: rightClick needs <target> [x y]")
+            req = {"cmd": "rightClick", "target": args.rest[0]}
             if len(args.rest) > 1:
                 req["value"] = " ".join(args.rest[1:])
             print(json.dumps(bridge.request(req), indent=2))
