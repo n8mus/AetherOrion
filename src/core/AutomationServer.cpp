@@ -2370,7 +2370,6 @@ QJsonObject AutomationServer::handleLine(const QByteArray& line, QLocalSocket* s
     }
     if (cmd == QLatin1String("qrz"))
         return doQrz(action.isEmpty() ? QStringLiteral("status") : action, value);
-
     return err(QStringLiteral("unknown command: ") + cmd);
 }
 
