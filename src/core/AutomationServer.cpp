@@ -3256,10 +3256,15 @@ QJsonObject AutomationServer::doGet(const QString& model, const QString& selecto
         // selector filters by pan index or objectName; property "reset"
         // zeroes the counters after the read so successive reads measure
         // disjoint intervals. GUI-header-free: snapshotted via meta-call.
-        const bool reset = property == QLatin1String("reset");
+        const bool reset = property == QLatin1String("reset")
+            || selector == QLatin1String("reset");
+        const QString effectiveSelector = selector == QLatin1String("reset")
+            ? QString() : selector;
         bool selectorIsIndex = false;
-        const int wantIndex = selector.toInt(&selectorIsIndex);
+        const int wantIndex = effectiveSelector.toInt(&selectorIsIndex);
         QJsonArray pans;
+        QVariantMap renderSchedulerStats;
+        bool haveRenderSchedulerStats = false;
         // A floated container is reachable from two top-level roots, so the
         // class walk can yield the same widget twice — dedupe by pointer.
         QSet<QWidget*> seen;
@@ -3269,8 +3274,8 @@ QJsonObject AutomationServer::doGet(const QString& model, const QString& selecto
             if (seen.contains(w))
                 continue;
             seen.insert(w);
-            if (!selector.isEmpty() && !selectorIsIndex
-                && w->objectName() != selector)
+            if (!effectiveSelector.isEmpty() && !selectorIsIndex
+                && w->objectName() != effectiveSelector)
                 continue;
             // Read without resetting first: index filtering needs the
             // snapshot's own panIndex (panIndex() is a plain accessor, not a
@@ -3281,9 +3286,20 @@ QJsonObject AutomationServer::doGet(const QString& model, const QString& selecto
                                            Q_RETURN_ARG(QVariantMap, snap),
                                            Q_ARG(bool, false)))
                 continue;
-            if (!selector.isEmpty() && selectorIsIndex
+            if (!effectiveSelector.isEmpty() && selectorIsIndex
                 && snap.value(QStringLiteral("panIndex")).toInt() != wantIndex)
                 continue;
+            if (!haveRenderSchedulerStats) {
+                QVariantMap schedulerSnap;
+                if (QMetaObject::invokeMethod(w, "renderSchedulerStatsSnapshot",
+                                              Qt::DirectConnection,
+                                              Q_RETURN_ARG(QVariantMap, schedulerSnap),
+                                              Q_ARG(bool, reset && effectiveSelector.isEmpty()))) {
+                    renderSchedulerStats = schedulerSnap;
+                    haveRenderSchedulerStats =
+                        schedulerSnap.value(QStringLiteral("enabled")).toBool();
+                }
+            }
             if (reset) {
                 QVariantMap discard;
                 QMetaObject::invokeMethod(w, "panstatsSnapshot",
@@ -3293,9 +3309,14 @@ QJsonObject AutomationServer::doGet(const QString& model, const QString& selecto
             }
             pans.append(QJsonObject::fromVariantMap(snap));
         }
-        return QJsonObject{{QStringLiteral("ok"), true},
-                           {QStringLiteral("model"), model},
-                           {QStringLiteral("pans"), pans}};
+        QJsonObject out{{QStringLiteral("ok"), true},
+                        {QStringLiteral("model"), model},
+                        {QStringLiteral("pans"), pans}};
+        if (haveRenderSchedulerStats) {   // only when a scheduler is actually present
+            out[QStringLiteral("renderScheduler")] =
+                QJsonObject::fromVariantMap(renderSchedulerStats);
+        }
+        return out;
     }
     if (model == QLatin1String("tracedebug")) {
         // Per-panadapter trace/floor state from SpectrumWidget. This keeps the

@@ -1,5 +1,6 @@
 #include "SpectrumWidget.h"
 #include "KiwiSdrTraceMath.h"
+#include "PanadapterRenderScheduler.h"
 #include "PanadapterMessageOverlay.h"
 #include "SpectrumOverlayMenu.h"
 #include "VfoWidget.h"
@@ -824,6 +825,17 @@ QString SpectrumWidget::rendererDescription() const
 #endif
 }
 
+void SpectrumWidget::setRenderScheduler(PanadapterRenderScheduler* scheduler)
+{
+    if (m_renderScheduler == scheduler) {
+        return;
+    }
+
+    m_renderScheduler = scheduler;
+    m_presentPending = false;
+    m_presentCoalesceClock.invalidate();
+}
+
 QVariantMap SpectrumWidget::automationRhiSnapshot() const
 {
     QVariantMap m;
@@ -905,6 +917,17 @@ QVariantMap SpectrumWidget::panstatsSnapshot(bool reset)
     if (reset)
         m_panStats.reset();
     return m;
+}
+
+QVariantMap SpectrumWidget::renderSchedulerStatsSnapshot(bool reset)
+{
+    if (!m_renderScheduler) {
+        QVariantMap stats;
+        stats[QStringLiteral("enabled")] = false;
+        return stats;
+    }
+
+    return m_renderScheduler->statsSnapshot(reset);
 }
 
 QVariantMap SpectrumWidget::automationDssSnapshot() const
@@ -8279,6 +8302,15 @@ void SpectrumWidget::coalescedUpdate()
     // input latency is unaffected. No frame is dropped — a trailing update
     // presents whatever arrived inside the slot.
     const int slotMs = kPresentCoalesceMs;
+    if (m_renderScheduler) {
+        // Delegate to the shared cross-pan scheduler, which coalesces update()
+        // across all panes into batched flushes instead of each pane pacing its
+        // own present. Note the scheduler shares one present clock across panes,
+        // so a pane's first frame after idle can trail another pane's present by
+        // up to one slot (bounded, no frame lost). (#4139)
+        m_renderScheduler->requestDataFrame(this, slotMs);
+        return;
+    }
     if (!m_presentCoalesceClock.isValid()) {
         m_presentCoalesceClock.start();
         update();

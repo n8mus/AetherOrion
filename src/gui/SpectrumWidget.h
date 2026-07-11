@@ -6,6 +6,7 @@
 #include <QWidget>
 #include <QPushButton>
 #include <QVector>
+#include <QPointer>
 #include <QMap>
 #include <QImage>
 #include <QColor>
@@ -32,6 +33,7 @@ namespace AetherSDR {
 
 class SpectrumOverlayMenu;
 class VfoWidget;
+class PanadapterRenderScheduler;
 struct PanadapterOverlayMessage;
 class PanadapterMessageOverlay;
 
@@ -121,6 +123,7 @@ public:
     void prepareForTopLevelChange(); // unregister QRhiWidget from the current backing-store QRhi
     void prepareForShutdown(); // tear down QRhi/native resources before QWidget backing store destruction
     QString rendererDescription() const;
+    void setRenderScheduler(PanadapterRenderScheduler* scheduler);
     // macOS: whether the pan gets its own native NSView (historical default —
     // #714). AETHER_PAN_NO_NATIVE_WINDOW=1 opts out to validate the cheaper
     // composited path (no per-present raster flushSubWindow blend).
@@ -134,6 +137,7 @@ public:
     // plus a cause breakdown of static-overlay rebuilds. `reset` zeroes the
     // counters after the read so successive reads measure disjoint intervals.
     Q_INVOKABLE QVariantMap panstatsSnapshot(bool reset);
+    Q_INVOKABLE QVariantMap renderSchedulerStatsSnapshot(bool reset);
     // QRhiWidget surface geometry for `get rhi`: widget size, devicePixelRatio,
     // and (on GPU builds) the pinned fixedColorBufferSize so automation can
     // assert it stays even-aligned under a fractional QT_SCALE_FACTOR (#4091).
@@ -1259,6 +1263,9 @@ private:
     // fires at the slot edge) while capping flushes at ~60/s.
     static constexpr int kPresentCoalesceMs = 16;
     bool m_presentPending{false};           // trailing update scheduled
+    // Shared cross-pan repaint coalescer (owned by PanadapterStack). QPointer so
+    // a teardown reorder can't leave a dangling scheduler here. (#4139)
+    QPointer<PanadapterRenderScheduler> m_renderScheduler;
     void coalescedUpdate();                 // update(), coalesced into one present per slot
     // VFO passband drag state (#404)
     bool m_draggingVfo{false};

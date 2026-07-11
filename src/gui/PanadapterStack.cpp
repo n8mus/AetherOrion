@@ -2,6 +2,7 @@
 #include "BandStackPanel.h"
 #include "PanFloatingWindow.h"
 #include "PanadapterApplet.h"
+#include "PanadapterRenderScheduler.h"
 #include "SpectrumWidget.h"
 #include "core/AppSettings.h"
 
@@ -69,6 +70,8 @@ QString defaultDockedLayoutForCount(int panCount)
 PanadapterStack::PanadapterStack(QWidget* parent)
     : QWidget(parent)
 {
+    m_renderScheduler = new PanadapterRenderScheduler(this);
+
     auto* hbox = new QHBoxLayout(this);
     hbox->setContentsMargins(0, 0, 0, 0);
     hbox->setSpacing(0);
@@ -109,6 +112,7 @@ PanadapterApplet* PanadapterStack::addPanadapter(const QString& panId)
         ++panIndex;
     }
     applet->spectrumWidget()->setPanIndex(panIndex);
+    applet->spectrumWidget()->setRenderScheduler(m_renderScheduler);
     applet->spectrumWidget()->loadSettings();
     m_splitter->addWidget(applet);
 
