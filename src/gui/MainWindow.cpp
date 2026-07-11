@@ -213,6 +213,7 @@
 #include <QToolTip>
 #include <QMediaDevices>
 #include "core/AppSettings.h"
+#include "core/AutomationServer.h"
 #include "core/SpotCommandPolicy.h"
 #include "core/SpotModeResolver.h"
 #ifdef HAVE_RADE
@@ -2640,6 +2641,22 @@ void MainWindow::wireRadioSetupDialogSignals(RadioSetupDialog* dlg, const QStrin
     if (!dlg) return;
     connect(dlg, &RadioSetupDialog::txBandSettingsRequested,
             m_txBandAction, &QAction::trigger);
+    // Agent automation bridge toggle (#3646). The dialog already persisted
+    // AutomationBridgeEnabled; here we act on it live. AETHER_AUTOMATION
+    // force-enables at launch and the dialog disables the toggle in that
+    // case, so a stop request can't arrive for an env-forced bridge.
+    connect(dlg, &RadioSetupDialog::automationBridgeToggled, this, [this](bool on) {
+        if (on) {
+            if (!startAutomationBridge())
+                qWarning() << "automation bridge failed to start (socket in use?)";
+        } else {
+            stopAutomationBridge();
+        }
+    });
+    connect(dlg, &RadioSetupDialog::automationBridgeTokenRotated, this,
+            [this](const QString& tok) { setAutomationBridgeToken(tok); });
+    connect(dlg, &RadioSetupDialog::automationBridgeTxAllowedChanged, this,
+            [this](bool allowed) { setAutomationTxAllowed(allowed); });
     // serialSettingsChanged is the "external-device settings changed" signal in
     // practice — the dialog emits it for serial-port, FlexControl, Ulanzi-dial,
     // and HID-encoder edits. The Ulanzi/HID branches below run regardless of
@@ -3349,6 +3366,13 @@ QJsonObject MainWindow::automationTxTimerSnapshot() const
                            {QStringLiteral("running"), false}};
     return QJsonObject::fromVariantMap(m_titleBar->txTimerState());
 }
+
+// The agent automation-bridge lifecycle (startAutomationBridge / stop /
+// isRunning / endpoint / setAutomationBridgeToken / setAutomationTxAllowed)
+// lives in MainWindow_Session.cpp with the rest of the session/subsystem
+// wiring — not in this monolith. automationTxTimerSnapshot above is the
+// per-frame status accessor and stays here with the other automation*
+// snapshot accessors.
 
 void MainWindow::showConnectionDialog()
 {

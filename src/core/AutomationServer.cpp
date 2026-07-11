@@ -1791,15 +1791,18 @@ bool AutomationServer::start(const QString& serverName)
         m_discoveryFile.clear();
     }
 
-    // TX safety rails (#3646): when the operator has enabled transmit
-    // automation, arm a watchdog that force-unkeys the radio if it stays keyed
-    // past a limit — a backstop independent of whatever script is driving us.
+    // TX safety rails (#3646): the watchdog force-unkeys the radio if it stays
+    // keyed past a limit — a backstop independent of whatever script drives us.
+    // Read the key-time / power-ceiling limits UNCONDITIONALLY so they also
+    // apply when TX is enabled later via the GUI toggle (setTxAllowed) — they
+    // are watchdog policy, not an env-only feature. Only the watchdog *arming*
+    // is gated on TX actually being allowed.
+    if (qEnvironmentVariableIsSet("AETHER_AUTOMATION_TX_MAX_MS"))
+        m_txMaxKeyMs = qEnvironmentVariableIntValue("AETHER_AUTOMATION_TX_MAX_MS");
+    if (qEnvironmentVariableIsSet("AETHER_AUTOMATION_TX_MAX_POWER"))
+        m_txMaxPower = qEnvironmentVariableIntValue("AETHER_AUTOMATION_TX_MAX_POWER");
     m_txAllowed = qEnvironmentVariableIsSet("AETHER_AUTOMATION_ALLOW_TX");
     if (m_txAllowed) {
-        if (qEnvironmentVariableIsSet("AETHER_AUTOMATION_TX_MAX_MS"))
-            m_txMaxKeyMs = qEnvironmentVariableIntValue("AETHER_AUTOMATION_TX_MAX_MS");
-        if (qEnvironmentVariableIsSet("AETHER_AUTOMATION_TX_MAX_POWER"))
-            m_txMaxPower = qEnvironmentVariableIntValue("AETHER_AUTOMATION_TX_MAX_POWER");
         m_txWatchdog = new QTimer(this);
         m_txWatchdog->setInterval(500);
         connect(m_txWatchdog, &QTimer::timeout, this, &AutomationServer::onTxWatchdog);
@@ -1938,6 +1941,39 @@ void AutomationServer::stop()
     }
 }
 
+void AutomationServer::setTxAllowed(bool allowed)
+{
+    if (m_txAllowed == allowed)
+        return;  // idempotent
+    m_txAllowed = allowed;
+    if (allowed) {
+        // Arm the force-unkey watchdog (mirrors the start()-time arming). The
+        // TX_MAX_MS / TX_MAX_POWER limits are read unconditionally in start(),
+        // so the same key-time and power-ceiling policy applies on this GUI
+        // path as on the env path.
+        if (!m_txWatchdog) {
+            m_txWatchdog = new QTimer(this);
+            m_txWatchdog->setInterval(500);
+            connect(m_txWatchdog, &QTimer::timeout, this, &AutomationServer::onTxWatchdog);
+            m_txWatchdog->start();
+        }
+        qCInfo(lcAutomation).noquote()
+            << "TX automation ENABLED by operator — watchdog max key"
+            << m_txMaxKeyMs << "ms, power ceiling"
+            << (m_txMaxPower < 0 ? QStringLiteral("none") : QString::number(m_txMaxPower));
+    } else {
+        // Disabling: never leave the radio keyed by a script mid-transmit,
+        // then disarm the watchdog. forceUnkey is a safe no-op if not keyed.
+        forceUnkey("TX automation disabled by operator");
+        if (m_txWatchdog) {
+            m_txWatchdog->stop();
+            m_txWatchdog->deleteLater();
+            m_txWatchdog = nullptr;
+        }
+        qCInfo(lcAutomation).noquote() << "TX automation DISABLED by operator";
+    }
+}
+
 bool AutomationServer::isRunning() const
 {
     return m_server && m_server->isListening();
@@ -2057,6 +2093,7 @@ void AutomationServer::onDisconnected()
 struct AutomationServer::VerbArgs {
     QString target, path, action, value, model, selector, property;
     QString id, title, detail, tone;
+    QString token;                       // shared-secret auth (#3646); JSON `token` field
     int timeoutMs{0};
 };
 
@@ -2162,13 +2199,14 @@ const std::vector<AutomationServer::VerbSpec>& AutomationServer::verbRegistry()
                          std::move(parse), std::move(dispatch)});
         };
 
-        add("ping", {}, "liveness check → app + version",
+        add("ping", {}, "liveness check → app + version + whether a token is required",
             parseNothing,
-            [](AutomationServer&, A&, QLocalSocket*) {
+            [](AutomationServer& self, A&, QLocalSocket*) {
                 return QJsonObject{
                     {QStringLiteral("ok"), true},
                     {QStringLiteral("app"), QStringLiteral("AetherSDR")},
                     {QStringLiteral("version"), QCoreApplication::applicationVersion()},
+                    {QStringLiteral("authRequired"), !self.m_authToken.isEmpty()},
                 };
             });
 
@@ -2701,6 +2739,7 @@ QJsonObject AutomationServer::handleLine(const QByteArray& line, QLocalSocket* s
         a.title    = obj.value(QStringLiteral("title")).toString();
         a.detail   = obj.value(QStringLiteral("detail")).toString();
         a.tone     = obj.value(QStringLiteral("tone")).toString();
+        a.token    = obj.value(QStringLiteral("token")).toString();
         a.timeoutMs = obj.value(QStringLiteral("timeoutMs")).toInt(0);
         // clickAt accepts numeric x/y fields directly (dumpTree geometry is
         // global), folded into `value` as "x y" so both request forms share one
@@ -2737,6 +2776,37 @@ QJsonObject AutomationServer::handleLine(const QByteArray& line, QLocalSocket* s
     const VerbSpec* spec = findVerb(cmd);
     if (!spec)
         return err(QStringLiteral("unknown command: ") + cmd);
+
+    // Shared-secret gate (#3646). When a token is configured, every verb
+    // except `ping` must present a matching `token` field. The Unix socket /
+    // named pipe only enforces same-user access; the token is what stops a
+    // *different* local process (a stray agent) from driving the radio once
+    // the operator has opted a specific client in via Radio Setup -> Network.
+    // ping stays open (see its registry entry, which reports authRequired) so
+    // a client can detect the bridge without holding the secret. Constant-time
+    // compare so a wrong token leaks no length/prefix timing signal.
+    if (!m_authToken.isEmpty() && cmd != QLatin1String("ping")) {
+        const QByteArray want = m_authToken.toUtf8();
+        const QByteArray got = a.token.toUtf8();
+        // Never index `got` out of range — when it's shorter (or empty),
+        // substitute a zero byte rather than reading got[0], which segfaults
+        // on an empty QByteArray.
+        int diff = static_cast<int>(want.size() ^ got.size());
+        for (int i = 0; i < want.size(); ++i) {
+            const char g = (i < got.size()) ? got.at(i) : char(0);
+            diff |= want.at(i) ^ g;
+        }
+        if (diff != 0) {
+            qCWarning(lcAutomation)
+                << "rejected unauthenticated request:" << cmd
+                << "(missing or invalid token)";
+            return err(QStringLiteral(
+                "unauthorized: this bridge requires a token. Set AETHER_MCP_TOKEN "
+                "in your MCP client from Radio Setup -> Network -> Agent "
+                "Automation."));
+        }
+    }
+
     return spec->dispatch(*this, a, sock);
 }
 
@@ -3017,13 +3087,13 @@ QJsonObject AutomationServer::doInvoke(const QString& target, const QString& act
             return err(QStringLiteral("action '") + target + QStringLiteral("' is disabled"));
         }
 
-        if (isTransmitAction(menuAction, menu)
-            && !qEnvironmentVariableIsSet("AETHER_AUTOMATION_ALLOW_TX")) {
+        if (isTransmitAction(menuAction, menu) && !m_txAllowed) {
             qCWarning(lcAutomation).noquote()
                 << "BLOCKED transmit-related QAction invoke on" << target;
             return err(QStringLiteral("blocked: '") + target
                        + QStringLiteral("' is a transmit-keying action (TX-safety guard). "
-                                        "Set AETHER_AUTOMATION_ALLOW_TX=1 to override."));
+                                        "Enable \"Allow TX via MCP\" in Radio Setup → Network "
+                                        "(or set AETHER_AUTOMATION_ALLOW_TX=1) to override."));
         }
 
         QPointer<QAction> actionGuard = menuAction;
@@ -3125,14 +3195,14 @@ QJsonObject AutomationServer::doInvoke(const QString& target, const QString& act
 
     // TX-safety guard — never key a live radio from the test bridge unless the
     // operator has explicitly opted in. (#3646 Phase 1 safety requirement.)
-    if (isTransmitControl(w)
-        && !qEnvironmentVariableIsSet("AETHER_AUTOMATION_ALLOW_TX")) {
+    if (isTransmitControl(w) && !m_txAllowed) {
         qCWarning(lcAutomation).noquote()
             << "BLOCKED transmit-related invoke on" << target
             << "(" << shortClassName(w) << ")";
         return err(QStringLiteral("blocked: '") + target
                    + QStringLiteral("' is a transmit-keying control (TX-safety guard). "
-                                    "Set AETHER_AUTOMATION_ALLOW_TX=1 to override."));
+                                    "Enable \"Allow TX via MCP\" in Radio Setup → Network "
+                                    "(or set AETHER_AUTOMATION_ALLOW_TX=1) to override."));
     }
 
     // Power-ceiling rail (#3646): clamp RF/Tune power setpoints to the
@@ -4880,7 +4950,7 @@ QJsonObject AutomationServer::doShortcut(const QString& id) const
         return err(QStringLiteral("no main window to dispatch shortcut"));
     }
 
-    const bool allowTx = qEnvironmentVariableIsSet("AETHER_AUTOMATION_ALLOW_TX");
+    const bool allowTx = m_txAllowed;
     int result = -1;
     const bool invoked = QMetaObject::invokeMethod(
         mw, "fireShortcutAction", Qt::DirectConnection,
@@ -5650,7 +5720,7 @@ QJsonObject AutomationServer::doClickAt(const QString& target,
     // ancestor chain (see the function comment): an unaccepted press propagates
     // to parents, so every widget Qt could deliver this click to must pass.
     // (#3646 safety.)
-    if (!qEnvironmentVariableIsSet("AETHER_AUTOMATION_ALLOW_TX")) {
+    if (!m_txAllowed) {
         for (const QWidget* p = w; p; p = p->parentWidget()) {
             if (!isTransmitControl(p)) {
                 continue;
@@ -5662,8 +5732,9 @@ QJsonObject AutomationServer::doClickAt(const QString& target,
             return err(QStringLiteral("blocked: point resolves into '")
                        + shortClassName(p)
                        + QStringLiteral("', a transmit-keying control (TX-safety "
-                                        "guard). Set AETHER_AUTOMATION_ALLOW_TX=1 "
-                                        "to override."));
+                                        "guard). Enable \"Allow TX via MCP\" in Radio "
+                                        "Setup → Network (or set "
+                                        "AETHER_AUTOMATION_ALLOW_TX=1) to override."));
         }
     }
 

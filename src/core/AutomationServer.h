@@ -271,6 +271,24 @@ public:
         m_txTimerSnapshotHandler = std::move(handler);
     }
 
+    // Shared-secret auth (#3646). When set to a non-empty token, every verb
+    // except `ping` must carry a matching `token` field or it's rejected —
+    // so a random local process that can open the socket still can't drive
+    // the radio. Empty (the default) means no auth, preserving the original
+    // open-socket behavior for headless/CI use. Safe to call while running
+    // (the Radio Setup → Network rotate button does exactly that); it takes
+    // effect on the next request.
+    void setAuthToken(const QString& token) { m_authToken = token; }
+    QString authToken() const { return m_authToken; }
+
+    // Runtime TX-automation gate (#3646). Mirrors AETHER_AUTOMATION_ALLOW_TX
+    // but operator-driven from Radio Setup → Network. Enabling arms the
+    // force-unkey watchdog; disabling force-unkeys immediately and disarms it.
+    // The env var still force-enables at start(); this lets the GUI toggle it
+    // live on a running bridge. Idempotent.
+    void setTxAllowed(bool allowed);
+    bool txAllowed() const { return m_txAllowed; }
+
 private slots:
     void onNewConnection();
     void onReadyRead();
@@ -570,6 +588,7 @@ private:
     int     m_txMaxKeyMs{20000};   // max continuous key time before force-unkey
     int     m_txMaxPower{-1};      // power-ceiling clamp for invoke (-1 = off)
     bool    m_txAllowed{false};    // AETHER_AUTOMATION_ALLOW_TX at start()
+    QString m_authToken;           // shared-secret gate; empty = open (#3646)
     // Log/event channel (#3646 observability suite). The tap fills m_logRing
     // from arbitrary logging threads; the main thread reads it for tail/drain.
     struct LogEvent {

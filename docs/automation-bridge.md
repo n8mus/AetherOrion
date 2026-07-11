@@ -84,6 +84,69 @@ QT_QPA_PLATFORM=offscreen AETHER_AUTOMATION=1 AETHER_AUTOMATION_NO_AUTOCONNECT=1
 
 ---
 
+## MCP server — drive the bridge from any AI assistant
+
+`tools/aether_mcp.py` wraps this bridge in the Model Context Protocol, so
+an MCP-capable coding assistant (Claude Code, Cursor, Copilot, Codex CLI,
+Gemini CLI, …) can validate your PR against the running app natively —
+no socket scripting required. This is the recommended way for
+contributors to self-verify UI changes before requesting review.
+
+**Setup** (zero dependencies — plain Python 3):
+
+1. Launch the app with the bridge on: `AETHER_AUTOMATION=1 ./build/AetherSDR`
+2. Register the server with your assistant:
+   - **Claude Code**: nothing to do — the repo's `.mcp.json` registers it;
+     approve the prompt on first use. (Manual: `claude mcp add aethersdr
+     -- python3 tools/aether_mcp.py`)
+   - **Cursor / Windsurf / others**: add to your MCP config:
+     ```json
+     {"mcpServers": {"aethersdr-automation": {
+        "command": "python3", "args": ["tools/aether_mcp.py"]}}}
+     ```
+   - **Windows**: use `python` (or `py -3`) instead of `python3`.
+
+**Tools exposed**: `bridge_status` (is the app up? which instance?),
+`dump_tree` (widget tree, with a `filter` arg to prune), `grab_widget`
+(PNG screenshot, returned inline to the model), `invoke` (click/toggle/
+setValue/…), `get_state` (`get` model snapshots), `shortcut`, and
+`bridge_command` (raw escape hatch to every other verb below).
+
+A typical assistant validation loop for a PR:
+`bridge_status` → `dump_tree filter=<your widget>` → `invoke` the
+control you changed → `get_state` to assert the model reacted →
+`grab_widget` for a visual check.
+
+**Access token.** Enabling the bridge in Radio Setup → Network mints a
+random token (stored in your OS secret store via QtKeychain — macOS
+Keychain / Windows Credential Manager / libsecret-KWallet, never in the
+plaintext settings file). Copy it into your assistant's MCP config as the
+`AETHER_MCP_TOKEN` environment variable; the bridge then rejects every
+verb except `ping` without a matching token. Headless/CI can supply the
+token via `AETHER_MCP_TOKEN` directly, which overrides the keychain.
+
+What the token *does* and *doesn't* do: it opts a **specific** client in
+and protects the secret at rest (nothing in a backed-up / synced /
+screen-shared dotfile), across other user accounts, and over any network
+reach. It is **not** a hard wall against a determined *same-user* process
+on Linux/Windows — once your login keychain is unlocked, libsecret and
+DPAPI hand the secret to any same-user caller (macOS, with its per-item
+ACL prompt, is the exception). Treat it as "this app deliberately grants
+this client access," not "same-user isolation."
+
+The TX-safety gate is unchanged in spirit: the bridge refuses transmit-
+keying controls regardless of who's calling (see [TX safety](#tx-safety)).
+An assistant can only key your radio if **you** opt in — either by
+launching with `AETHER_AUTOMATION_ALLOW_TX=1`, or by checking **"Allow
+TX via MCP"** in Radio Setup → Network. That checkbox raises a one-time
+confirmation spelling out that automated software will be able to
+transmit and that you, the operator, remain responsible for all
+emissions; once confirmed the choice persists. Toggling it drives the
+same `m_txAllowed` gate live (enabling arms the force-unkey watchdog;
+disabling force-unkeys immediately).
+
+---
+
 ## How it works (the contract)
 
 - **Transport:** a `QLocalServer` — an `AF_UNIX` socket on macOS/Linux, a named
