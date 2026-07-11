@@ -351,6 +351,14 @@ QJsonObject describeWidget(const QWidget* w)
             o[QStringLiteral("sliceId")] = sliceId.toInt();
         }
     }
+    {
+        const QVariant centerLockSliceId = w->property("centerLockSliceId");
+        if (centerLockSliceId.isValid()) {
+            o[QStringLiteral("centerLockSliceId")] = centerLockSliceId.toInt();
+            o[QStringLiteral("centerMhz")] = w->property("centerMhz").toDouble();
+            o[QStringLiteral("bandwidthMhz")] = w->property("bandwidthMhz").toDouble();
+        }
+    }
 
     // Surface the spectrum's measured FFT noise floor (dBm) when a widget
     // exposes it as a Q_PROPERTY (SpectrumWidget). Read generically via the
@@ -1214,6 +1222,10 @@ QJsonObject sliceSnapshot(const SliceModel* s)
         {QStringLiteral("audioGain"),  s->audioGain()},
         {QStringLiteral("audioPan"),   s->audioPan()},
         {QStringLiteral("locked"),     s->isLocked()},
+        {QStringLiteral("diversity"),  s->diversity()},
+        {QStringLiteral("diversityParent"), s->isDiversityParent()},
+        {QStringLiteral("diversityChild"), s->isDiversityChild()},
+        {QStringLiteral("diversityIndex"), s->diversityIndex()},
         {QStringLiteral("nb"),         s->nbOn()},
         {QStringLiteral("nbLevel"),    s->nbLevel()},
         {QStringLiteral("nr"),         s->nrOn()},
@@ -1814,7 +1826,7 @@ bool AutomationServer::start(const QString& serverName)
         << "automation bridge listening on" << fullServerName()
         << "(verbs: ping, dumpTree, floors, grab, grab pan, grab pan-visible, invoke, get, connect, disconnect,"
         << "txtest, atu, slice, tune, pan, layout, scale, panmessage, streams, audioCapture, txwaterfall, key, cwx, station, resize,"
-        << "menu, close, drag, hover, tooltip, showMenu, contextMenu, hitTest, clickAt, shortcut, whoami, log, mark)";
+        << "menu, close, drag, hover, tooltip, showMenu, contextMenu, rightClick, hitTest, clickAt, shortcut, whoami, log, mark)";
     return true;
 }
 
@@ -2236,9 +2248,10 @@ QJsonObject AutomationServer::handleLine(const QByteArray& line, QLocalSocket* s
                 }
                 value = rest.join(QLatin1Char(' '));
             }
-        } else if (cmd == QLatin1String("contextMenu")) {
+        } else if (cmd == QLatin1String("contextMenu")
+                   || cmd == QLatin1String("rightClick")) {
             target = tok(1);
-            value = tok(2) + QLatin1Char(' ') + tok(3);  // "contextMenu SMeterWidget [x y]"
+            value = tok(2) + QLatin1Char(' ') + tok(3);  // "contextMenu/rightClick SMeterWidget [x y]"
         } else {  // whoami and friends
             target = tok(1); path = tok(2);
         }
@@ -2301,6 +2314,12 @@ QJsonObject AutomationServer::handleLine(const QByteArray& line, QLocalSocket* s
         if (target.isEmpty())
             return err(QStringLiteral("contextMenu requires a target widget"));
         return doContextMenu(target, value);
+    }
+    if (cmd == QLatin1String("rightClick")) {
+        if (target.isEmpty()) {
+            return err(QStringLiteral("rightClick requires a target widget"));
+        }
+        return doRightClick(target, value);
     }
     if (cmd == QLatin1String("hitTest") || cmd == QLatin1String("hittest")) {
         if (target.isEmpty())
@@ -4071,6 +4090,56 @@ QJsonObject AutomationServer::doSlice(const QString& action, const QString& arg)
         return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("slice"), QStringLiteral("tx")},
                            {QStringLiteral("id"), id}, {QStringLiteral("requested"), true}};
     }
+    if (action == QLatin1String("diversity")) {
+        const QStringList parts = arg.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (parts.size() != 2) {
+            return err(QStringLiteral("slice diversity requires '<slice-id> <on|off>'"));
+        }
+        bool okId = false;
+        const int id = parts.at(0).toInt(&okId);
+        SliceModel* slice = okId ? radio->slice(id) : nullptr;
+        if (!slice) {
+            return err(QStringLiteral("slice diversity requires a valid slice id"));
+        }
+        const QString state = parts.at(1).trimmed().toLower();
+        const bool validState = state == QLatin1String("1")
+            || state == QLatin1String("true") || state == QLatin1String("on")
+            || state == QLatin1String("0") || state == QLatin1String("false")
+            || state == QLatin1String("off");
+        if (!validState) {
+            return err(QStringLiteral("slice diversity state must be on or off"));
+        }
+        const bool enabled = parseBool(state);
+        slice->setDiversity(enabled);
+        return QJsonObject{{QStringLiteral("ok"), true},
+                           {QStringLiteral("slice"), QStringLiteral("diversity")},
+                           {QStringLiteral("id"), id},
+                           {QStringLiteral("enabled"), enabled},
+                           {QStringLiteral("requested"), true}};
+    }
+    if (action == QLatin1String("centerlock")) {
+        const QStringList parts = arg.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (parts.size() != 2) {
+            return err(QStringLiteral("slice centerlock requires '<slice-id> <on|off>'"));
+        }
+        bool okId = false;
+        const int id = parts.at(0).toInt(&okId);
+        if (!okId || !radio->slice(id)) {
+            return err(QStringLiteral("slice centerlock requires a valid slice id"));
+        }
+        const QString state = parts.at(1).trimmed().toLower();
+        const bool validState = state == QLatin1String("1")
+            || state == QLatin1String("true") || state == QLatin1String("on")
+            || state == QLatin1String("0") || state == QLatin1String("false")
+            || state == QLatin1String("off");
+        if (!validState) {
+            return err(QStringLiteral("slice centerlock state must be on or off"));
+        }
+        if (!m_sliceCenterLockHandler) {
+            return err(QStringLiteral("slice centerlock handler is unavailable"));
+        }
+        return m_sliceCenterLockHandler(id, parseBool(state));
+    }
     if (action == QLatin1String("txant") || action == QLatin1String("rxant")) {
         // Set the transmit/receive antenna port deterministically. The GUI
         // controls are QMenu::exec() popups an invoke() can't drive without
@@ -4149,7 +4218,8 @@ QJsonObject AutomationServer::doSlice(const QString& action, const QString& arg)
                            {QStringLiteral("sliceCount"), radio->slices().size()}};
     }
     return err(QStringLiteral("unknown slice action: ") + action
-               + QStringLiteral(" (add|remove|select|tx|txant|rxant|rxsource|fixture|clearfixture)"));
+               + QStringLiteral(" (add|remove|select|tx|diversity|centerlock|"
+                                "txant|rxant|rxsource|fixture|clearfixture)"));
 }
 
 // ── VFO tuning (#3646) ──────────────────────────────────────────────────────
@@ -4163,6 +4233,10 @@ QJsonObject AutomationServer::doTune(const QString& value)
     const double mhz = value.toDouble(&okF);
     if (!okF || mhz <= 0)
         return err(QStringLiteral("tune requires a positive frequency in MHz"));
+
+    if (m_tuneHandler) {
+        return m_tuneHandler(mhz);
+    }
 
     SliceModel* s = nullptr;
     for (SliceModel* c : m_radioModel->slices())
@@ -5017,7 +5091,10 @@ QJsonObject AutomationServer::doContextMenu(const QString& target,
     // where a position-insensitive handler expects the menu anchored.
     QPoint local = w->rect().center();
     const QStringList parts = value.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-    if (parts.size() >= 2) {
+    if (!parts.isEmpty() && parts.size() != 2) {
+        return err(QStringLiteral("contextMenu requires either no offset or exactly x y"));
+    }
+    if (parts.size() == 2) {
         bool okx = false, oky = false;
         const int x = parts.at(0).toInt(&okx);
         const int y = parts.at(1).toInt(&oky);
@@ -5047,6 +5124,91 @@ QJsonObject AutomationServer::doContextMenu(const QString& target,
         {QStringLiteral("x"), local.x()},
         {QStringLiteral("y"), local.y()},
         {QStringLiteral("deferred"), true},   // popup runs next turn; dumpTree to read it
+    };
+}
+
+QJsonObject AutomationServer::doRightClick(const QString& target,
+                                           const QString& value) const
+{
+    QWidget* w = resolveWidget(target);
+    if (!w) {
+        return err(QStringLiteral("widget not found: ") + target);
+    }
+    if (!w->isVisible()) {
+        return err(QStringLiteral("refused: '") + target + QStringLiteral("' is not visible"));
+    }
+
+    QPoint local = w->rect().center();
+    const QStringList parts = value.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (!parts.isEmpty() && parts.size() != 2) {
+        return err(QStringLiteral("rightClick requires either no offset or exactly x y"));
+    }
+    if (parts.size() == 2) {
+        bool okx = false, oky = false;
+        const int x = parts.at(0).toInt(&okx);
+        const int y = parts.at(1).toInt(&oky);
+        if (!okx || !oky) {
+            return err(QStringLiteral("rightClick offset x/y must be integers"));
+        }
+        local = QPoint(x, y);
+    }
+
+    if (!w->rect().contains(local)) {
+        return err(QStringLiteral("rightClick: (") + QString::number(local.x())
+                   + QStringLiteral(", ") + QString::number(local.y())
+                   + QStringLiteral(") is outside '") + target
+                   + QStringLiteral("' (") + QString::number(w->width())
+                   + QStringLiteral("x") + QString::number(w->height())
+                   + QStringLiteral(")"));
+    }
+
+    if (!w->isEnabled()) {
+        return QJsonObject{{QStringLiteral("ok"), false},
+                           {QStringLiteral("error"),
+                            QStringLiteral("refused: '") + target
+                                + QStringLiteral("' is disabled — "
+                                                 "the right-click would be dropped")},
+                           {QStringLiteral("disabled"), true},
+                           {QStringLiteral("class"), shortClassName(w)}};
+    }
+
+    QPointer<QWidget> wp = w;
+    QPointer<QWidget> win = w->window();
+    QTimer::singleShot(0, qApp, [wp, win, local]() {
+        if (!wp) {
+            return;
+        }
+        if (win && win->isVisible()) {
+            win->raise();
+            win->activateWindow();
+        }
+
+        const QPoint global = wp->mapToGlobal(local);
+        const QPointF localF(local);
+        const QPointF globalF(global);
+        QMouseEvent press(QEvent::MouseButtonPress, localF, localF, globalF,
+                          Qt::RightButton, Qt::RightButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(wp, &press);
+
+        QTimer::singleShot(10, qApp, [wp, local, global]() {
+            if (!wp) {
+                return;
+            }
+            QMouseEvent release(QEvent::MouseButtonRelease,
+                                QPointF(local), QPointF(local), QPointF(global),
+                                Qt::RightButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(wp, &release);
+        });
+    });
+    qCInfo(lcAutomation).noquote() << "rightClick on" << target << "at" << local;
+
+    return QJsonObject{
+        {QStringLiteral("ok"), true},
+        {QStringLiteral("target"), target},
+        {QStringLiteral("class"), shortClassName(w)},
+        {QStringLiteral("x"), local.x()},
+        {QStringLiteral("y"), local.y()},
+        {QStringLiteral("deferred"), true},
     };
 }
 

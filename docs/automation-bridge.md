@@ -132,10 +132,12 @@ transmit-gated verbs (refused unless `AETHER_AUTOMATION_ALLOW_TX=1` — see
 | | [`floors`](#floors) | Per-pan measured noise + display floor (dBm). |
 | | [`whoami`](#whoami) | This bridge instance: pid, socket, label, station, `txAllowed`. |
 | **Drive** | [`invoke <target> <action> [v]`](#invoke) | Click/toggle/set/selectRow/submit/trigger a control (TX-guarded). |
+| | [`shortcut <id>`](#shortcut) | Invoke a registered keyboard shortcut action by id. |
 | | [`close <target>`](#close) | Close the target's top-level window. |
 | | [`drag <target> "<dx> <dy>"`](#drag-alias-mouse) | Synthesize press→move→release (alias `mouse`). |
 | | [`showMenu <target>`](#showmenu-alias-openmenu) | Pop a button's drop-down menu (alias `openMenu`). |
 | | [`contextMenu <target> [x y]`](#contextmenu) | Trigger a custom right-click menu. |
+| | [`rightClick <target> [x y]`](#rightclick) | Send a real right-button mouse press/release to a widget. |
 | | [`hitTest <target> [x y]`](#hittest) | Read Qt's widget owner for a target-local point. |
 | | [`clickAt [<target>] <x> <y>`](#clickat) | Click at a global (or target-local) point — fallback when name matching is ambiguous (TX-guarded). |
 | | [`menu list \| open <name>`](#menu) | Enumerate / pop a menu-bar menu. |
@@ -158,7 +160,7 @@ transmit-gated verbs (refused unless `AETHER_AUTOMATION_ALLOW_TX=1` — see
 | **Connection** | [`connect …`](#connect--disconnect) | list / show / hide / local / ip / wait. |
 | | [`disconnect`](#connect--disconnect) | Normal user disconnect. |
 | **Tuning & slices** | [`tune <mhz>`](#tune) | Set the active slice frequency (VFO; not keying). |
-| | [`slice <action>`](#slice) | add/remove/select/tx/txant/rxant/rxsource. |
+| | [`slice <action>`](#slice) | add/remove/select/tx/diversity/centerlock/txant/rxant/rxsource. |
 | **Display / pans** | [`pan <action>`](#pan) | create / center / close a panadapter. |
 | | [`panmessage <action>`](#panmessage) | Add, remove, clear, or list panadapter overlay messages for UI testing. |
 | | [`dss <action>`](#dss) | Inject/read 3D stacked-trace + waterfall scrollback state. |
@@ -421,6 +423,21 @@ re-`dumpTree` (or re-read) after any sort, filter, or insert.
 > load), set `AETHER_AUTOMATION_ALLOW_TX=1` in the app's environment at launch.
 > Adding a new keying control? Call `markTxKeying(theButton)` — see
 > `src/core/TxKeyingMarker.h`.
+
+### `shortcut`
+Invoke a registered `ShortcutManager` action by id. This exercises the same
+handler a user-bound key would call, without requiring the test profile to bind
+an actual key sequence. It is useful for controller-style actions that may ship
+without a default keyboard shortcut.
+
+```json
+→ {"cmd":"shortcut","target":"center_lock_toggle"}
+← {"ok":true,"shortcut":"center_lock_toggle","fired":true}
+```
+
+Handlers may no-op when their normal app-side preconditions are not met; assert
+effects with `get`/`dumpTree` after firing, the same way a MIDI/controller
+test should.
 
 ### `get`
 Read live model state — assert on truth without a screenshot. Requires a radio
@@ -724,9 +741,10 @@ recenter the *pan* (band change) rather than move the slice within it, use
 [`pan center`](#pan).
 
 ### `slice`
-Slice lifecycle, TX assignment, antennas, and receive source. All actions are
-RX/config — none keys the transmitter. `add`/`remove`/`tx` are async
-(radio-authoritative); re-poll `get slices`.
+Slice lifecycle, diversity, Center Lock, TX assignment, antennas, and receive
+source. All actions are RX/config — none keys the transmitter.
+`add`/`remove`/`tx`/`diversity` are async (radio-authoritative); re-poll
+`get slices`.
 
 ```json
 → {"cmd":"slice","action":"add","value":"14.074"}
@@ -742,6 +760,8 @@ RX/config — none keys the transmitter. `add`/`remove`/`tx` are async
 | `remove` | `<sliceId>` | remove a slice (refuses the last one) |
 | `select` | `<sliceId>` | make a slice the active slice (`slice set <id> active=1`) |
 | `tx` | `<sliceId>` | make a slice the TX slice — the external-split transition; radio enforces single-TX |
+| `diversity` | `<sliceId> <on\|off>` | enable or disable diversity through the slice model; re-poll `get slices` for parent/child state |
+| `centerlock` | `<sliceId> <on\|off>` | enable or disable Center Lock for that exact slice through the same per-pan path as the context menu; an explicit id permits testing either diversity member |
 | `txant` / `rxant` | `<port>` e.g. `ANT2` | set the TX/RX antenna of the TX (else active) slice; validated against the slice's antenna list — establish the dummy-load antenna before any TX-safety gate, then read back with `get slice tx txAntenna` |
 | `rxsource` (alias `source`) | see below | select the slice's receive source (Flex / virtual-Kiwi) |
 | `fixture` | `<sliceId> [A-H]` | disconnected-only test fixture: synthesize an owned slice through the normal slice-status path, optionally with a single radio `index_letter`, so `dumpTree` can assert UI without a radio |
@@ -892,6 +912,22 @@ Section-title rows (a disabled `QWidgetAction` + `QLabel`, the app's idiom for
 menu headers since `QMenu::addSection` text doesn't render under the app styling)
 serialize with `"type":"header"` and the label's text, so titles are assertable
 instead of blank rows.
+
+### `rightClick`
+Send a real right-button press/release pair to a widget at its center, or at an
+optional target-local `x y` point. Use this for widgets that build their menu
+inside `mousePressEvent` instead of `contextMenuEvent`; `contextMenu` intentionally
+exercises the Qt context-menu path, while `rightClick` exercises the mouse path.
+The gesture is posted onto the GUI event loop with the owning window raised first.
+Returns `deferred:true`; follow with `dumpTree` to inspect any open menu.
+
+```json
+→ {"cmd":"rightClick","target":"SpectrumWidget"}
+← {"ok":true,"target":"SpectrumWidget","class":"SpectrumWidget","x":640,"y":260,"deferred":true}
+
+→ {"cmd":"rightClick","target":"SpectrumWidget","value":"280 180"}
+← {"ok":true,"target":"SpectrumWidget","class":"SpectrumWidget","x":280,"y":180,"deferred":true}
+```
 
 ### `hitTest`
 Read-only Qt hit-test probe for overlay/input-mask regressions. The point is
