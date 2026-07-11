@@ -528,6 +528,7 @@ set(CORE_SOURCES
     src/core/CwxLocalKeyer.cpp
     src/core/IambicKeyer.cpp
     src/core/SpectralNR.cpp
+    src/core/MonoDspStereoAdapter.cpp
     src/core/PanadapterStream.cpp
     src/core/PacketLossConcealment.cpp
     src/core/PerfTelemetry.cpp
@@ -1959,6 +1960,7 @@ if(ENABLE_NVIDIA_AFX AND ((UNIX AND NOT APPLE) OR WIN32) AND CMAKE_SYSTEM_PROCES
     add_executable(nvidia_afx_filter_test
         tests/nvidia_afx_filter_test.cpp
         src/core/NvidiaAfxFilter.cpp
+        src/core/MonoDspStereoAdapter.cpp
         src/core/Resampler.cpp
     )
     target_compile_definitions(nvidia_afx_filter_test PRIVATE HAVE_NVIDIA_AFX)
@@ -2074,6 +2076,20 @@ add_executable(spectral_nr_test
 target_include_directories(spectral_nr_test PRIVATE src)
 target_link_libraries(spectral_nr_test PRIVATE Qt6::Core)
 add_test(NAME spectral_nr_test COMMAND spectral_nr_test)
+
+add_executable(mono_dsp_stereo_adapter_test
+    tests/mono_dsp_stereo_adapter_test.cpp
+    src/core/MonoDspStereoAdapter.cpp
+)
+target_include_directories(mono_dsp_stereo_adapter_test PRIVATE src)
+target_link_libraries(mono_dsp_stereo_adapter_test PRIVATE Qt6::Core)
+add_test(NAME mono_dsp_stereo_adapter_test COMMAND mono_dsp_stereo_adapter_test)
+
+add_executable(rnnoise_filter_test
+    tests/rnnoise_filter_test.cpp
+)
+target_link_libraries(rnnoise_filter_test PRIVATE aethercore Qt6::Core)
+add_test(NAME rnnoise_filter_test COMMAND rnnoise_filter_test)
 
 add_executable(adaptive_filter_test
     tests/adaptive_filter_test.cpp
