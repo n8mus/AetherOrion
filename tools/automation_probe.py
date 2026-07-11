@@ -193,7 +193,7 @@ def main():
         elif args.command == "get":
             if not args.rest:
                 sys.exit("error: get needs <model> [selector] [property] "
-                         "(model = radio|slice|slices|pan|pans)")
+                         "(model = radio|slice|slices|pan|pans|flags)")
             req = {"cmd": "get", "model": args.rest[0]}
             if len(args.rest) > 1:
                 req["selector"] = args.rest[1]

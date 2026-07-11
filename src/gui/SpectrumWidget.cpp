@@ -1758,6 +1758,54 @@ VfoWidget* SpectrumWidget::addVfoWidget(int sliceId)
     return w;
 }
 
+VfoWidget* SpectrumWidget::takeVfoWidget(int sliceId)
+{
+    VfoWidget* w = m_vfoWidgets.take(sliceId);
+    if (!w) {
+        return nullptr;
+    }
+    if (m_vfoWidget == w) {
+        m_vfoWidget = nullptr;
+    }
+    disconnect(w, nullptr, this, nullptr);
+    w->removeEventFilter(this);
+    const QList<QWidget*> children = w->findChildren<QWidget*>();
+    for (QWidget* child : children) {
+        child->removeEventFilter(this);
+    }
+    w->setParent(nullptr);
+    return w;
+}
+
+void SpectrumWidget::adoptVfoWidget(int sliceId, VfoWidget* widget)
+{
+    if (!widget) {
+        return;
+    }
+    if (VfoWidget* existing = m_vfoWidgets.value(sliceId, nullptr)) {
+        if (existing == widget) {
+            return;
+        }
+        removeVfoWidget(sliceId);
+    }
+    widget->setParent(this);
+    // The flag's close/lock/record/play buttons and collapsed freq label are
+    // siblings parented to the SPECTRUM (so they render outside the flag's
+    // bounds) — they must move with the flag or they ghost on the old pan
+    // (#4037 review).
+    widget->reparentFlagSatellites(this);
+    widget->setProperty("sliceId", sliceId);
+    installVfoCursorEventFilter(widget);
+    connect(widget, &VfoWidget::smartMtrLabelsChanged, this,
+            [this]() { markOverlayDirty("smartMtr"); });
+    m_vfoWidgets[sliceId] = widget;
+    widget->show();
+    widget->raise();
+    applyActiveVfoZOrder();
+    m_overlayMenu->raiseAll();
+    raisePanadapterMessageOverlay();
+}
+
 void SpectrumWidget::installVfoCursorEventFilter(VfoWidget* widget)
 {
     if (!widget) {
