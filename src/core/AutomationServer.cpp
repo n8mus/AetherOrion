@@ -3322,6 +3322,37 @@ QJsonObject AutomationServer::doInvoke(const QString& target, const QString& act
             }
             if (!done)
                 return err(QStringLiteral("no tab labeled '%1'").arg(value));
+        } else if (auto* view = qobject_cast<QAbstractItemView*>(w)) {
+            QAbstractItemModel* model = view->model();
+            if (!model) {
+                return err(QStringLiteral("view has no model"));
+            }
+
+            std::function<QModelIndex(const QModelIndex&)> findItem;
+            findItem = [&](const QModelIndex& parent) -> QModelIndex {
+                const int rows = model->rowCount(parent);
+                for (int row = 0; row < rows; ++row) {
+                    const QModelIndex index = model->index(row, 0, parent);
+                    if ((model->flags(index) & Qt::ItemIsSelectable)
+                        && model->data(index, Qt::DisplayRole).toString()
+                            .compare(value, Qt::CaseInsensitive) == 0) {
+                        return index;
+                    }
+                    const QModelIndex childMatch = findItem(index);
+                    if (childMatch.isValid()) {
+                        return childMatch;
+                    }
+                }
+                return {};
+            };
+
+            const QModelIndex match = findItem({});
+            if (!match.isValid()) {
+                return err(QStringLiteral("no item labeled '%1'").arg(value));
+            }
+            view->setCurrentIndex(match);
+            view->scrollTo(match, QAbstractItemView::PositionAtCenter);
+            done = true;
         }
     } else if (action == QLatin1String("setCurrentIndex")) {
         if (auto* cb = qobject_cast<QComboBox*>(w)) { cb->setCurrentIndex(value.toInt()); done = true; }
