@@ -289,6 +289,7 @@ public:
     bool sliceMayBelongToUs(int sliceId) const;
 
     struct ClientInfo {
+        QString clientId;
         QString station;
         QString program;
         QString source;
@@ -660,6 +661,11 @@ private:
     // sending client gui. Calls continuation() if no conflict is found.
     void peekForMultiFlexConflictThen(std::function<void()> continuation);
     void handleForcedClientDisconnect();
+    void handleDuplicateClientIdDisconnect();
+    // Shared transport teardown for a radio-initiated terminal disconnect
+    // (forced or duplicate-client-id); callers set m_intentionalDisconnect first.
+    void closeConnectionForTerminalDisconnect();
+    void resolveLiveGuiClientIdCollision();
     void applyKnownGuiClients(const QStringList& handles,
                               const QStringList& programs,
                               const QStringList& stations,
