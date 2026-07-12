@@ -257,18 +257,159 @@ TOOLS = [
         }, "required": ["id"]},
     },
     {
+        "name": "get_log",
+        "description": (
+            "Tail recent app log events from the bridge's in-memory ring — "
+            "the fastest way to see WHY an action didn't take (Qt warnings, "
+            "category messages, your own `mark` annotations). Returns the "
+            "newest `count` events; pass `since` (an event seq from a prior "
+            "call) to fetch only newer ones for incremental polling."),
+        "inputSchema": {"type": "object", "properties": {
+            "count": {"type": "integer",
+                      "description": "newest N events (default 100)"},
+            "since": {"type": "integer",
+                      "description": "only events with seq greater than this"},
+        }},
+    },
+    {
+        "name": "connect",
+        "description": (
+            "Drive the radio-connection lifecycle. action = list (discovered "
+            "radios) | show / hide (the Connect dialog) | local (connect to a "
+            "local radio — value 'first' or 'serial <serial>') | ip (connect "
+            "by host/IP — value = host) | wait (block until connected — value "
+            "= timeout in ms). Confirm with get_state model=radio."),
+        "inputSchema": {"type": "object", "properties": {
+            "action": {"type": "string",
+                       "enum": ["list", "show", "hide", "local", "ip", "wait"]},
+            "value": {"type": "string",
+                      "description": "'first' / 'serial N', a host/IP, or a timeout in ms"},
+        }, "required": ["action"]},
+    },
+    {
+        "name": "disconnect",
+        "description": "Disconnect from the radio (the normal user disconnect path).",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "capture_audio",
+        "description": (
+            "Capture RX audio from the engine's tap points for analysis. "
+            "action = start (value = '<durationMs> <taps>', e.g. "
+            "'3000 raw,post,final') | status | stop | read (write the captured "
+            "buffer to `path` as JSON). Pair with get_state model=dsp to "
+            "correlate with the noise-reduction chain."),
+        "inputSchema": {"type": "object", "properties": {
+            "action": {"type": "string",
+                       "enum": ["start", "stop", "status", "read"]},
+            "value": {"type": "string",
+                      "description": "for start: '<durationMs> <comma,taps>' (default 5000ms)"},
+            "path": {"type": "string", "description": "for read: output file path"},
+        }, "required": ["action"]},
+    },
+    {
+        "name": "floors",
+        "description": (
+            "Per-pan measured noise floor and display floor in dBm — the "
+            "numeric RX-noise readout, no screenshot needed."),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "tune",
+        "description": ("Set the active slice frequency, in MHz "
+                        "(e.g. 14.074). Confirm with get_state model=slice."),
+        "inputSchema": {"type": "object", "properties": {
+            "mhz": {"type": "string", "description": "frequency in MHz, e.g. '14.074'"},
+        }, "required": ["mhz"]},
+    },
+    {
+        "name": "slice",
+        "description": (
+            "Slice lifecycle / config. action = add | remove | select | tx | "
+            "diversity | centerlock | txant | rxant | rxsource | fixture | "
+            "clearfixture. `value` carries the action's args (e.g. add '14.2', "
+            "select a slice id). See get_state model=slices to inspect."),
+        "inputSchema": {"type": "object", "properties": {
+            "action": {"type": "string"},
+            "value": {"type": "string", "description": "action arguments"},
+        }, "required": ["action"]},
+    },
+    {
+        "name": "pan",
+        "description": (
+            "Panadapter lifecycle. action = create | add | remove | close | "
+            "center; `value` is the action arg (pan id, or a frequency for "
+            "center). See get_state model=pans."),
+        "inputSchema": {"type": "object", "properties": {
+            "action": {"type": "string",
+                       "enum": ["create", "add", "remove", "close", "center"]},
+            "value": {"type": "string", "description": "pan id / frequency"},
+        }, "required": ["action"]},
+    },
+    {
+        "name": "record",
+        "description": (
+            "QSO audio recording. action = start | stop | status | path (get "
+            "the current file) | dir (value = a directory to record into)."),
+        "inputSchema": {"type": "object", "properties": {
+            "action": {"type": "string",
+                       "enum": ["start", "stop", "status", "path", "dir"]},
+            "value": {"type": "string", "description": "e.g. a directory for 'dir'"},
+        }, "required": ["action"]},
+    },
+    {
+        "name": "mark",
+        "description": (
+            "Write a timestamped annotation into the app log ring — bracket "
+            "your actions so a later get_log shows exactly what you did and "
+            "when."),
+        "inputSchema": {"type": "object", "properties": {
+            "text": {"type": "string"},
+        }, "required": ["text"]},
+    },
+    {
+        "name": "window",
+        "description": ("Drive a top-level window's state. Useful for headless "
+                        "render tests (a real size gives the panadapter real "
+                        "x_pixels)."),
+        "inputSchema": {"type": "object", "properties": {
+            "state": {"type": "string",
+                      "enum": ["maximize", "restore", "minimize", "fullscreen"]},
+            "target": {"type": "string", "description": "optional window target"},
+        }, "required": ["state"]},
+    },
+    {
+        "name": "menu",
+        "description": ("Menu-bar menus. action = list (enumerate) | open "
+                        "(pop `name`), so a follow-up dump_tree/grab_widget can "
+                        "see the opened menu."),
+        "inputSchema": {"type": "object", "properties": {
+            "action": {"type": "string", "enum": ["list", "open"]},
+            "name": {"type": "string", "description": "menu name, for open"},
+        }, "required": ["action"]},
+    },
+    {
+        "name": "streams",
+        "description": ("Stream diagnostics. scope empty = UDP-orphan layer; "
+                        "'radio' = radio-authoritative display objects; "
+                        "'reset' clears counters."),
+        "inputSchema": {"type": "object", "properties": {
+            "scope": {"type": "string", "enum": ["radio", "reset"]},
+        }},
+    },
+    {
         "name": "bridge_command",
         "description": (
-            "Raw escape hatch for every other bridge verb — send any "
-            "JSON request object ({\"cmd\": ...}) straight to the "
-            "bridge and get the raw response. Useful verbs: hover, "
-            "tooltip, hitTest, clickAt, rightClick, contextMenu, "
-            "resize {value:'W H'}, window, menu, actions, connect "
-            "(list/show/local/ip/wait), disconnect, slice, tune, pan, "
-            "layout, scale, dss (deterministic spectrum injection), "
-            "panmessage, audioCapture, record, testtone, whoami. Full "
-            "verb reference: src/core/AutomationServer.h header "
-            "comment."),
+            "Raw escape hatch for the verbs without a dedicated tool — "
+            "send any JSON request object ({\"cmd\": ...}) straight to "
+            "the bridge and get the raw response. Reaches: the low-level "
+            "widget verbs (hover, tooltip, hitTest, clickAt, rightClick, "
+            "contextMenu, close, scrollTo, drag, showMenu), the "
+            "transmit-keying verbs (key, txtest, atu, cwx, testtone, "
+            "txwaterfall — gated by AETHER_AUTOMATION_ALLOW_TX), and the "
+            "niche ones (dss deterministic spectrum injection, resize, "
+            "scale, layout, panmessage, tci, station, qrz). Full verb "
+            "reference: src/core/AutomationServer.h header comment."),
         "inputSchema": {"type": "object", "properties": {
             "request": {"type": "object",
                         "description": "the raw bridge request, e.g. {\"cmd\":\"whoami\"}"},
@@ -375,6 +516,75 @@ def handle_tool(name, args):
         # The registry's shortcut verb reads `id` (or `target`), not `value` —
         # a JSON request bypasses the bare-line positional parser.
         return text_result(bridge_request({"cmd": "shortcut", "id": args["id"]}))
+
+    if name == "get_log":
+        # log verb: action="tail", value="<n> [since=<seq>]".
+        parts = [str(int(args.get("count", 100)))]
+        if args.get("since") is not None:
+            parts.append(f"since={int(args['since'])}")
+        return text_result(bridge_request(
+            {"cmd": "log", "action": "tail", "value": " ".join(parts)}))
+
+    if name == "connect":
+        req = {"cmd": "connect", "action": args["action"]}
+        if args.get("value"):
+            req["value"] = str(args["value"])
+        # `connect wait <ms>` can legitimately run past the default request
+        # timeout — stretch it to cover the requested wait plus slack.
+        timeout = REQUEST_TIMEOUT_S
+        if args["action"] == "wait" and args.get("value"):
+            try:
+                timeout = max(timeout, int(args["value"]) / 1000 + 10)
+            except (ValueError, TypeError):
+                pass  # non-numeric wait value → keep the default timeout
+        return text_result(bridge_request(req, timeout=timeout))
+
+    if name == "disconnect":
+        return text_result(bridge_request({"cmd": "disconnect"}))
+
+    if name == "capture_audio":
+        req = {"cmd": "audioCapture", "action": args["action"]}
+        if args.get("value"):
+            req["value"] = str(args["value"])
+        if args.get("path"):
+            req["path"] = str(args["path"])
+        return text_result(bridge_request(req))
+
+    if name == "floors":
+        return text_result(bridge_request({"cmd": "floors"}))
+
+    if name == "tune":
+        return text_result(bridge_request(
+            {"cmd": "tune", "value": str(args["mhz"])}))
+
+    if name in ("slice", "record", "pan"):
+        req = {"cmd": name, "action": args["action"]}
+        if args.get("value"):
+            req["value"] = str(args["value"])
+        return text_result(bridge_request(req))
+
+    if name == "mark":
+        return text_result(bridge_request(
+            {"cmd": "mark", "value": str(args["text"])}))
+
+    if name == "window":
+        # window reads `target`, not `value`.
+        req = {"cmd": "window", "action": args["state"]}
+        if args.get("target"):
+            req["target"] = str(args["target"])
+        return text_result(bridge_request(req))
+
+    if name == "menu":
+        req = {"cmd": "menu", "action": args["action"]}
+        if args.get("name"):
+            req["value"] = str(args["name"])
+        return text_result(bridge_request(req))
+
+    if name == "streams":
+        req = {"cmd": "streams"}
+        if args.get("scope"):
+            req["action"] = str(args["scope"])
+        return text_result(bridge_request(req))
 
     if name == "bridge_command":
         req = args.get("request")

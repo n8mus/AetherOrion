@@ -86,6 +86,66 @@ def test_field_mapping():
     reqs = run_tool("dump_tree", {})
     check("dump_tree sends cmd=dumpTree", reqs[-1].get("cmd") == "dumpTree", str(reqs))
 
+    # Promoted first-class verbs (#4188 area 1) — the registry reads
+    # action/value/path; these must map exactly or the tool is dead.
+    r = run_tool("get_log", {"count": 50, "since": 7})[-1]
+    check("get_log → log tail with count+since",
+          r.get("cmd") == "log" and r.get("action") == "tail"
+          and r.get("value") == "50 since=7", str(r))
+
+    r = run_tool("connect", {"action": "ip", "value": "192.168.50.100"})[-1]
+    check("connect → cmd=connect action+value",
+          r.get("cmd") == "connect" and r.get("action") == "ip"
+          and r.get("value") == "192.168.50.100", str(r))
+
+    r = run_tool("disconnect", {})[-1]
+    check("disconnect → cmd=disconnect", r.get("cmd") == "disconnect", str(r))
+
+    r = run_tool("capture_audio",
+                 {"action": "start", "value": "3000 raw,post"})[-1]
+    check("capture_audio → cmd=audioCapture action+value",
+          r.get("cmd") == "audioCapture" and r.get("action") == "start"
+          and r.get("value") == "3000 raw,post", str(r))
+
+    r = run_tool("floors", {})[-1]
+    check("floors → cmd=floors", r.get("cmd") == "floors", str(r))
+
+    r = run_tool("tune", {"mhz": "14.074"})[-1]
+    check("tune → cmd=tune value(mhz)",
+          r.get("cmd") == "tune" and r.get("value") == "14.074", str(r))
+
+    r = run_tool("slice", {"action": "select", "value": "3"})[-1]
+    check("slice → cmd=slice action+value",
+          r.get("cmd") == "slice" and r.get("action") == "select"
+          and r.get("value") == "3", str(r))
+
+    r = run_tool("pan", {"action": "center", "value": "7.1"})[-1]
+    check("pan → cmd=pan action+value",
+          r.get("cmd") == "pan" and r.get("action") == "center"
+          and r.get("value") == "7.1", str(r))
+
+    r = run_tool("record", {"action": "start"})[-1]
+    check("record → cmd=record action", r.get("cmd") == "record"
+          and r.get("action") == "start", str(r))
+
+    r = run_tool("mark", {"text": "agent bracket"})[-1]
+    check("mark → cmd=mark value(text)",
+          r.get("cmd") == "mark" and r.get("value") == "agent bracket", str(r))
+
+    r = run_tool("window", {"state": "maximize", "target": "MainWindow"})[-1]
+    check("window → action=state, target (NOT value)",
+          r.get("cmd") == "window" and r.get("action") == "maximize"
+          and r.get("target") == "MainWindow" and "value" not in r, str(r))
+
+    r = run_tool("menu", {"action": "open", "name": "File"})[-1]
+    check("menu → action + value(name)",
+          r.get("cmd") == "menu" and r.get("action") == "open"
+          and r.get("value") == "File", str(r))
+
+    r = run_tool("streams", {"scope": "radio"})[-1]
+    check("streams → cmd=streams action(scope)",
+          r.get("cmd") == "streams" and r.get("action") == "radio", str(r))
+
     reqs = run_tool("bridge_command", {"request": {"cmd": "whoami"}})
     check("bridge_command passes raw request", reqs[-1].get("cmd") == "whoami", str(reqs))
 
