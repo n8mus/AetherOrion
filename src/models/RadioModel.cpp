@@ -1,6 +1,8 @@
 #include "RadioModel.h"
 #include "AntennaAliasStore.h"
+#include "BandDefs.h"
 #include "BandSettings.h"
+#include "DeclaredBands.h"
 #include "core/CommandParser.h"
 #include "core/backends/flex/FlexBackend.h"   // aetherd RFC 2.2 radio-facing seam
 #include "core/AppSettings.h"
@@ -36,6 +38,10 @@ constexpr int kDefaultPanDimensionThreshold = 100;
 constexpr int kSessionRestorePruneDelayMs = 5000;
 constexpr int kWaterfallLineDurationMinMs = 1;
 constexpr int kWaterfallLineDurationMaxMs = 100;
+
+// parseDeclaredBands() moved to DeclaredBands.{h,cpp} so the Principle-VII
+// validation (allow-list against BandDefs, dedup, case-fold) has a light,
+// dependency-free test target (declared_bands_test). Behaviour unchanged.
 
 QJsonArray toJsonArray(const QStringList& values)
 {
@@ -1596,6 +1602,7 @@ void RadioModel::connectToRadio(const RadioInfo& info)
     m_name    = info.name;
     m_model   = info.model;
     m_version = info.version;
+    m_declaredBands = parseDeclaredBands(info.bands);   // empty for real Flex
     m_maxSlices = maxSlicesForModel(m_model);
     if (reloadAntennaAliases())
         emit antennaAliasesChanged();
@@ -5962,6 +5969,19 @@ void RadioModel::applyRadioChanges(const RadioDelta& d)
             m_maxSlices = updatedMax;
         }
         changed = true;
+    }
+    if (d.bandsRaw) {
+        // Radio-declared band set (gateway/non-Flex hardware; see
+        // declaredBands()).  Also accepted on the status path so a radio
+        // connected by IP (no discovery packet seen) can still declare. The
+        // raw "bands=" string rides through RadioDelta and is validated here
+        // (parseDeclaredBands + BandDefs) — a model concern, matching how other
+        // text fields decode model-side under aetherd RFC 2.3.
+        const QStringList declared = parseDeclaredBands(*d.bandsRaw);
+        if (declared != m_declaredBands) {
+            m_declaredBands = declared;
+            changed = true;
+        }
     }
     if (d.callsign) {
         if (*d.callsign != m_callsign) {
