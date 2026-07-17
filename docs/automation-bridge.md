@@ -126,7 +126,8 @@ contributors to self-verify UI changes before requesting review.
    - **Windows**: use `python` (or `py -3`) instead of `python3`.
 
 **Tools exposed** (22 typed tools): introspection — `bridge_status`,
-`dump_tree` (with a `filter` arg), `grab_widget` (PNG inline),
+`dump_tree` (with a `filter` arg), `grab_widget` (PNG inline; optional
+`path` for where the PNG is written, else a temp file),
 `get_state`, `get_log`, `floors`, `streams`; driving — `invoke`
 (on a target-not-found failure it appends `did_you_mean` candidates),
 `shortcut`, `tune`, `slice`, `pan`, `record`, `mark`, `window`, `menu`;
