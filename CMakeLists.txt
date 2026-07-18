@@ -2321,6 +2321,11 @@ target_include_directories(model_capabilities_test PRIVATE src)
 target_link_libraries(model_capabilities_test PRIVATE Qt6::Core)
 add_test(NAME model_capabilities_test COMMAND model_capabilities_test)
 
+# Adaptive-throttle display-status echo gate (#4261) — header-only pure logic.
+add_executable(display_status_gate_test tests/display_status_gate_test.cpp)
+target_include_directories(display_status_gate_test PRIVATE src)
+add_test(NAME display_status_gate_test COMMAND display_status_gate_test)
+
 # KiwiSDR band-recall re-bind policy (#4158) — header-only, pure logic.
 add_executable(kiwi_rebind_tracker_test tests/kiwi_rebind_tracker_test.cpp)
 target_include_directories(kiwi_rebind_tracker_test PRIVATE src)

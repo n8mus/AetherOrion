@@ -467,7 +467,7 @@ document why.
 **IMPORTANT:** Do NOT use `QSettings` anywhere in AetherSDR. All client-side
 settings are stored via `AppSettings` (`src/core/AppSettings.h`), which writes
 an XML file at `~/.config/AetherSDR/AetherSDR.settings`. Key names use
-PascalCase (e.g. `LastConnectedRadioSerial`, `DisplayFftAverage`). Boolean
+PascalCase (e.g. `LastConnectedRadioSerial`, `DisplayFftFillColor`). Boolean
 values are stored as `"True"` / `"False"` strings.
 
 ```cpp
@@ -501,14 +501,25 @@ the radio does NOT save.
 
 **Radio-authoritative (do NOT persist):** frequency, mode, filter, step size,
 AGC, squelch, DSP flags, antennas, TX power, panadapter *count* and per-pan
-state (center, bandwidth, min/max dBm, etc.).
+state (center, bandwidth, min/max dBm, FFT average/FPS/weighted-average, and
+waterfall line duration).
 
 **Client-authoritative (persist in AppSettings):** window geometry, layout
 arrangement (`PanadapterLayout`, applet order/visibility), client-side DSP
-(NR2/RN2/NR4/DFNR), UI preferences, display preferences, spot settings.
+(NR2/RN2/NR4/DFNR), UI preferences, client-only display appearance
+preferences, spot settings.
 
 **Why:** When both persist the same setting, they fight on reconnect. The
 radio's GUIClientID session restore is always more current than our saved state.
+
+**Anti-pattern (recurring — see #4261):** Do not write a radio-echoed status
+value into a setter that *also* persists it to `AppSettings`. That makes the
+client re-assert stale state on reconnect / profile load and fight the radio —
+the exact class of bug behind #2465, #4126, #4081, #4083, and #4261. For a
+radio-authoritative field, route status straight to the display (a plain member
++ signal) and never call `AppSettings::setValue()` in its setter. When a display
+setter genuinely persists (e.g. waterfall *appearance*: color gain, black
+level), that value must be client-only — never a value the radio also echoes.
 
 ### GUI↔Radio Sync (No Feedback Loops)
 

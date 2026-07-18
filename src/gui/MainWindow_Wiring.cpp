@@ -20,6 +20,7 @@
 #include "MainWindow.h"
 
 #include "AetherDspWidget.h"
+#include "DisplayStatusGate.h"       // #4261 adaptive-throttle echo gate
 #include "Ax25HfPacketDecodeDialog.h"
 #include "AppletPanel.h"
 #include "MainWindowHelpers.h"
@@ -2110,6 +2111,86 @@ void MainWindow::runProfileLoadRecoveryPass(const QString& profileType,
     }
 }
 
+void MainWindow::wirePanDisplayStatus(PanadapterApplet* applet,
+                                      PanadapterModel* pan)
+{
+    if (!applet || !pan) {
+        return;
+    }
+    SpectrumWidget* sw = applet->spectrumWidget();
+    if (!sw) {
+        return;
+    }
+
+    const QString panId = applet->panId();
+    QVector<QMetaObject::Connection> oldConnections =
+        m_panDisplayStatusConnections.take(panId);
+    for (const QMetaObject::Connection& connection : oldConnections) {
+        QObject::disconnect(connection);
+    }
+
+    QVector<QMetaObject::Connection> connections;
+    connections.reserve(4);
+    connections.append(connect(
+        pan, &PanadapterModel::averageReported,
+        sw, [sw](int average) {
+            if (average >= 0) {
+                sw->setFftAverage(average);
+            }
+        }));
+    connections.append(connect(
+        pan, &PanadapterModel::weightedAverageReported,
+        sw, [sw, pan](bool weighted) {
+            // Guard on "known" like the other three fields, so an unreported
+            // value doesn't paint a definitive unchecked box (#4261).
+            if (pan->weightedAverageKnown()) {
+                sw->setFftWeightedAvg(weighted);
+            }
+        }));
+    connections.append(connect(
+        pan, &PanadapterModel::fpsReported,
+        sw, [this, sw](int fps) {
+            // The adaptive cap is transient client transport state: suppress only
+            // the cap's own echo so the pre-cap radio value stays the restore
+            // target, but let a genuine radio/profile update through even while
+            // throttled (#4261 — otherwise it's lost when the throttle lifts).
+            if (applyThrottledDisplayReport(m_adaptiveThrottleActive,
+                                            m_adaptiveFpsCap, fps)) {
+                sw->setFftFps(fps);
+            }
+        }));
+    connections.append(connect(
+        pan, &PanadapterModel::waterfallLineDurationReported,
+        sw, [this, sw](int lineDurationMs) {
+            if (applyThrottledDisplayReport(
+                    m_adaptiveThrottleActive,
+                    m_radioModel.adaptiveWfMsForCap(m_adaptiveFpsCap),
+                    lineDurationMs)) {
+                sw->setWfLineDuration(lineDurationMs);
+            }
+        }));
+    m_panDisplayStatusConnections.insert(panId, connections);
+
+    // Reclaimed pans already hold their latest status and do not necessarily
+    // emit a new report after reconnect. Seed the view immediately.
+    if (pan->average() >= 0) {
+        sw->setFftAverage(pan->average());
+    }
+    if (pan->weightedAverageKnown()) {
+        sw->setFftWeightedAvg(pan->weightedAverage());
+    }
+    if (applyThrottledDisplayReport(m_adaptiveThrottleActive,
+                                    m_adaptiveFpsCap, pan->fps())) {
+        sw->setFftFps(pan->fps());
+    }
+    if (applyThrottledDisplayReport(
+            m_adaptiveThrottleActive,
+            m_radioModel.adaptiveWfMsForCap(m_adaptiveFpsCap),
+            pan->waterfallLineDuration())) {
+        sw->setWfLineDuration(pan->waterfallLineDuration());
+    }
+}
+
 
 void MainWindow::wirePanadapter(PanadapterApplet* applet)
 {
@@ -2377,7 +2458,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         // correct radio-reported range via the pendingDbm guard. (#3034)
         sw->setDbmRange(pan->minDbm(), pan->maxDbm());
 
-        wirePanReconcilers(applet, pan);
+        wirePanDisplayStatus(applet, pan);
     }
     syncTxWaterfallSliceToSpectrums();
 
@@ -3123,19 +3204,15 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
 
         // Persist all defaults to AppSettings
         auto& s = AppSettings::instance();
-        s.setValue(sw->settingsKey("DisplayFftAverage"),          "0");
-        s.setValue(sw->settingsKey("DisplayFftFps"),              "25");
         s.setValue(sw->settingsKey("DisplayFftFillAlpha"),        "0.70");
         s.setValue(sw->settingsKey("DisplayFftFillColor"),        "#00e5ff");
         s.setValue(sw->settingsKey("DisplayFftLineWidth"),        "2.0");
-        s.setValue(sw->settingsKey("DisplayFftWeightedAvg"),      "False");
         s.setValue(sw->settingsKey("DisplayFftHeatMap"),          "True");
         s.setValue(sw->settingsKey("DisplayWfColorScheme"),       "0");
         s.setValue(sw->settingsKey("DisplayWfColorGain"),         "50");
         s.setValue(sw->settingsKey("DisplayWfBlackLevel"),        "15");
         s.setValue(sw->settingsKey("DisplayWfAutoBlack"),         "True");
         s.setValue(sw->settingsKey("DisplayWfAutoBlackRadioSide"), "False");
-        s.setValue(sw->settingsKey("DisplayWfLineDuration"),      "100");
         s.setValue(sw->settingsKey("WaterfallBlankingEnabled"),   "False");
         s.setValue(sw->settingsKey("WaterfallBlankingThreshold"), "1.15");
         s.setValue(sw->settingsKey("WaterfallBlankingMode"),      "0");
