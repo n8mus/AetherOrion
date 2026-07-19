@@ -2220,6 +2220,40 @@ struct AutomationServer::VerbSpec {
 
 namespace {
 
+// Requests that are pure introspection — allowed even in observe-only mode
+// (#4188 area 6). Some diagnostic verbs mix read and write actions, so the
+// action must be checked as well as the canonical verb name. Everything else
+// (drive/connect/capture/keying) is refused when m_readOnly is set.
+bool isReadOnlyRequest(const QString& name, const QString& action)
+{
+    static const QSet<QString> kSafe = {
+        QStringLiteral("ping"),     QStringLiteral("verbs"),
+        QStringLiteral("whoami"),   QStringLiteral("dumpTree"),
+        QStringLiteral("grab"),     QStringLiteral("get"),
+        QStringLiteral("floors"),   QStringLiteral("hitTest"),
+    };
+    if (kSafe.contains(name)) {
+        return true;
+    }
+
+    const QString normalizedAction = action.trimmed().toLower();
+    if (name == QLatin1String("log")) {
+        static const QSet<QString> kSafeLogActions = {
+            QString(), QStringLiteral("categories"), QStringLiteral("get"),
+            QStringLiteral("tail"), QStringLiteral("subscribe"),
+            QStringLiteral("unsubscribe"),
+        };
+        return kSafeLogActions.contains(normalizedAction);
+    }
+    if (name == QLatin1String("streams")) {
+        static const QSet<QString> kSafeStreamActions = {
+            QString(), QStringLiteral("radio"), QStringLiteral("inventory"),
+        };
+        return kSafeStreamActions.contains(normalizedAction);
+    }
+    return false;
+}
+
 QString vtok(const QList<QByteArray>& p, int i)
 {
     return QString::fromUtf8(p.value(i));
@@ -2321,6 +2355,7 @@ const std::vector<AutomationServer::VerbSpec>& AutomationServer::verbRegistry()
                     {QStringLiteral("app"), QStringLiteral("AetherSDR")},
                     {QStringLiteral("version"), QCoreApplication::applicationVersion()},
                     {QStringLiteral("authRequired"), !self.m_authToken.isEmpty()},
+                    {QStringLiteral("readOnly"), self.m_readOnly},
                 };
             });
 
@@ -2687,7 +2722,7 @@ const std::vector<AutomationServer::VerbSpec>& AutomationServer::verbRegistry()
                                a.value);
             });
 
-        add("streams", {}, "streams [radio|reset] — stream diagnostics",
+        add("streams", {}, "streams [radio|inventory|resync|refresh|reset] — stream diagnostics",
             parseActionOnly,
             [](AutomationServer& s, A& a, QLocalSocket*) {
                 return s.doStreams(a.action);
@@ -2942,6 +2977,20 @@ QJsonObject AutomationServer::handleLine(const QByteArray& line, QLocalSocket* s
                 "in your MCP client from Radio Setup -> Network -> Agent "
                 "Automation."));
         }
+    }
+
+    // Observe-only gate (#4188 area 6). When the operator has enabled
+    // read-only mode (Radio Setup -> Network -> "Observe only"), refuse any
+    // verb that isn't pure introspection — no driving, no connect/capture, no
+    // keying. Enforced HERE in the bridge (not the MCP client) so it can't be
+    // bypassed by talking to the socket directly. Uses the resolved canonical
+    // name so aliases are covered.
+    if (m_readOnly && !isReadOnlyRequest(spec->name, a.action)) {
+        qCWarning(lcAutomation) << "read-only mode: refused" << spec->name;
+        return err(QStringLiteral("read-only mode: '") + spec->name
+                   + QStringLiteral("' is blocked. This bridge is observe-only "
+                                    "— uncheck \"Observe only\" in Radio Setup "
+                                    "-> Network to allow driving."));
     }
 
     return spec->dispatch(*this, a, sock);
@@ -7613,6 +7662,7 @@ QJsonObject AutomationServer::doWhoami() const
         {QStringLiteral("guiClientIdTransient"),
          AppSettings::instance().guiClientIdentityIsTransient()},
         {QStringLiteral("txAllowed"), m_txAllowed},
+        {QStringLiteral("readOnly"), m_readOnly},
         {QStringLiteral("version"), QCoreApplication::applicationVersion()},
     };
 }
