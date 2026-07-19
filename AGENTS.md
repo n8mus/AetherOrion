@@ -169,6 +169,16 @@ cmake --build build -j$(nproc)
 ./build/AetherSDR
 ```
 
+**Optional — DFNR (DeepFilterNet3) noise reduction.** Run
+`scripts/setup/setup-deepfilter.sh` (Windows: `setup-deepfilter.ps1`)
+*once before* `cmake` to fetch the prebuilt `libdeepfilter` for your
+platform; configure will otherwise report `DFNR ... disabled — library
+not found` and gate the feature off. CI runs this step automatically
+(cached) in the release-build workflows, so shipped binaries always
+include DFNR; it is a manual prereq only for local dev builds. NR still
+works without it — RN2 (RNNoise) is bundled and always built, needing no
+setup.
+
 Full dependency list is in `README.md` — don't duplicate it here.
 
 Current version: **26.7.2** (set in both `CMakeLists.txt` and `README.md`).
