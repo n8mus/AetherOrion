@@ -586,7 +586,7 @@ private:
 #ifdef HAVE_WEBSOCKETS
     void showFreeDvReporter();
 #endif
-    void updateKeyerAvailability(const QString& mode);
+    void updateKeyerAvailability();
     void showNr2ParamPopup(const QPoint& globalPos);
     void showNr4ParamPopup(const QPoint& globalPos);
     void showDfnrParamPopup(const QPoint& globalPos);

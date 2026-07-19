@@ -1329,6 +1329,9 @@ void MainWindow::onSliceAdded(SliceModel* s)
         syncTxWaterfallSliceToSpectrums();
         updateSplitState();
 
+        // TX flag just moved — keyer availability follows the TX slice (#4173).
+        updateKeyerAvailability();
+
         // Active follows TX slice (#1351) — switch the displayed/active slice
         // when an external program (e.g. WSJT-X) moves the TX flag
         if (tx && s->sliceId() != m_activeSliceId
@@ -1364,9 +1367,6 @@ void MainWindow::onSliceAdded(SliceModel* s)
             refreshCwDecodeState();
             refreshRttyDecodeState();
 
-            // Update CWX/DVK indicator availability for new mode
-            updateKeyerAvailability(mode);
-
             // Disable client-side DSP in digital and CW modes — NR2/RN2/BNR
             // corrupt digital data (#534) and suppress CW tones (#784)
             bool disableDsp = (mode == "DIGU" || mode == "DIGL" || mode == "RTTY"
@@ -1384,6 +1384,11 @@ void MainWindow::onSliceAdded(SliceModel* s)
                     QMetaObject::invokeMethod(m_audio, [this]() { m_audio->setNvAfxEnabled(false); });
             }
         }
+
+        // CWX/DVK availability and their F1-F12 shortcuts follow the TX slice,
+        // so re-evaluate only when the TX slice changes mode (#4173).
+        if (s->isTxSlice())
+            updateKeyerAvailability();
 #ifdef HAVE_RADE
         if (mode.startsWith("FDV"))
             activateFdvDisplay(s->sliceId());
