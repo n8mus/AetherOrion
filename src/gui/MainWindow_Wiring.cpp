@@ -3548,15 +3548,34 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             }
         }
 
-        // Forward to DX cluster if requested
-        if (forwardToCluster && m_dxCluster && m_dxCluster->isConnected()) {
-            QString dxCmd = QString("DX %1 %2 %3")
-                .arg(freqMhz * 1000.0, 0, 'f', 1)
-                .arg(callsign)
-                .arg(comment);
-            QMetaObject::invokeMethod(m_dxCluster, [this, dxCmd] {
-                m_dxCluster->sendCommand(dxCmd);
-            });
+        // Forward to DX cluster if requested. Every failure mode here used to
+        // be silent, so the operator saw the local "Manual" spot appear but had
+        // no way to tell whether the forward reached the cluster — the report
+        // behind #2857. Give explicit status-bar feedback on each outcome.
+        if (forwardToCluster) {
+            if (!m_dxCluster || !m_dxCluster->isConnected()) {
+                // Most common cause in the field: only the RBN tab (read-only)
+                // is connected, or the DX Cluster tab dropped. Say so instead
+                // of no-op'ing.
+                statusBar()->showMessage(
+                    "DX Cluster not connected — spot not forwarded", 5000);
+            } else {
+                // DX Spider silently drops a `DX <freq> <call>` line with an
+                // empty remark, which looks identical to "the forward did
+                // nothing". Substitute a non-empty default so the spot is
+                // accepted; the operator's own comment passes through unchanged.
+                const QString remark = comment.isEmpty()
+                    ? QStringLiteral("Spotted via AetherSDR") : comment;
+                QString dxCmd = QString("DX %1 %2 %3")
+                    .arg(freqMhz * 1000.0, 0, 'f', 1)
+                    .arg(callsign)
+                    .arg(remark);
+                QMetaObject::invokeMethod(m_dxCluster, [this, dxCmd] {
+                    m_dxCluster->sendCommand(dxCmd);
+                });
+                statusBar()->showMessage(
+                    QString("Spot forwarded to DX Cluster: %1").arg(callsign), 5000);
+            }
         }
     });
     connect(sw, &SpectrumWidget::spotRemoveRequested, this, [this](int spotIndex) {
