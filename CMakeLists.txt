@@ -600,6 +600,7 @@ set(CORE_SOURCES
     src/core/LogManager.cpp
     src/core/ShortcutManager.cpp
     src/core/SupportBundle.cpp
+    src/core/IssueReport.cpp
     src/core/DeviceDiagnostics.cpp
     src/core/SerialPortController.cpp
     src/core/FlexControlManager.cpp
@@ -3452,6 +3453,21 @@ if(UNIX)
     target_link_libraries(async_log_writer_test PRIVATE pthread)
 endif()
 set_target_properties(async_log_writer_test PROPERTIES AUTOMOC ON)
+
+# Pre-filled GitHub issue body + redaction-at-render guarantee (#3705).
+# IssueReport.cpp depends only on redactPii (AsyncLogWriter.cpp) — no
+# RadioModel — so the redaction contract is unit-testable in isolation.
+add_executable(issue_report_test
+    tests/issue_report_test.cpp
+    src/core/IssueReport.cpp
+    src/core/AsyncLogWriter.cpp
+)
+target_include_directories(issue_report_test PRIVATE src src/core)
+target_link_libraries(issue_report_test PRIVATE Qt6::Core)
+if(UNIX)
+    target_link_libraries(issue_report_test PRIVATE pthread)
+endif()
+set_target_properties(issue_report_test PROPERTIES AUTOMOC ON)
 
 add_executable(perf_telemetry_test
     tests/perf_telemetry_test.cpp
