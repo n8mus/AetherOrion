@@ -5693,8 +5693,10 @@ bool MainWindow::activateMemorySpot(int memoryIndex, const QString& preferredPan
                     << " key=" << stackKeyResult.key;
                 clearSwrSweepForBandChange(-1, slicePanId, memoryBand);
                 m_bandSettings.setCurrentBand(memoryBand);
-                m_radioModel.sendCommand(
-                    QString("display pan set %1 band=%2").arg(slicePanId, stackKeyResult.key));
+                // #4142: during the profile-load hold a bare sendCommand()
+                // band= write is silently destroyed and the recall lands on
+                // the wrong band stack. requestPanBand defers it instead.
+                m_radioModel.requestPanBand(slicePanId, stackKeyResult.key);
                 QTimer::singleShot(300, this, [this, slicePanId]() {
                     reassertUnmutedSliceAudioForPan(slicePanId);
                 });
@@ -5932,8 +5934,11 @@ MainWindow::BandStackPreselectResult MainWindow::preselectBandStackForTune(
         << " key=" << stackKeyResult.key;
     clearSwrSweepForBandChange(-1, slice->panId(), targetBand);
     m_bandSettings.setCurrentBand(targetBand);
-    m_radioModel.sendCommand(
-        QString("display pan set %1 band=%2").arg(slice->panId(), stackKeyResult.key));
+    // #4142: the cross-band typed tune is the reported bug's worst variant —
+    // the `slice tune` half survives the hold while a bare sendCommand()
+    // band= write is silently destroyed, so the slice lands outside the pan.
+    // requestPanBand defers the band-stack swap and replays it band-first.
+    m_radioModel.requestPanBand(slice->panId(), stackKeyResult.key);
     QTimer::singleShot(300, this, [this, panId = slice->panId()]() {
         reassertUnmutedSliceAudioForPan(panId);
     });
@@ -6084,28 +6089,33 @@ void MainWindow::applyPanRangeRequest(const QString& panId, double centerMhz,
     }
 
     auto* pan = m_radioModel.panadapter(panId);
-    const QString centerStr = QString::number(centerMhz, 'f', 6);
-    const QString bandwidthStr = QString::number(bandwidthMhz, 'f', 6);
 
     if (pan) {
-        if (qFuzzyCompare(pan->centerMhz(), centerMhz)
-            && qFuzzyCompare(pan->bandwidthMhz(), bandwidthMhz)) {
+        // Effective (pending-else-model) geometry: during the profile-load
+        // hold the model deliberately lags a deferred request; comparing
+        // against it would treat the user's pending zoom as "already there"
+        // — or re-issue it forever (#4142).
+        if (qFuzzyCompare(m_radioModel.effectivePanCenterMhz(panId), centerMhz)
+            && qFuzzyCompare(m_radioModel.effectivePanBandwidthMhz(panId),
+                             bandwidthMhz)) {
             return;
         }
-        // Update both values together before the radio echo arrives. Explicit
-        // zoom workflows are especially sensitive to center/bandwidth skew;
-        // splitting them produced the P1/P2 waterfall-loss and zoom-drift bugs.
-        // (aetherd RFC 2.3: setCenterBandwidth replaces applyPanStatus here.)
-        pan->setCenterBandwidth(centerMhz, bandwidthMhz);
     }
 
-    m_radioModel.sendCommand(
-        QString("display pan set %1 center=%2 bandwidth=%3")
-            .arg(panId, centerStr, bandwidthStr));
+    // Center and bandwidth travel together in one command. Explicit zoom
+    // workflows are especially sensitive to center/bandwidth skew; splitting
+    // them produced the P1/P2 waterfall-loss and zoom-drift bugs.
+    //
+    // #4142: this pair is classified profile-owned, so it was silently DROPPED
+    // during a profile load — zoom and drag, not just typed frequency entry.
+    // requestPanCenter() defers and replays it, and only advances the local
+    // model when the command actually reaches the wire.
+    const bool sent = m_radioModel.requestPanCenter(panId, centerMhz, bandwidthMhz);
 
     qDebug() << "Pan range request:" << source
              << "center" << centerMhz
-             << "bandwidth" << bandwidthMhz;
+             << "bandwidth" << bandwidthMhz
+             << (sent ? "" : "(deferred: profile load)");
 }
 
 void MainWindow::setActiveSlice(int sliceId)
@@ -7486,16 +7496,24 @@ void MainWindow::centerActiveSliceInPanadapter(bool forceRadioCenter, double cen
             m_panStack->setActivePan(applet->panId());
     }
 
-    // Keep the local spectrum centered immediately so the active slice marker
-    // is visible before the radio's status echo arrives.
-    sw->setFrequencyRange(targetMhz, bandwidthMhz);
-    pushSliceFrequencyToOverlays(s, targetMhz);
-
+    // #4142 — ask the radio FIRST, so the local view can only advance if the
+    // command actually reached the wire. During a profile load this center write
+    // is suppressed; centering the spectrum on a center the radio never took is
+    // exactly what projects honest tiles into a lying frame and bakes black rows
+    // into waterfall history. requestPanCenter() defers and replays it instead.
+    bool centerDeferred = false;
     if (forceRadioCenter && m_radioModel.isConnected()) {
-        m_radioModel.sendCommand(
-            QString("display pan set %1 center=%2")
-                .arg(s->panId()).arg(targetMhz, 0, 'f', 6));
+        centerDeferred = !m_radioModel.requestPanCenter(s->panId(), targetMhz);
     }
+
+    // Keep the local spectrum centered immediately so the active slice marker is
+    // visible before the radio's status echo arrives — unless the center was
+    // deferred, in which case the pan must keep showing truthful spectrum for the
+    // span the radio still has.
+    if (!centerDeferred) {
+        sw->setFrequencyRange(targetMhz, bandwidthMhz);
+    }
+    pushSliceFrequencyToOverlays(s, targetMhz);
 
     TuneCenteringResult result;
     result.oldCenterMhz = pan ? pan->centerMhz() : targetMhz;

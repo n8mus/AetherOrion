@@ -466,32 +466,45 @@ bool MainWindow::snapCenterLockForSlice(SliceModel* slice, double mhz, bool send
     if (sw && sw->panDragActive()) {
         return false;
     }
+    // Effective (pending-else-model) geometry: during the profile-load hold
+    // the model deliberately lags a deferred request, and comparing against it
+    // would re-issue the same write on every echo (#4142).
+    const double effPanBandwidthMhz = m_radioModel.effectivePanBandwidthMhz(panId);
     const double bandwidthMhz = kiwiDisplayActive && sw && sw->bandwidthMhz() > 0.0
         ? sw->bandwidthMhz()
-        : (pan->bandwidthMhz() > 0.0
-            ? pan->bandwidthMhz()
+        : (effPanBandwidthMhz > 0.0
+            ? effPanBandwidthMhz
             : (sw ? sw->bandwidthMhz() : 0.0));
     const double targetCenterMhz =
         bandwidthMhz > 0.0 ? std::max(mhz, bandwidthMhz / 2.0) : mhz;
     bool changed = false;
 
-    if (sw && bandwidthMhz > 0.0
+    const bool modelNeedsCenter =
+        !qFuzzyCompare(m_radioModel.effectivePanCenterMhz(panId), targetCenterMhz);
+    bool centerDeferred = false;
+
+    if (!kiwiDisplayActive && modelNeedsCenter) {
+        if (sendCommand) {
+            // #4142 — defer, never drop. requestPanCenter() advances the local
+            // model only when the command actually reaches the wire, and queues
+            // it for replay when a profile load is holding radio-state writes.
+            centerDeferred = !m_radioModel.requestPanCenter(panId, targetCenterMhz);
+        } else {
+            // Local-only snap: the caller explicitly wants no radio write, so
+            // there is no wire command for the model to diverge from.
+            pan->setCenterBandwidth(targetCenterMhz, -1.0);  // aetherd RFC 2.3
+        }
+        changed = !centerDeferred;
+    }
+
+    // Never move the visible span while the radio stays put. A view that claims
+    // a center the radio never took is precisely what projects honest tiles into
+    // a lying frame and bakes black rows into waterfall history (#4142).
+    if (!centerDeferred && sw && bandwidthMhz > 0.0
         && (!qFuzzyCompare(sw->centerMhz(), targetCenterMhz)
             || !qFuzzyCompare(sw->bandwidthMhz(), bandwidthMhz))) {
         sw->setFrequencyRangeImmediate(targetCenterMhz, bandwidthMhz);
         changed = true;
-    }
-
-    const bool modelNeedsCenter = !qFuzzyCompare(pan->centerMhz(), targetCenterMhz);
-    if (!kiwiDisplayActive && modelNeedsCenter) {
-        pan->setCenterBandwidth(targetCenterMhz, -1.0);  // aetherd RFC 2.3
-        changed = true;
-    }
-
-    if (sendCommand && !kiwiDisplayActive && modelNeedsCenter) {
-        m_radioModel.sendCommand(
-            QStringLiteral("display pan set %1 center=%2")
-                .arg(panId, QString::number(targetCenterMhz, 'f', 6)));
     }
 
     return changed;
@@ -2002,6 +2015,16 @@ void MainWindow::scheduleProfileLoadRecovery(const QString& profileType,
     });
     QTimer::singleShot(kProfileLoadDeferredPanFlushDelayMs, this, [this]() {
         flushPendingProfileLoadPanDimensions();
+        // Deferred pan WRITES (center/bandwidth/band) are NOT flushed from
+        // here. RadioModel owns that replay — hold-relative, armed by the act
+        // of deferring — because this entire recovery pass is gated on the
+        // profile-load ACK, and a large topology (8 pans / 8 slices, measured
+        // 5/5 on a 6700) can stall the radio into a force-disconnect before
+        // the ACK ever arrives; a flush scheduled here would never run. A
+        // dimensions-then-centers ordering is NOT required for correctness:
+        // every VITA-49 tile carries its own FrameLowFreq/BinBandwidth, so a
+        // recenter that lands before the pixel geometry settles is a
+        // self-correcting transient, not a scar. (#4142)
     });
     QTimer::singleShot(kProfileLoadPostHoldRecoveryDelayMs, this, [this]() {
         m_profileLoadPendingFftYpixels.clear();
@@ -2531,23 +2554,30 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         if (kiwiSdrPanDisplaysKiwi(applet->panId())) {
             return;
         }
-        m_radioModel.sendCommand(
-            QString("display pan set %1 bandwidth=%2").arg(applet->panId()).arg(bw, 0, 'f', 6));
+        // #4142: a bandwidth drag is user intent — during the profile-load
+        // hold a bare sendCommand() is silently destroyed; defer it instead.
+        m_radioModel.requestPanBandwidth(applet->panId(), bw);
     });
     connect(sw, &SpectrumWidget::centerChangeRequested,
             this, [this, applet](double center) {
         if (kiwiSdrPanDisplaysKiwi(applet->panId())) {
             return;
         }
-        if (auto* pan = m_radioModel.panadapter(applet->panId())) {
-            center = std::max(center, pan->bandwidthMhz() / 2.0);
-            // The radio may acknowledge this command without echoing a display
-            // status to the setting client. Keep the canonical model aligned
-            // with the visible pan so TCI dds: follows the IQ center.
-            pan->setCenterBandwidth(center, -1.0);
+        // Clamp against EFFECTIVE bandwidth (a deferred zoom's pending value,
+        // else the model): during the hold the model deliberately lags the
+        // user's deferred request. Dispatch re-clamps against live geometry
+        // regardless — this caller clamp is UX-only.
+        const double effBw =
+            m_radioModel.effectivePanBandwidthMhz(applet->panId());
+        if (effBw > 0.0) {
+            center = std::max(center, effBw / 2.0);
         }
-        m_radioModel.sendCommand(
-            QString("display pan set %1 center=%2").arg(applet->panId()).arg(center, 0, 'f', 6));
+        // The radio may acknowledge this command without echoing a display status
+        // to the setting client, so requestPanCenter() keeps the canonical model
+        // aligned with the wire command (TCI dds: follows this center) — and
+        // during a profile load it defers rather than letting sendCmd drop it
+        // silently (#4142).
+        m_radioModel.requestPanCenter(applet->panId(), center);
     });
     // Band/Segment Zoom toggle off the pan's radio-authoritative model state
     // (togglePanZoomModeForPan) — shared with the keyboard/MIDI shortcuts
@@ -3340,13 +3370,20 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             return;
         }
         if (auto* pan = m_radioModel.panadapter(target->panId())) {
-            centerMhz = std::max(centerMhz, pan->bandwidthMhz() / 2.0);
+            // Effective (pending-else-model) geometry, so a deferred write in
+            // flight dedupes instead of re-issuing per drag tick (#4142).
+            centerMhz = std::max(
+                centerMhz,
+                m_radioModel.effectivePanBandwidthMhz(pan->panId()) / 2.0);
             // In-window drag moves pass the unchanged center purely to tune
             // without reveal — only emit the pan command when it actually moves.
-            if (!qFuzzyCompare(centerMhz, pan->centerMhz())) {
-                m_radioModel.sendCommand(
-                    QString("display pan set %1 center=%2")
-                        .arg(pan->panId()).arg(centerMhz, 0, 'f', 6));
+            if (!qFuzzyCompare(centerMhz,
+                               m_radioModel.effectivePanCenterMhz(pan->panId()))) {
+                // Deferred rather than dropped during a profile load (#4142).
+                // The SpectrumWidget owns its own view during an edge-pan drag,
+                // so the gesture still tracks the cursor; the radio catches up
+                // when the deferred center flushes.
+                m_radioModel.requestPanCenter(pan->panId(), centerMhz);
             }
         }
         queueActiveSliceForSpectrumTarget(target->sliceId());
@@ -3706,8 +3743,11 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                                [this, panId = applet->panId()]() {
                 m_kiwiRebind.clearBandRecall(panId);
             });
-            m_radioModel.sendCommand(
-                QString("display pan set %1 band=%2").arg(applet->panId()).arg(stackKey));
+            // #4142: during the profile-load hold a bare sendCommand() band=
+            // write is silently destroyed. requestPanBand defers it instead.
+            // Outside a hold it dispatches inline, so the #4158 grace window
+            // above is unchanged on the normal user-initiated band-recall path.
+            m_radioModel.requestPanBand(applet->panId(), stackKey);
             QTimer::singleShot(300, this, [this, panId = applet->panId()]() {
                 reassertUnmutedSliceAudioForPan(panId);
             });
@@ -3820,10 +3860,12 @@ MainWindow::TuneCenteringResult MainWindow::revealFrequencyIfNeeded(
             ? kPanFollowAnimationDurationMs
             : 0;
 
-        pan->setCenterBandwidth(result.newCenterMhz, -1.0);  // aetherd RFC 2.3
-        m_radioModel.sendCommand(
-            QString("display pan set %1 center=%2")
-                .arg(pan->panId()).arg(result.newCenterMhz, 0, 'f', 6));
+        // #4142 — defer, never drop. During a profile load the pan center write
+        // is suppressed at the wire; advancing the local center anyway is what
+        // made the waterfall go black (the view claimed a center the radio never
+        // took). requestPanCenter() applies the model update only when the
+        // command actually goes out, and replays it once the hold lifts.
+        m_radioModel.requestPanCenter(pan->panId(), result.newCenterMhz);
         return result;
     }
 
@@ -3907,13 +3949,13 @@ MainWindow::TuneCenteringResult MainWindow::revealFrequencyIfNeeded(
         ? kPanFollowAnimationDurationMs
         : 0;
 
-    // Apply the center optimistically so the owning spectrum repaints
-    // immediately; SpectrumWidget decides whether that becomes a short
-    // retargetable animation or an immediate snap based on shift size.
-    pan->setCenterBandwidth(result.newCenterMhz, -1.0);  // aetherd RFC 2.3
-    m_radioModel.sendCommand(
-        QString("display pan set %1 center=%2")
-            .arg(pan->panId()).arg(result.newCenterMhz, 0, 'f', 6));
+    // Apply the center so the owning spectrum repaints immediately;
+    // SpectrumWidget decides whether that becomes a short retargetable animation
+    // or an immediate snap based on shift size. During a profile load this
+    // defers instead (#4142) — the model does not advance ahead of the radio, so
+    // the pan keeps showing truthful spectrum for its real span until the
+    // deferred center flushes.
+    m_radioModel.requestPanCenter(pan->panId(), result.newCenterMhz);
     return result;
 }
 
