@@ -1782,6 +1782,14 @@ void RadioModel::connectToRadio(const RadioInfo& info)
     m_name    = info.name;
     m_model   = info.model;
     m_version = info.version;
+    // Seed nickname/callsign from the discovery packet so the status-bar station
+    // label is correct the instant onConnectionStateChanged(true) reads it. These
+    // were previously only set later from the async "info" reply, so on connect
+    // the label showed a STALE m_nickname — blank on the first connect, or the
+    // PREVIOUSLY connected radio's name (it is never cleared on disconnect). The
+    // async reply still refreshes them if they differ.
+    m_nickname = info.nickname;
+    m_callsign = info.callsign;
     m_declaredBands = parseDeclaredBands(info.bands);   // empty for real Flex
     m_maxSlices = maxSlicesForModel(m_model);
     if (reloadAntennaAliases())
@@ -4243,6 +4251,13 @@ void RadioModel::onDisconnected()
         m_staleSessionSerial = m_chassisSerial;
     m_chassisSerial.clear();
     m_callsign.clear();
+    // Clear the nickname here too, not just on the connectToRadio() seeding
+    // path: connectViaWan() takes no RadioInfo and the LAN auto-reconnect timer
+    // calls m_connection->connectToRadio(m_lastInfo) directly, both bypassing
+    // RadioModel::connectToRadio(). Clearing on the disconnect side closes all
+    // three paths at once, so a reconnect can never show the previous radio's
+    // station label while the async info reply is in flight. (#4260 review)
+    m_nickname.clear();
     m_region.clear();
     m_rxAudio = {};
     m_netCwStreamId = 0;
