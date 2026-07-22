@@ -1799,6 +1799,12 @@ void SpectrumWidget::loadSettings()
     QColor parsed(fillColorStr);
     if (parsed.isValid())
         m_fftFillColor = parsed;
+    // Trace line color is independent of the fill (#4239). Default matches the
+    // legacy look where the line was drawn in the fill color (cyan).
+    const QString lineColorStr = s.value(settingsKey("DisplayFftLineColor"), "#00e5ff").toString();
+    QColor parsedLine(lineColorStr);
+    if (parsedLine.isValid())
+        m_fftLineColor = parsedLine;
     m_wfColorGain    = s.value(settingsKey("DisplayWfColorGain"), "50").toInt();
     m_wfBlackLevel   = s.value(settingsKey("DisplayWfBlackLevel"), "15").toInt();
     m_wfAutoBlack    = s.value(settingsKey("DisplayWfAutoBlack"), "True").toString() == "True";
@@ -1876,7 +1882,8 @@ void SpectrumWidget::loadSettings()
             m_noiseFloorPosition, m_noiseFloorEnable,
             m_fftHeatMap, static_cast<int>(m_wfColorScheme), m_showGrid,
             m_fftLineWidth, m_wfAutoBlackRadioSide,
-            static_cast<int>(m_spectrumRenderMode), dssFloorDepth());
+            static_cast<int>(m_spectrumRenderMode), dssFloorDepth(),
+            m_dssGain, m_fftLineColor);
         m_overlayMenu->syncExtraDisplaySettings(m_wfBlankerEnabled,
             m_wfBlankerThreshold, m_bgOpacity, m_freqGridSpacingKhz, m_bgFillColor,
             m_freqScaleFontPt);
@@ -3187,6 +3194,13 @@ void SpectrumWidget::setFftFillColor(const QColor& c) {
     m_fftFillColor = c;
     auto& s = AppSettings::instance();
     s.setValue(settingsKey("DisplayFftFillColor"), c.name());
+    s.save();
+    markOverlayDirty();
+}
+void SpectrumWidget::setFftLineColor(const QColor& c) {
+    m_fftLineColor = c;
+    auto& s = AppSettings::instance();
+    s.setValue(settingsKey("DisplayFftLineColor"), c.name());
     s.save();
     markOverlayDirty();
 }
@@ -9640,7 +9654,7 @@ void SpectrumWidget::initSpectrumPipeline()
     // (same conclusion as PR #3968). Use it unconditionally.
     m_fftColFormat = QRhiTexture::R16F;
     m_fftScopeUbo = r->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer,
-                                 5 * 4 * sizeof(float));
+                                 6 * 4 * sizeof(float));  // 6 vec4 — see panscope.frag U block (#4239)
     m_fftScopeUbo->create();
 
     // LINEAR column sampling interpolates the trace between device pixel
@@ -10588,7 +10602,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb)
                 // UBO — see panscope.frag's U block.
                 const QColor dk = m_fftFillColor.darker(300);
                 const float fa = m_fftFillAlpha;
-                const float ubo[20] = {
+                const float ubo[24] = {
                     static_cast<float>(specContentW) * fbDpr,       // plot: wPx
                     static_cast<float>(specH) * fbDpr,              // hPx
                     static_cast<float>(n),                          // columnCount
@@ -10610,6 +10624,11 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb)
                     static_cast<float>(dk.redF()),
                     static_cast<float>(dk.greenF()),
                     static_cast<float>(dk.blueF()),
+                    1.0f,
+                    // lineColor — trace stroke, independent of fill (#4239)
+                    static_cast<float>(m_fftLineColor.redF()),
+                    static_cast<float>(m_fftLineColor.greenF()),
+                    static_cast<float>(m_fftLineColor.blueF()),
                     1.0f,
                 };
                 batch->updateDynamicBuffer(m_fftScopeUbo, 0, sizeof(ubo), ubo);
