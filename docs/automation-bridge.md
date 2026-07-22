@@ -973,16 +973,28 @@ scope actually consumed, in milliseconds per wall-clock second.
   hidden-widget signature, not a bug.
 
 ### `tune`
-Set the **active slice's** frequency in MHz — the most fundamental control the
+Set a slice's frequency in MHz — the most fundamental control the
 custom-painted `VfoWidget` couldn't expose. RX/config only; despite the name it
 does **not** key (cf. `atu tune`, which does). Honors the per-slice VFO lock.
+
+Without a slice id the **active slice** is tuned (the original verb shape).
+An optional second argument (bare line) / `id` field (JSON) targets a specific
+slice by id, so scripts driving a non-active slice no longer need the racy
+`slice select` → `tune` → re-select flap:
 
 ```json
 → {"cmd":"tune","value":"7.175"}
 ← {"ok":true,"tune":7.175,"sliceId":0,"letter":"A"}
+
+→ {"cmd":"tune","value":"14.074","id":"1"}
+← {"ok":true,"tune":14.074,"sliceId":1,"letter":"B"}
 ```
 
-Refused with `refused: slice A is VFO-locked` when the slice is locked. To
+Bare-line form: `tune 14.074 1`.
+
+Refused with `refused: slice A is VFO-locked` when the slice is locked, with
+`no slice with id N` when the id names no slice, and with `refused: slice N
+belongs to another client` when another client owns it (Multi-Flex). To
 recenter the *pan* (band change) rather than move the slice within it, use
 [`pan center`](#pan).
 
@@ -2262,7 +2274,7 @@ The complete registry, generated from the `add(...)` table in `AutomationServer.
 | `slice` | — | slice <action> [args] — slice lifecycle/config (see doSlice) |
 | `gps` | — | gps <fixture\|clearfixture> [6000\|8000] — disconnected GPS test data |
 | `waveform` | — | waveform <start\|stop\|unregister\|resync> [args] — digital-voice service |
-| `tune` | — | tune <mhz> — set the active slice frequency |
+| `tune` | — | tune <mhz> [sliceId] — set a slice frequency (default: the active slice) |
 | `cwx` | — | cwx <send\|speed\|stop> [args] — CWX keyer (send is TX-gated) |
 | `record` | — | record <start\|stop\|status\|path\|dir> [args] |
 | `testtone` | — | testtone <on\|off> [freqHz levelDb] |

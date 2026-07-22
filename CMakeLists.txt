@@ -2946,6 +2946,17 @@ if(PYTHON3_EXECUTABLE)
                      ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_bridge_docs.py --check)
 endif()
 
+# JSON boundary regression for shared bridge `id` normalization. Exercises the
+# real QLocalSocket request path and tune dispatcher without touching a radio.
+add_executable(automation_json_id_test
+    tests/automation_json_id_test.cpp
+)
+target_include_directories(automation_json_id_test PRIVATE src tests)
+target_link_libraries(automation_json_id_test PRIVATE
+    aethercore Qt6::Core Qt6::Network
+)
+add_test(NAME automation_json_id_test COMMAND automation_json_id_test)
+
 add_executable(gui_client_identity_policy_test
     tests/gui_client_identity_policy_test.cpp
 )

@@ -6048,12 +6048,25 @@ void MainWindow::applyTuneRequest(SliceModel* slice, double mhz,
     logTunePolicyDecision(source, intent, oldFreqMhz, mhz, result);
 }
 
-QJsonObject MainWindow::automationTune(double mhz)
+QJsonObject MainWindow::automationTune(double mhz, int sliceId)
 {
-    SliceModel* slice = activeSlice();
+    // sliceId -1 = active slice (the original verb shape). A named slice is
+    // resolved directly so bridge scripts don't need the racy select → tune →
+    // restore flap to drive a non-active slice.
+    SliceModel* slice = (sliceId >= 0) ? m_radioModel.slice(sliceId)
+                                       : activeSlice();
     if (!slice) {
         return QJsonObject{{QStringLiteral("ok"), false},
-                           {QStringLiteral("error"), QStringLiteral("no slice to tune")}};
+                           {QStringLiteral("error"),
+                            sliceId >= 0
+                                ? QStringLiteral("no slice with id %1").arg(sliceId)
+                                : QStringLiteral("no slice to tune")}};
+    }
+    if (sliceId >= 0 && !m_radioModel.sliceMayBelongToUs(sliceId)) {
+        return QJsonObject{
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("error"),
+             QStringLiteral("refused: slice %1 belongs to another client").arg(sliceId)}};
     }
     if (slice->isLocked()) {
         return QJsonObject{
