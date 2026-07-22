@@ -1570,6 +1570,7 @@ endif()
 
 # macOS app bundle
 if(APPLE)
+    target_sources(AetherSDR PRIVATE src/MacStartupAbortGuard.cpp)
     set_target_properties(AetherSDR PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.aethersdr.AetherSDR"
@@ -2875,6 +2876,16 @@ add_executable(radio_status_ownership_test
 target_include_directories(radio_status_ownership_test PRIVATE src)
 target_link_libraries(radio_status_ownership_test PRIVATE Qt6::Core)
 enable_testing()
+
+if(APPLE)
+    add_executable(mac_startup_abort_guard_test
+        tests/mac_startup_abort_guard_test.cpp
+        src/MacStartupAbortGuard.cpp
+    )
+    target_include_directories(mac_startup_abort_guard_test PRIVATE src)
+    add_test(NAME mac_startup_abort_guard_test COMMAND mac_startup_abort_guard_test)
+endif()
+
 add_test(NAME radio_status_ownership_test COMMAND radio_status_ownership_test)
 
 # Approved V12 cross-needle meter construction: versioned face resource,
