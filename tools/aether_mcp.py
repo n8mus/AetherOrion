@@ -41,10 +41,16 @@ import difflib
 import glob
 import json
 import os
+import re
+import secrets
+import signal
 import socket
+import stat
+import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INFO = {"name": "aethersdr-automation", "version": "1.0.0"}
@@ -53,6 +59,7 @@ MAX_INLINE_IMAGE_BYTES = 800_000  # larger grabs are returned as a path only
 
 _gesture_bridge = None
 _gesture_socket_path = None
+_owned_app = None
 
 
 # --------------------------------------------------------------------------
@@ -85,6 +92,8 @@ def discover_sockets():
 
 
 def bridge_socket_path():
+    if _owned_app is not None and _owned_app["process"].poll() is None:
+        return _owned_app["socket"]
     override = os.environ.get("AETHER_MCP_SOCKET")
     if override:
         return override
@@ -154,7 +163,7 @@ def bridge_request(obj, timeout=REQUEST_TIMEOUT_S):
 
 
 def _authenticated_request(obj):
-    """Copy a request and attach the runtime token without logging it."""
+    """Copy a bridge request and attach the runtime token without logging it."""
     token = os.environ.get("AETHER_MCP_TOKEN")
     if token and "token" not in obj:
         return dict(obj, token=token)
@@ -172,6 +181,208 @@ def _close_gesture_bridge():
 
 
 atexit.register(_close_gesture_bridge)
+# --------------------------------------------------------------------------
+# Secure fresh-build process handoff
+# --------------------------------------------------------------------------
+
+def _resolve_app_artifact(worktree):
+    """Resolve only the canonical AetherSDR artifact under an absolute worktree."""
+    if not worktree or not os.path.isabs(worktree):
+        raise ValueError("`worktree` must be an absolute path")
+    try:
+        root = Path(worktree).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"worktree could not be resolved: {exc}") from exc
+    if not root.is_dir():
+        raise ValueError("worktree is not a directory")
+    if not (root / ".git").exists() or not (root / "AGENTS.md").is_file():
+        raise ValueError("worktree is not an AetherSDR Git worktree")
+    cmake_file = root / "CMakeLists.txt"
+    try:
+        cmake_head = cmake_file.read_text(encoding="utf-8")[:4096]
+    except OSError as exc:
+        raise ValueError(f"could not read worktree CMakeLists.txt: {exc}") from exc
+    if "project(AetherSDR " not in cmake_head:
+        raise ValueError("worktree CMakeLists.txt does not declare AetherSDR")
+
+    if sys.platform == "darwin":
+        executable = root / "build" / "AetherSDR.app" / "Contents" / "MacOS" / "AetherSDR"
+    elif sys.platform == "win32":
+        executable = root / "build" / "AetherSDR.exe"
+    else:
+        executable = root / "build" / "AetherSDR"
+    if not executable.is_file() or not os.access(executable, os.X_OK):
+        raise ValueError(f"fresh build artifact is missing or not executable: {executable}")
+    return root, executable
+
+
+def _instance_label(value):
+    if value is None or not str(value).strip():
+        return f"mcp-proof-{os.getpid()}-{secrets.token_hex(3)}"
+    label = str(value).strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,48}", label):
+        raise ValueError("`label` must be 1-48 ASCII letters, digits, dot, underscore, or dash")
+    return label
+
+
+def _instance_socket():
+    suffix = f"{os.getpid()}-{secrets.token_hex(4)}"
+    if sys.platform == "win32":
+        return f"aethersdr-mcp-{suffix}"
+    # Keep the AF_UNIX path short enough for macOS even when TMPDIR is deeply
+    # nested. /tmp is present on every supported Unix platform.
+    return f"/tmp/aether-mcp-{suffix}.sock"
+
+
+def _request_at(socket_path, obj, timeout=REQUEST_TIMEOUT_S, authenticated=True):
+    bridge = Bridge(socket_path, timeout)
+    try:
+        request = _authenticated_request(obj) if authenticated else obj
+        return bridge.request(request)
+    finally:
+        bridge.close()
+
+
+def _wait_for_owned_app(instance, timeout=25):
+    """Wait for exact authenticated identity; never accept discovery fallback."""
+    deadline = time.monotonic() + timeout
+    last_error = "bridge did not become ready"
+    while time.monotonic() < deadline:
+        return_code = instance["process"].poll()
+        if return_code is not None:
+            raise RuntimeError(f"AetherSDR exited before bridge startup (code {return_code})")
+        try:
+            ping = _request_at(instance["socket"], {"cmd": "ping"}, timeout=2,
+                               authenticated=False)
+            # A tokenless privileged call must be REFUSED, not merely advertised
+            # as required — this demonstrates enforcement, not just the flag.
+            tokenless = _request_at(instance["socket"], {"cmd": "whoami"},
+                                    timeout=2, authenticated=False)
+            whoami = _request_at(instance["socket"], {"cmd": "whoami"}, timeout=2)
+        except (ConnectionError, FileNotFoundError, OSError, ValueError) as exc:
+            last_error = str(exc)
+            time.sleep(0.1)
+            continue
+        if not isinstance(ping, dict) or not ping.get("authRequired"):
+            raise RuntimeError("fresh-build bridge did not require authentication")
+        if isinstance(tokenless, dict) and tokenless.get("ok"):
+            raise RuntimeError(
+                "fresh-build bridge accepted a tokenless privileged command")
+        if not isinstance(whoami, dict) or not whoami.get("ok"):
+            raise RuntimeError("authenticated whoami failed")
+        if int(whoami.get("pid", -1)) != instance["process"].pid:
+            raise RuntimeError("authenticated bridge PID did not match the launched app")
+        identity = whoami.get("automationIdentity") or whoami.get("socket")
+        if identity != instance["socket"]:
+            raise RuntimeError("authenticated bridge identity did not match the explicit socket")
+        if whoami.get("label") != instance["label"]:
+            raise RuntimeError("authenticated bridge label did not match the launched instance")
+        if whoami.get("txAllowed") is not False:
+            raise RuntimeError("fresh-build bridge did not keep TX automation disabled")
+        return ping, whoami
+    raise RuntimeError(last_error)
+
+
+def _remove_owned_socket(instance):
+    if sys.platform == "win32" or not instance:
+        return
+    socket_path = instance.get("socket", "")
+    expected = rf"/tmp/aether-mcp-{os.getpid()}-[0-9a-f]{{8}}\.sock"
+    if not re.fullmatch(expected, socket_path):
+        return
+    try:
+        socket_stat = os.lstat(socket_path)
+    except FileNotFoundError:
+        return
+    except OSError:
+        return
+    if not stat.S_ISSOCK(socket_stat.st_mode):
+        return
+    try:
+        os.unlink(socket_path)
+    except OSError:
+        pass  # app-owned socket cleanup is best-effort after process exit
+
+
+def _signal_owned_process(process, sig):
+    """Signal the child's whole session, not just its PID.
+
+    The child is launched with start_new_session=True, so it is a session
+    leader (pgid == pid) and any helper subprocesses it spawns share that
+    group; signalling the group reaps them too. Fall back to the single
+    process if the group is already gone or on Windows (no POSIX groups)."""
+    if sys.platform != "win32":
+        try:
+            os.killpg(os.getpgid(process.pid), sig)
+            return
+        except (ProcessLookupError, PermissionError, OSError):
+            pass  # group already reaped, or racing exit — fall back below
+    try:
+        (process.kill if sig == signal.SIGKILL else process.terminate)()
+    except OSError:
+        pass
+
+
+def _stop_owned_app():
+    global _owned_app
+    instance = _owned_app
+    if instance is None:
+        return {"ok": True, "running": False}
+    process = instance["process"]
+    if process.poll() is None:
+        _signal_owned_process(process, signal.SIGTERM)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _signal_owned_process(process, signal.SIGKILL)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+    if process.poll() is None:
+        return {
+            "ok": False,
+            "running": True,
+            "pid": process.pid,
+            "socket": instance["socket"],
+            "label": instance["label"],
+            "error": "AetherSDR did not exit after terminate and kill",
+        }
+    _owned_app = None
+    _remove_owned_socket(instance)
+    return {
+        "ok": True,
+        "running": False,
+        "pid": process.pid,
+        "socket": instance["socket"],
+        "label": instance["label"],
+        "exitCode": process.poll(),
+    }
+
+
+atexit.register(_stop_owned_app)
+
+
+def _handle_shutdown_signal(signum, _frame):
+    # atexit does NOT run when the process is killed by a signal, and an MCP
+    # host shuts its server down with SIGTERM. Run the same cleanups atexit
+    # would (reap the owned child so the app, its socket, and the shared
+    # app/radio lock don't leak; release the held gesture transport), then die
+    # with the default disposition so the exit status still reflects the signal.
+    _stop_owned_app()
+    _close_gesture_bridge()
+    try:
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+    except (OSError, ValueError):
+        os._exit(128 + signum)
+
+
+for _shutdown_signal in (signal.SIGTERM, signal.SIGINT):
+    try:
+        signal.signal(_shutdown_signal, _handle_shutdown_signal)
+    except (OSError, ValueError, AttributeError):
+        pass  # not the main thread, or the platform lacks this signal
 
 
 # --------------------------------------------------------------------------
@@ -200,6 +411,25 @@ def prune_tree(node, needle):
 # --------------------------------------------------------------------------
 
 TOOLS = [
+    {
+        "name": "app_instance",
+        "description": (
+            "Securely launch, inspect, or stop one fresh local AetherSDR "
+            "proof build owned by this MCP server. Launch accepts an absolute "
+            "AetherSDR worktree and runs only its canonical build artifact, "
+            "handing the existing AETHER_MCP_TOKEN to the child in memory. It "
+            "uses a unique explicit socket/label, disables radio autoconnect, "
+            "pins TX automation off, and succeeds only after authenticated "
+            "whoami matches the child PID and identity. No token is returned, "
+            "logged, passed on the command line, or written to settings."),
+        "inputSchema": {"type": "object", "properties": {
+            "action": {"type": "string", "enum": ["launch", "status", "stop"]},
+            "worktree": {"type": "string",
+                         "description": "absolute AetherSDR worktree path for launch"},
+            "label": {"type": "string",
+                      "description": "optional safe instance label for launch"},
+        }, "required": ["action"]},
+    },
     {
         "name": "bridge_status",
         "description": (
@@ -602,10 +832,151 @@ def _maybe_suggest(resp, target):
 
 
 def handle_tool(name, args):
+    if name == "app_instance":
+        global _owned_app
+        action = str(args.get("action") or "").strip().lower()
+        if action not in ("launch", "status", "stop"):
+            return error_result("app_instance action must be launch, status, or stop")
+        if action == "stop":
+            return text_result(_stop_owned_app())
+        if action == "status":
+            if _owned_app is None:
+                return text_result({"ok": True, "running": False})
+            instance = _owned_app
+            process = instance["process"]
+            return_code = process.poll()
+            if return_code is not None:
+                _owned_app = None
+                _remove_owned_socket(instance)
+                return text_result({
+                    "ok": True,
+                    "running": False,
+                    "pid": process.pid,
+                    "socket": instance["socket"],
+                    "label": instance["label"],
+                    "exitCode": return_code,
+                })
+            try:
+                whoami = _request_at(instance["socket"], {"cmd": "whoami"}, timeout=5)
+            except Exception as exc:  # noqa: BLE001 — status must remain inspectable
+                return text_result({
+                    "ok": True,
+                    "running": True,
+                    "authenticated": False,
+                    "pid": process.pid,
+                    "socket": instance["socket"],
+                    "label": instance["label"],
+                    "error": str(exc),
+                })
+            identity = whoami.get("automationIdentity") or whoami.get("socket")
+            try:
+                whoami_pid = int(whoami.get("pid", -1))
+            except (TypeError, ValueError):
+                whoami_pid = -1
+            identity_matches = (
+                bool(whoami.get("ok"))
+                and whoami_pid == process.pid
+                and identity == instance["socket"]
+                and whoami.get("label") == instance["label"]
+                and whoami.get("txAllowed") is False)
+            return text_result({
+                "ok": True,
+                "running": True,
+                "authenticated": identity_matches,
+                "identityMatches": identity_matches,
+                "pid": process.pid,
+                "socket": instance["socket"],
+                "label": instance["label"],
+                "readOnly": whoami.get("readOnly", False),
+                "txAllowed": whoami.get("txAllowed"),
+                "version": whoami.get("version"),
+            })
+
+        if _owned_app is not None:
+            if _owned_app["process"].poll() is None:
+                return error_result(
+                    "this MCP server already owns a running AetherSDR instance; stop it first")
+            _remove_owned_socket(_owned_app)
+            _owned_app = None
+        if not os.environ.get("AETHER_MCP_TOKEN"):
+            return error_result(
+                "secure launch requires AETHER_MCP_TOKEN in this MCP server environment")
+        try:
+            root, executable = _resolve_app_artifact(args.get("worktree"))
+            label = _instance_label(args.get("label"))
+        except ValueError as exc:
+            return error_result(str(exc))
+
+        socket_path = _instance_socket()
+        child_env = os.environ.copy()
+        child_env["AETHER_AUTOMATION"] = "1"
+        child_env["AETHER_AUTOMATION_NO_AUTOCONNECT"] = "1"
+        child_env["AETHER_AUTOMATION_NO_TX"] = "1"
+        child_env["AETHER_AUTOMATION_SOCKET"] = socket_path
+        child_env["AETHER_AUTOMATION_LABEL"] = label
+        child_env["AETHER_AUTOMATION_IDENTITY"] = socket_path
+        child_env["AETHER_AUTOMATION_AGENT_NAME"] = label
+        child_env.pop("AETHER_AUTOMATION_ALLOW_TX", None)
+        child_env.pop("AETHER_MCP_SOCKET", None)
+
+        popen_kwargs = {
+            "cwd": str(root),
+            "env": child_env,
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "close_fds": True,
+        }
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs["start_new_session"] = True
+        try:
+            process = subprocess.Popen([str(executable)], **popen_kwargs)
+        except OSError as exc:
+            return error_result(f"could not launch fresh AetherSDR build: {exc}")
+
+        _owned_app = {
+            "process": process,
+            "socket": socket_path,
+            "label": label,
+            "worktree": str(root),
+            "executable": str(executable),
+        }
+        try:
+            ping, whoami = _wait_for_owned_app(_owned_app)
+        except Exception as exc:  # noqa: BLE001 — fail closed and reap child
+            _stop_owned_app()
+            return error_result(f"fresh-build authentication failed: {exc}")
+        return text_result({
+            "ok": True,
+            "running": True,
+            "authenticated": True,
+            "authRequired": ping.get("authRequired"),
+            "pid": process.pid,
+            "socket": socket_path,
+            "label": label,
+            "worktree": str(root),
+            "executable": str(executable),
+            "readOnly": whoami.get("readOnly", False),
+            "txAllowed": whoami.get("txAllowed"),
+            "version": whoami.get("version"),
+        })
+
     if name == "bridge_status":
         entries = discover_sockets()
         status = {"instances": entries, "active": None,
                   "token_configured_here": bool(os.environ.get("AETHER_MCP_TOKEN"))}
+        # A running owned app uses an explicit socket that never writes a
+        # discovery file, yet bridge_request routes to it; surface it so status
+        # reflects where commands actually go, not just discovered instances.
+        if _owned_app is not None and _owned_app["process"].poll() is None:
+            status["owned_instance"] = {
+                "socket": _owned_app["socket"],
+                "label": _owned_app["label"],
+                "pid": _owned_app["process"].pid,
+                "note": "MCP-owned fresh build; bridge commands route here.",
+            }
         if entries or os.environ.get("AETHER_MCP_SOCKET"):
             # ping needs no token and reveals whether the bridge requires one.
             try:
