@@ -26,6 +26,7 @@
 #include "DbmRangeTransition.h"
 #include "MainWindowHelpers.h"
 #include "PanadapterApplet.h"
+#include "PanadapterMessageOverlay.h"
 #include "PanadapterStack.h"
 #include "RadioSetupDialog.h"
 #include "GpsLocationDialog.h"
@@ -188,6 +189,127 @@ void MainWindow::showGpsLocationDialog()
     showOrRaisePersistent(m_gpsLocationDialog, &m_radioModel);
 }
 
+void MainWindow::noteBandRecallForPan(const QString& panId)
+{
+    if (panId.isEmpty()) {
+        return;
+    }
+
+    // Flex band persistence destroys and rebuilds this pan's slices. Snapshot
+    // the locked receiver and our pre-recall topology before sending the band
+    // command. Restoration is deferred until the full grace window elapses so
+    // slice status arrival order can never choose the receiver.
+    m_kiwiRebind.noteBandRecall(panId);
+    // Stamp this recall so the grace timer below only clears the Kiwi marker if
+    // it is still the latest recall for this pan. Without it, an overlapping
+    // recall (band button + memory spot / tune, now all routed here) would have
+    // the first timer clear the marker mid-rebuild of the second — the Kiwi
+    // half would lose the generation-safety the Center Lock half already has.
+    const quint64 bandRecallGeneration = ++m_bandRecallGeneration;
+    m_bandRecallGenerationByPan.insert(panId, bandRecallGeneration);
+    const int lockedSliceId = centerLockSliceForPan(panId);
+    SliceModel* lockedSlice = m_radioModel.slice(lockedSliceId);
+    if (lockedSlice
+        && (lockedSlice->panId() != panId
+            || !m_radioModel.sliceMayBelongToUs(lockedSliceId))) {
+        lockedSlice = nullptr;
+    }
+
+    int ownedSliceCount = 0;
+    for (SliceModel* slice : m_radioModel.slices()) {
+        if (slice && slice->panId() == panId
+            && m_radioModel.sliceMayBelongToUs(slice->sliceId())) {
+            ++ownedSliceCount;
+        }
+    }
+
+    const quint64 centerLockGeneration = m_centerLockRebind.noteBandRecall(
+        panId,
+        lockedSlice ? lockedSlice->sliceId() : -1,
+        lockedSlice ? lockedSlice->letter() : QString(),
+        ownedSliceCount);
+    QTimer::singleShot(kBandRecallRecreateGraceMs, this,
+                       [this, panId, centerLockGeneration, bandRecallGeneration]() {
+        // Only the latest recall for this pan clears the Kiwi band-recall
+        // marker; a superseding recall now owns the window, so an older timer
+        // must not clear it out from under the in-flight rebuild.
+        if (m_bandRecallGenerationByPan.value(panId) == bandRecallGeneration) {
+            m_kiwiRebind.clearBandRecall(panId);
+            m_bandRecallGenerationByPan.remove(panId);
+        }
+        if (centerLockGeneration == 0) {
+            return;
+        }
+
+        QVector<CenterLockRebindTracker::SliceIdentity> sliceIdentities;
+        for (SliceModel* slice : m_radioModel.slices()) {
+            if (!slice) {
+                continue;
+            }
+            sliceIdentities.append({
+                slice->panId(),
+                slice->sliceId(),
+                slice->letter(),
+                m_radioModel.sliceMayBelongToUs(slice->sliceId()),
+            });
+        }
+
+        const CenterLockRebindTracker::Resolution resolution =
+            m_centerLockRebind.resolveAfterGrace(
+                panId, centerLockGeneration, sliceIdentities);
+        if (resolution.kind
+            == CenterLockRebindTracker::Resolution::Kind::NoAction) {
+            return;
+        }
+
+        if (resolution.kind
+            == CenterLockRebindTracker::Resolution::Kind::Restore) {
+            SliceModel* replacement = m_radioModel.slice(resolution.sliceId);
+            if (replacement && replacement->panId() == panId
+                && m_radioModel.sliceMayBelongToUs(replacement->sliceId())) {
+                // persist=true self-persists and cancels any pending recall (a
+                // no-op here — resolveAfterGrace already consumed it).
+                setCenterLockForPan(panId, replacement->sliceId(), true, true);
+                if (centerLockActiveForSlice(replacement)) {
+                    return;
+                }
+            }
+            // Identified a slice but couldn't re-lock it: fall through and
+            // report it as missing (not ambiguous — the tracker WAS sure).
+        }
+
+        clearCenterLockForPan(panId, true);
+        showCenterLockReleaseNotification(
+            panId,
+            resolution.kind
+                    == CenterLockRebindTracker::Resolution::Kind::ReleaseAmbiguous
+                ? tr("The band change restored a different slice layout, so "
+                     "the locked slice could not be identified safely.")
+                : tr("The band change did not restore the locked slice."));
+    });
+}
+
+void MainWindow::showCenterLockReleaseNotification(const QString& panId,
+                                                    const QString& detail)
+{
+    if (!m_panStack) {
+        return;
+    }
+    SpectrumWidget* sw = m_panStack->spectrum(panId);
+    if (!sw) {
+        return;
+    }
+
+    PanadapterOverlayMessage message;
+    message.id = QStringLiteral("center-lock.band-recall-release");
+    message.title = tr("Center Lock released");
+    message.detail = detail;
+    message.timeoutMs = 5000;
+    message.dismissible = true;
+    message.tone = PanadapterOverlayMessageTone::Warning;
+    sw->upsertOverlayMessage(std::move(message));
+}
+
 int MainWindow::centerLockSliceForPan(const QString& panId) const
 {
     return m_centerLockSliceByPan.value(panId, -1);
@@ -325,6 +447,13 @@ void MainWindow::restoreCenterLockForPan(const QString& panId)
         return;
     }
 
+    // A band recall owns restoration until its bounded rebuild window ends.
+    // Falling through to the ordinary persisted-letter path on each add would
+    // let slice arrival order transfer Center Lock to the wrong receiver.
+    if (m_centerLockRebind.hasPending(panId)) {
+        return;
+    }
+
     const QString radioKey = centerLockRadioKey();
     SpectrumWidget* sw = m_panStack->spectrum(panId);
     if (radioKey.isEmpty() || !sw) {
@@ -367,8 +496,19 @@ void MainWindow::setCenterLockForPan(const QString& panId, int sliceId, bool on,
         return;
     }
 
+    bool canceledPendingRecall = false;
+    if (persist) {
+        // A persisted setter call is explicit operator intent. It supersedes
+        // any automatic restoration still waiting on a band recall.
+        canceledPendingRecall = m_centerLockRebind.cancel(panId);
+    }
+
     if (!on) {
-        if (sliceId < 0 || centerLockSliceForPan(panId) == sliceId) {
+        // The live binding is deliberately absent between the recalled slice's
+        // removal and its replacement. An explicit off during that window must
+        // still clear the saved intent, or a later add/restart can re-lock it.
+        if (canceledPendingRecall || sliceId < 0
+            || centerLockSliceForPan(panId) == sliceId) {
             clearCenterLockForPan(panId, persist);
         }
         return;
@@ -392,6 +532,10 @@ void MainWindow::clearCenterLockForPan(const QString& panId, bool clearPersisted
 {
     if (panId.isEmpty()) {
         return;
+    }
+
+    if (clearPersistedIntent) {
+        m_centerLockRebind.cancel(panId);
     }
 
     if (clearPersistedIntent && m_panStack) {
@@ -1554,10 +1698,13 @@ void MainWindow::onSliceRemoved(int id)
 
     qDebug() << "MainWindow: slice removed" << id;
 
-    // Center Lock (#3854 review): a LIVE removal clears the persisted letter
-    // intent too — Flex recycles letters lowest-free, so a dormant intent
-    // would silently re-lock a later, unrelated slice. Two guards ride on
-    // m_radioModel.slice(id):
+    // Center Lock (#3854 review): a LIVE removal normally clears the persisted
+    // letter intent too — Flex recycles letters lowest-free, so a dormant
+    // intent would silently re-lock a later, unrelated slice. A band-stack
+    // recall is the exception: band_persistence deliberately rebuilds the
+    // pan's slices, and the positive per-pan recall marker keeps intent alive
+    // until the bounded window can resolve the complete topology. Two guards
+    // ride on m_radioModel.slice(id):
     //  - the stale-slice prune after reconnect emits sliceRemoved(oldId)
     //    whose id collides with the NEW session's slices (slice 0 is always
     //    0). Live removals emit AFTER the slice leaves the model, so a
@@ -1566,7 +1713,15 @@ void MainWindow::onSliceRemoved(int id)
     //  - disconnect teardown never emits sliceRemoved, so reconnect/restart
     //    intent survives — that is the restore feature.
     if (!m_radioModel.slice(id)) {
-        clearCenterLockForSlice(id, /*clearPersistedIntent=*/true);
+        bool preservePersistedIntent = false;
+        for (auto it = m_centerLockSliceByPan.cbegin();
+             it != m_centerLockSliceByPan.cend(); ++it) {
+            if (it.value() == id && m_centerLockRebind.onSliceRemoved(it.key(), id)) {
+                preservePersistedIntent = true;
+                break;
+            }
+        }
+        clearCenterLockForSlice(id, /*clearPersistedIntent=*/!preservePersistedIntent);
     }
     m_centerLockTuneHoldBySlice.remove(id);
 
@@ -1595,7 +1750,7 @@ void MainWindow::onSliceRemoved(int id)
         // intact during the window so a re-bind is seamless. If no recreation
         // re-binds it, the generation-safe expiry finalizes the teardown.
         const quint64 generation = rebindAction.generation;
-        QTimer::singleShot(kKiwiSdrRebindGraceMs, this, [this, id, generation]() {
+        QTimer::singleShot(kBandRecallRecreateGraceMs, this, [this, id, generation]() {
             if (!m_kiwiRebind.onGraceExpired(id, generation)) {
                 return;
             }
@@ -3824,15 +3979,12 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             // a KiwiSDR replacement onto the recreated slice instead of reverting
             // to Flex (#4158). One-shot: consumed by the re-bind, or expired here
             // so a recall on a non-Kiwi slice can't leave the marker stale.
-            m_kiwiRebind.noteBandRecall(applet->panId());
-            QTimer::singleShot(kKiwiSdrRebindGraceMs, this,
-                               [this, panId = applet->panId()]() {
-                m_kiwiRebind.clearBandRecall(panId);
-            });
+            noteBandRecallForPan(applet->panId());
             // #4142: during the profile-load hold a bare sendCommand() band=
             // write is silently destroyed. requestPanBand defers it instead.
-            // Outside a hold it dispatches inline, so the #4158 grace window
-            // above is unchanged on the normal user-initiated band-recall path.
+            // Outside a hold it dispatches inline, so the #4158/Center Lock
+            // grace window inside noteBandRecallForPan is unchanged on the
+            // normal user-initiated band-recall path.
             m_radioModel.requestPanBand(applet->panId(), stackKey);
             QTimer::singleShot(300, this, [this, panId = applet->panId()]() {
                 reassertUnmutedSliceAudioForPan(panId);
