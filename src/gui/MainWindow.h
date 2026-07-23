@@ -99,6 +99,7 @@ class AetherClockEngine;
 class AetherClockModel;
 class AutomationServer;
 class ConnectionPanel;
+class ContributeDialog;
 class TitleBar;
 class KiwiSdrManager;
 class SpectrumWidget;
@@ -1048,6 +1049,7 @@ private:
     QPointer<GpsLocationDialog> m_gpsLocationDialog;
     QPointer<FlexControlDialog> m_flexControlDialog;
     QPointer<WhatsNewDialog> m_whatsNewDialog;
+    QPointer<ContributeDialog> m_contributeDialog;
     QPointer<AetherDspDialog> m_dspDialog;
 #ifdef HAVE_MQTT
     QPointer<MqttSettingsDialog> m_mqttSettingsDialog;
