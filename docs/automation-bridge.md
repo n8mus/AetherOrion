@@ -852,9 +852,11 @@ used by the stacked trace renderer.
 
 ### `get rhi`
 Per-panadapter `QRhiWidget` **surface geometry and native-widget topology** —
-the widget size, devicePixelRatio, pinned color-buffer extents, and (on macOS)
-native-leaf/ancestor isolation — so automation can assert the swapchain sizing
-that the #4091 fix controls and the bounded native-view hierarchy from #4339.
+the widget size, devicePixelRatio, pinned color-buffer extents, full-frame
+overlay/background textures, the waterfall image/texture pair, and (on macOS)
+native-leaf/ancestor isolation — so automation can assert the fractional-scale
+alignment and upload-size invariants exercised by pop-out reparenting (#4091,
+#4319) together with the bounded native-view hierarchy from #4339.
 
 ```json
 → {"cmd":"get","model":"rhi"}
@@ -862,7 +864,14 @@ that the #4091 fix controls and the bounded native-view hierarchy from #4339.
    "panIndex":0,"name":"","visible":true,"widthPx":1100,"heightPx":455,"dpr":0.85,
    "gpu":true,"renderer":"GPU QRhi (D3D11; Intel(R) HD Graphics 520)",
    "colorBufferAutoSized":false,"colorBufferW":936,"colorBufferH":388,
-   "expectedEvenW":936,"expectedEvenH":388,"evenAligned":true}]}
+   "expectedEvenW":936,"expectedEvenH":388,"evenAligned":true,
+   "overlayTextureW":936,"overlayTextureH":388,
+   "backgroundTextureW":936,"backgroundTextureH":388,
+   "waterfallTextureW":936,"waterfallTextureH":194,
+   "waterfallImageW":936,"waterfallImageH":194,
+   "waterfallTextureMatchesImage":true,
+   "fullFrameTexturesEvenAligned":true,
+   "fullFrameTexturesMatchColorBuffer":true}]}
 ```
 
 | field | meaning |
@@ -872,6 +881,11 @@ that the #4091 fix controls and the bounded native-view hierarchy from #4339.
 | `colorBufferW` / `colorBufferH` | the pinned device-pixel color buffer, or the unset sentinel `-1,-1` when auto-sized |
 | `expectedEvenW` / `expectedEvenH` | what an even-aligned pin should be for the current size — assert `colorBufferW/H` matches without recomputing the formula |
 | `evenAligned` | both pinned dimensions are even (the #4091 invariant); `false` when auto-sized |
+| `overlayTextureW/H` / `backgroundTextureW/H` | full-frame RGBA texture extents, or `-1,-1` before GPU initialization |
+| `waterfallTextureW/H` / `waterfallImageW/H` | live GPU waterfall texture and retained CPU waterfall image extents |
+| `waterfallTextureMatchesImage` | the CPU waterfall image fits within its GPU texture (texture ≥ image in both dimensions), so the upload is safe; holds across pop-out initialization even when the texture is floored larger than a small retained image (#4319) |
+| `fullFrameTexturesEvenAligned` | both full-frame textures have even width and height (the #4319 invariant) |
+| `fullFrameTexturesMatchColorBuffer` | both full-frame textures exactly match the pinned color buffer |
 | `nativeWindow` | macOS only: `true` when the `SpectrumWidget` currently has an actual native child window (`windowHandle()` exists); expected for the default Metal path and `false` with `AETHER_PAN_NO_NATIVE_WINDOW=1` |
 | `nativeAncestorsBlocked` | macOS only: whether the leaf has `WA_DontCreateNativeAncestors`, preventing its native-window request from promoting the surrounding QWidget tree |
 | `nativeAncestorCount` | macOS only: number of QWidget ancestors marked `WA_NativeWindow`; the isolated default Metal path expects `0` |
@@ -1523,6 +1537,19 @@ Panadapter lifecycle — create or tear down a pan regardless of how it was open
 
 All are async (the radio echoes the change) — re-poll `get pans`. Every `pan`
 action is RX/config only; none keys the transmitter.
+
+Floating and docking use the production pan title-bar control rather than a
+radio lifecycle command. Target its stable object name through the pan scope;
+the same toggle works in both states:
+
+```json
+→ {"cmd":"invoke","target":"pan 1/panFloatToggle","action":"click"}
+← {"ok":true,"target":"pan 1/panFloatToggle","action":"click"}
+```
+
+Re-poll `layout get` and assert `floatingCount` / `dockedCount` after each
+transition. The control's accessible name also changes between
+`Pop out panadapter` and `Dock panadapter` for semantic snapshots.
 
 ### `layout`
 Drive the panadapter **splitter layout** directly, decoupled from how many
