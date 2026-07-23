@@ -407,7 +407,15 @@ private:
     bool kiwiSdrTransmitMuteRequired() const;
     void syncKiwiSdrTransmitMute();
     void setKiwiSdrVirtualAntennaForSlice(int sliceId, const QString& profileId);
+    // Worker for the above. selectSlice=false suppresses the active-slice steal
+    // for automatic re-arms (band-recall finish, #4158 recreation re-bind).
+    void setKiwiSdrVirtualAntennaForSliceInternal(int sliceId,
+                                                  const QString& profileId,
+                                                  bool selectSlice);
     void clearKiwiSdrVirtualAntennaForSlice(int sliceId);
+    void prepareKiwiSdrBandRecallForPan(const QString& panId);
+    bool finishPreparedKiwiSdrBandRecallForSlice(SliceModel* slice);
+    void finishPreparedKiwiSdrBandRecallForPan(const QString& panId);
     void updateKiwiSdrVirtualTrackingForSlice(SliceModel* slice);
     void updateKiwiSdrVirtualAudioControlsForSlice(SliceModel* slice);
     void updateKiwiSdrVirtualReceiverControlsForSlice(SliceModel* slice);
@@ -1000,6 +1008,14 @@ private:
     bool             m_kiwiSdrAudioTransmitMuted{false};
     QMetaObject::Connection m_kiwiSdrAudioMuteConnection;
     QHash<int, bool> m_kiwiSdrVirtualPreviousMute;
+    struct KiwiSdrBandRecallPreparation {
+        QString panId;
+        QString profileId;
+    };
+    QHash<int, KiwiSdrBandRecallPreparation> m_kiwiSdrBandRecallPreparations;
+    // Per-pan epoch so a stale prepare() grace timer can't finish/clear a newer
+    // band recall that superseded it within the grace window.
+    QHash<QString, quint64> m_kiwiSdrBandRecallGenerations;
     QSet<QString>    m_kiwiSdrFlexDisplayPans;
     // Retain client-side receiver state across the slice teardown/rebuild a
     // FLEX band-stack recall performs. The trackers are pure lifecycle policy;

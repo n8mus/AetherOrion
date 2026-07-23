@@ -463,6 +463,17 @@ void MainWindow::wireRadioModel()
             this, &MainWindow::onSliceAdded);
     connect(&m_radioModel, &RadioModel::sliceRemoved,
             this, &MainWindow::onSliceRemoved);
+    connect(&m_radioModel, &RadioModel::panBandAboutToDispatch,
+            this, &MainWindow::prepareKiwiSdrBandRecallForPan);
+    connect(&m_radioModel, &RadioModel::panBandDispatchFailed,
+            this, [this](const QString& panId) {
+        // The band write never reached the wire, so re-arm the mute handoff
+        // (restores the KiwiSDR suppression the prepare step lifted). The rebind
+        // marker is owned by noteBandRecallForPan and self-expires via its own
+        // generation-guarded grace timer — don't clear it here or a concurrent
+        // recall's #4158/Center Lock window could be torn down early.
+        finishPreparedKiwiSdrBandRecallForPan(panId);
+    });
     // Re-bind a KiwiSDR replacement across a band-stack slice recreation (#4158).
     // A band recall DROPS then RE-CREATES the slice (same id, new band). The
     // tracker re-binds only when a rebind is pending for this id AND this pan
@@ -477,7 +488,10 @@ void MainWindow::wireRadioModel()
         if (profileId.isEmpty()) {
             return;
         }
-        setKiwiSdrVirtualAntennaForSlice(s->sliceId(), profileId);
+        // Automatic recreation re-bind: selectSlice=false so a band recall on a
+        // Kiwi slice that lives on a non-active pan can't steal the active slice.
+        setKiwiSdrVirtualAntennaForSliceInternal(s->sliceId(), profileId,
+                                                 /*selectSlice=*/false);
     });
     connect(&m_radioModel, &RadioModel::memoryChanged,
             this, &MainWindow::syncMemorySpot);

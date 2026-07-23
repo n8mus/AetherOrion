@@ -2148,14 +2148,17 @@ void MainWindow::onSliceRemoved(int id)
     const auto rebindAction =
         m_kiwiRebind.onSliceRemoved(id, liveRemoval, kiwiRebindProfile);
     if (rebindAction.kind == KiwiRebindTracker::RemoveAction::Defer) {
-        // Leave the assignment (and Kiwi connection) and the pre-Kiwi mute
-        // intact during the window so a re-bind is seamless. If no recreation
-        // re-binds it, the generation-safe expiry finalizes the teardown.
+        // Leave the assignment and Kiwi connection intact during the window so
+        // a re-bind is seamless. The pre-Kiwi mute may already have been
+        // consumed by the band-recall preparation; the recreated slice then
+        // snapshots its recalled band's own mute. If no recreation re-binds
+        // it, the generation-safe expiry finalizes the teardown.
         const quint64 generation = rebindAction.generation;
         QTimer::singleShot(kBandRecallRecreateGraceMs, this, [this, id, generation]() {
             if (!m_kiwiRebind.onGraceExpired(id, generation)) {
                 return;
             }
+            m_kiwiSdrBandRecallPreparations.remove(id);
             m_kiwiSdrVirtualPreviousMute.remove(id);
             if (m_kiwiSdrManager) {
                 m_kiwiSdrManager->clearSliceAssignment(id);
@@ -2163,6 +2166,7 @@ void MainWindow::onSliceRemoved(int id)
             syncKiwiSdrPanadapterUiStates();
         });
     } else {
+        m_kiwiSdrBandRecallPreparations.remove(id);
         m_kiwiSdrVirtualPreviousMute.remove(id);
         if (m_kiwiSdrManager) {
             m_kiwiSdrManager->clearSliceAssignment(id);
@@ -4395,7 +4399,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             // write is silently destroyed. requestPanBand defers it instead.
             // Outside a hold it dispatches inline, so the #4158/Center Lock
             // grace window inside noteBandRecallForPan is unchanged on the
-            // normal user-initiated band-recall path.
+            // normal user-initiated band-recall path. The KiwiSDR audio-mute
+            // handoff (#4209) is driven separately by panBandAboutToDispatch, so
+            // it brackets the actual wire dispatch even when the band write is
+            // deferred by a profile-load hold.
             m_radioModel.requestPanBand(applet->panId(), stackKey);
             QTimer::singleShot(300, this, [this, panId = applet->panId()]() {
                 reassertUnmutedSliceAudioForPan(panId);
