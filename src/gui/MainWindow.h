@@ -11,6 +11,7 @@
 #include "models/RadioModel.h"
 #include "models/BandSettings.h"
 #include "models/AntennaGeniusModel.h"
+#include "models/SliceLinkPolicy.h"
 #include "core/AppSettings.h"
 #include "core/RadioMessageTypes.h"   // MessageSeverity for onRadioMessage slot
 #include "core/RadioDiscovery.h"
@@ -222,6 +223,7 @@ public:
     Q_INVOKABLE int injectMidiVfoCcForAutomation(int value);
     QJsonObject automationSetSliceReceiveSource(const QString& arg);
     QJsonObject automationSetCenterLock(int sliceId, bool enabled);
+    QJsonObject automationSetSliceLink(int aId, int bId, bool on);  // MainWindow_Wiring.cpp
     QJsonObject automationTune(double mhz, int sliceId = -1);
     QJsonObject automationTargetTune(double mhz);
     QJsonObject automationActivateMemory(int memoryIndex,
@@ -1378,6 +1380,42 @@ private:
     double centerLockDisplayFrequency(const SliceModel* slice, double mhz) const;
     void recenterCenterLockForPan(const QString& panId);
     void recenterCenterLocks();
+
+    // Slice Link — independent cross-panadapter bidirectional VFO pairs. Each
+    // owned slice may belong to at most one pair. Frequency changes propagate
+    // through applyTuneRequest ("slice-link" source), so lock/SWR guards,
+    // reveal/pan-follow, and Kiwi tracking all apply for free.
+    // Decision logic is pure (src/models/SliceLinkPolicy.h). Session-only
+    // state — slice ids are radio-assigned and ephemeral, never persisted.
+    struct SliceLinkState {
+        int aId{-1};
+        int bId{-1};
+        QPointer<SliceModel> a;
+        QPointer<SliceModel> b;
+        int originId{-1};  // last genuine mover; the settle check re-asserts it
+        AetherSDR::SliceLinkPolicy::PendingWrites pendingA;  // echo expectations for A
+        AetherSDR::SliceLinkPolicy::PendingWrites pendingB;  // echo expectations for B
+        bool suspendedByLock{false};
+        QVector<QMetaObject::Connection> connections;
+        quint64 settleGeneration{0};
+        bool active() const { return aId >= 0 && bId >= 0; }
+    };
+    QVector<SliceLinkState> m_sliceLinks;
+    bool m_applyingSliceLink{false};
+    // Monotonic across every pair lifecycle so a pending settle timer from a
+    // dissolved pair can never act on a newly-created pair with the same ids.
+    quint64 m_sliceLinkGeneration{0};
+    SliceLinkState* sliceLinkFor(int sliceId);                    // MainWindow_Wiring.cpp
+    const SliceLinkState* sliceLinkFor(int sliceId) const;        // MainWindow_Wiring.cpp
+    void engageSliceLink(int aId, int bId);                       // MainWindow_Wiring.cpp
+    void dissolveSliceLink(int aId, int bId, const char* reason); // MainWindow_Wiring.cpp
+    void dissolveAllSliceLinks(const char* reason);               // MainWindow_Wiring.cpp
+    void onSliceLinkFrequencyChanged(SliceModel* s, double mhz);  // MainWindow_Wiring.cpp
+    void onSliceLinkFrequencyCommandIssued(SliceModel* s, double mhz);  // MainWindow_Wiring.cpp
+    void onSliceLinkLockedChanged(SliceModel* s, bool locked);    // MainWindow_Wiring.cpp
+    void scheduleSliceLinkSettleCheck(int sliceId);               // MainWindow_Wiring.cpp
+    int sliceLinkPeerOf(int sliceId) const;                       // MainWindow_Wiring.cpp
+    void refreshSliceLinkUi();                                    // MainWindow_Wiring.cpp
 
     WfmDemodulator* m_wfmDemod{nullptr};
     int             m_wfmSliceId{-1};

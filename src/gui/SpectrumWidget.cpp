@@ -6551,20 +6551,66 @@ void SpectrumWidget::setCenterLockSliceId(int sliceId)
         return;
     }
     m_centerLockSliceId = sliceId;
-    QString sliceName = QString::number(sliceId);
-    const int overlay = overlayIndex(sliceId);
-    if (overlay >= 0) {
-        sliceName = SliceLabel::unicodeForm(
-            m_sliceOverlays.at(overlay).sliceId,
-            m_sliceOverlays.at(overlay).perClientLetter);
-    }
-    setAccessibleDescription(
-        sliceId >= 0
-            ? tr("Center Lock enabled for Slice %1").arg(sliceName)
-            : tr("Center Lock is off"));
+    updateAccessibleStateDescription();
     QAccessibleValueChangeEvent event(this, sliceId);
     QAccessible::updateAccessibility(&event);
     markOverlayDirty();
+}
+
+void SpectrumWidget::setSliceLinkPairs(const QVector<SliceLinkPair>& pairs)
+{
+    if (m_sliceLinkPairs == pairs) {
+        return;
+    }
+    m_sliceLinkPairs = pairs;
+    updateAccessibleStateDescription();
+    QAccessibleEvent event(this, QAccessible::DescriptionChanged);
+    QAccessible::updateAccessibility(&event);
+    markOverlayDirty();
+}
+
+// Center Lock and Slice Link share the widget-level accessible description,
+// so it is composed from both states — neither setter may overwrite the
+// other's announcement (screen readers hold only one description per widget).
+void SpectrumWidget::updateAccessibleStateDescription()
+{
+    QStringList parts;
+    if (m_centerLockSliceId >= 0) {
+        QString sliceName = QString::number(m_centerLockSliceId);
+        const int overlay = overlayIndex(m_centerLockSliceId);
+        if (overlay >= 0) {
+            sliceName = SliceLabel::unicodeForm(
+                m_sliceOverlays.at(overlay).sliceId,
+                m_sliceOverlays.at(overlay).perClientLetter);
+        }
+        parts << tr("Center Lock enabled for Slice %1").arg(sliceName);
+    } else {
+        parts << tr("Center Lock is off");
+    }
+    for (const SliceLinkPair& pair : std::as_const(m_sliceLinkPairs)) {
+        QString aName = QString::number(pair.aSliceId);
+        QString bName = QString::number(pair.bSliceId);
+        for (const SliceLinkCandidate& candidate :
+             std::as_const(m_sliceLinkCandidates)) {
+            if (candidate.sliceId == pair.aSliceId) {
+                aName = candidate.display;
+            } else if (candidate.sliceId == pair.bSliceId) {
+                bName = candidate.display;
+            }
+        }
+        parts << (pair.suspended
+                      ? tr("Slice Link %1 to %2 suspended; a member is "
+                           "VFO-locked").arg(aName, bName)
+                      : tr("Slice Link %1 to %2 active").arg(aName, bName));
+    }
+    setAccessibleDescription(parts.join(QStringLiteral("; ")));
+}
+
+void SpectrumWidget::setSliceLinkCandidates(
+    const QVector<SliceLinkCandidate>& candidates)
+{
+    m_sliceLinkCandidates = candidates;
+    updateAccessibleStateDescription();
 }
 
 void SpectrumWidget::setSliceOverlayFreq(int sliceId, double freqMhz)
@@ -8006,6 +8052,135 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
                 addCenterLockAction(centerLockMenu, so, false);
             }
         };
+        // Slice Link (cross-panadapter VFO link). Keep every operation under
+        // one explicit menu: no active/first-overlay anchor is inferred from
+        // where the background happened to be clicked.
+        auto addSliceLinkControls = [this](QMenu& targetMenu) {
+            if (m_sliceLinkPairs.isEmpty()
+                && m_sliceLinkCandidates.size() < 2) {
+                return;
+            }
+            targetMenu.addSeparator();
+            QMenu* linkMenu = targetMenu.addMenu(QStringLiteral("Link Slice"));
+
+            const auto linkedPeer = [this](int sliceId) {
+                for (const SliceLinkPair& pair :
+                     std::as_const(m_sliceLinkPairs)) {
+                    if (pair.aSliceId == sliceId) {
+                        return pair.bSliceId;
+                    }
+                    if (pair.bSliceId == sliceId) {
+                        return pair.aSliceId;
+                    }
+                }
+                return -1;
+            };
+            const auto displayFor = [this](int sliceId) {
+                for (const SliceLinkCandidate& candidate :
+                     std::as_const(m_sliceLinkCandidates)) {
+                    if (candidate.sliceId == sliceId) {
+                        return candidate.display;
+                    }
+                }
+                return QString::number(sliceId);
+            };
+            const auto addSectionHeader = [linkMenu](const QString& text) {
+                QAction* header = linkMenu->addAction(text);
+                header->setEnabled(false);
+                QFont headerFont = header->font();
+                headerFont.setBold(true);
+                header->setFont(headerFont);
+            };
+
+            struct MenuPair {
+                int aId;
+                int bId;
+                QString aDisplay;
+                QString bDisplay;
+            };
+            QVector<MenuPair> currentLinks;
+            for (const SliceLinkPair& pair :
+                 std::as_const(m_sliceLinkPairs)) {
+                MenuPair menuPair{pair.aSliceId, pair.bSliceId,
+                                  displayFor(pair.aSliceId),
+                                  displayFor(pair.bSliceId)};
+                if (QString::localeAwareCompare(menuPair.aDisplay,
+                                                menuPair.bDisplay) > 0) {
+                    std::swap(menuPair.aId, menuPair.bId);
+                    std::swap(menuPair.aDisplay, menuPair.bDisplay);
+                }
+                currentLinks.append(std::move(menuPair));
+            }
+            std::sort(currentLinks.begin(), currentLinks.end(),
+                      [](const MenuPair& lhs, const MenuPair& rhs) {
+                const int first = QString::localeAwareCompare(
+                    lhs.aDisplay, rhs.aDisplay);
+                if (first != 0) {
+                    return first < 0;
+                }
+                return QString::localeAwareCompare(
+                           lhs.bDisplay, rhs.bDisplay) < 0;
+            });
+
+            if (!currentLinks.isEmpty()) {
+                addSectionHeader(QStringLiteral("Current Links"));
+                for (const MenuPair& pair : std::as_const(currentLinks)) {
+                    QAction* action = linkMenu->addAction(
+                        QStringLiteral("    Slice %1 ⇄ Slice %2")
+                            .arg(pair.aDisplay, pair.bDisplay));
+                    action->setCheckable(true);
+                    action->setChecked(true);
+                    connect(action, &QAction::triggered, this,
+                            [this, aId = pair.aId, bId = pair.bId]() {
+                        emit sliceLinkRequested(aId, bId, false);
+                    });
+                }
+            }
+
+            QVector<const SliceLinkCandidate*> available;
+            for (const SliceLinkCandidate& candidate :
+                 std::as_const(m_sliceLinkCandidates)) {
+                if (linkedPeer(candidate.sliceId) < 0) {
+                    available.append(&candidate);
+                }
+            }
+            std::sort(available.begin(), available.end(),
+                      [](const SliceLinkCandidate* lhs,
+                         const SliceLinkCandidate* rhs) {
+                const int displayOrder = QString::localeAwareCompare(
+                    lhs->display, rhs->display);
+                if (displayOrder != 0) {
+                    return displayOrder < 0;
+                }
+                return lhs->sliceId < rhs->sliceId;
+            });
+            if (available.size() >= 2) {
+                if (!currentLinks.isEmpty()) {
+                    linkMenu->addSeparator();
+                }
+                addSectionHeader(QStringLiteral("Available Links"));
+                for (int sourceIndex = 0;
+                     sourceIndex < available.size() - 1; ++sourceIndex) {
+                    const SliceLinkCandidate* source =
+                        available.at(sourceIndex);
+                    for (int peerIndex = sourceIndex + 1;
+                         peerIndex < available.size(); ++peerIndex) {
+                        const SliceLinkCandidate* peer =
+                            available.at(peerIndex);
+                        QAction* action = linkMenu->addAction(
+                            QStringLiteral("    Slice %1 ⇄ Slice %2")
+                                .arg(source->display, peer->display));
+                        action->setCheckable(true);
+                        action->setChecked(false);
+                        connect(action, &QAction::triggered, this,
+                                [this, aId = source->sliceId,
+                                 bId = peer->sliceId]() {
+                            emit sliceLinkRequested(aId, bId, true);
+                        });
+                    }
+                }
+            }
+        };
 
         // Right-click on off-screen slice indicator → slice context menu
         for (int oi = 0; oi < m_offScreenRects.size(); ++oi) {
@@ -8028,6 +8203,7 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
                     });
                 menu.addSeparator();
                 addCenterLockAction(&menu, so, true);
+                addSliceLinkControls(menu);
                 menu.exec(ev->globalPosition().toPoint());
                 ev->accept();
                 return;
@@ -8155,6 +8331,7 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
 
         if (hitTnf < 0) {
             addCenterLockControls(menu);
+            addSliceLinkControls(menu);
 
             // Close Slice option (only when multiple slices exist)
             if (m_sliceOverlays.size() > 1) {
@@ -13982,6 +14159,39 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
                        targetCenter.x() + 9, targetCenter.y());
             p.drawLine(targetCenter.x(), targetCenter.y() - 9,
                        targetCenter.x(), targetCenter.y() + 9);
+        }
+
+        // Slice Link member marker: name the peer beside each linked VFO so
+        // multiple independent pairs remain legible without opening a menu.
+        // Passive affordance like the Center Lock target above — the control
+        // lives in the right-click menu, not on the pan chrome.
+        const SliceLinkPair* sliceLink = nullptr;
+        for (const SliceLinkPair& pair : std::as_const(m_sliceLinkPairs)) {
+            if (pair.aSliceId == so.sliceId || pair.bSliceId == so.sliceId) {
+                sliceLink = &pair;
+                break;
+            }
+        }
+        if (sliceLink) {
+            const int peerId = (sliceLink->aSliceId == so.sliceId)
+                ? sliceLink->bSliceId : sliceLink->aSliceId;
+            QString peerName = QString::number(peerId);
+            for (const SliceLinkCandidate& candidate :
+                 std::as_const(m_sliceLinkCandidates)) {
+                if (candidate.sliceId == peerId) {
+                    peerName = candidate.display;
+                    break;
+                }
+            }
+            QFont linkFont = p.font();
+            linkFont.setPixelSize(12);
+            linkFont.setBold(true);
+            p.setFont(linkFont);
+            p.setPen(sliceLink->suspended
+                         ? QColor(0x80, 0x80, 0x80, 220)
+                         : QColor(col.red(), col.green(), col.blue(), 220));
+            p.drawText(vfoX + 12, specRect.top() + 24,
+                       QStringLiteral("⇄ %1").arg(peerName));
         }
 
         // ── Filter passband shading ──────────────────────────────────────

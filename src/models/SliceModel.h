@@ -269,6 +269,9 @@ public:
 signals:
     void letterChanged(const QString& newLetter);
     void frequencyChanged(double mhz);
+    // Emitted after a local setter has issued a frequency command. Unlike
+    // frequencyChanged, radio-status application does not emit this signal.
+    void frequencyCommandIssued(double mhz);
     void panIdChanged(const QString& panId);
     void modeChanged(const QString& mode);
     void filterChanged(int low, int high);

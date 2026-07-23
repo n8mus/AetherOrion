@@ -89,6 +89,7 @@ void SliceModel::setFrequency(double mhz)
     // SmartSDR pcap confirms: scroll-wheel uses "slice tune <id> <freq> autopan=0".
     sendCommand(QString("slice tune %1 %2 autopan=0").arg(m_id).arg(mhz, 0, 'f', 6));
     emit frequencyChanged(mhz);
+    emit frequencyCommandIssued(mhz);
 }
 
 void SliceModel::tuneAndRecenter(double mhz)
@@ -103,6 +104,7 @@ void SliceModel::tuneAndRecenter(double mhz)
     // Used for band changes where recentering is desired.
     sendCommand(QString("slice tune %1 %2").arg(m_id).arg(mhz, 0, 'f', 6));
     emit frequencyChanged(mhz);
+    emit frequencyCommandIssued(mhz);
 }
 
 void SliceModel::setMode(const QString& mode)

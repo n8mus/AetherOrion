@@ -548,6 +548,21 @@ public:
     void setSliceOverlayAdaptiveActive(int sliceId, bool active);
     void setCenterLockSliceId(int sliceId);
     int centerLockSliceId() const { return m_centerLockSliceId; }
+    // Slice Link (cross-panadapter VFO link). MainWindow pushes every current
+    // pair plus the roster of linkable slices — links may span pans, so the
+    // context menu needs peers this pan's own overlays can't see.
+    struct SliceLinkCandidate {
+        int sliceId{-1};
+        QString display;  // menu label form, e.g. "A" (SliceLabel::unicodeForm)
+    };
+    struct SliceLinkPair {
+        int aSliceId{-1};
+        int bSliceId{-1};
+        bool suspended{false};
+        bool operator==(const SliceLinkPair&) const = default;
+    };
+    void setSliceLinkPairs(const QVector<SliceLinkPair>& pairs);
+    void setSliceLinkCandidates(const QVector<SliceLinkCandidate>& candidates);
     // Remove a slice overlay.
     void removeSliceOverlay(int sliceId);
 
@@ -711,6 +726,7 @@ signals:
     void popOutRequested(bool popOut);  // true=float, false=dock
     void sliceTxRequested(int sliceId);
     void centerLockRequested(int sliceId, bool locked);
+    void sliceLinkRequested(int aSliceId, int bSliceId, bool on);
     // Emitted when FFT bin-mapping dimensions change so MainWindow can re-push
     // xpixels/ypixels to the radio (#1511).
     void dimensionsChanged(int w, int h);
@@ -988,6 +1004,10 @@ private:
     int overlayIndex(int sliceId) const;
     // Helper: find active overlay (or nullptr).
     const SliceOverlay* activeOverlay() const;
+    // Composes the shared accessible description from Center Lock + Slice
+    // Link state (one description per widget; the setters must not clobber
+    // each other's announcement).
+    void updateAccessibleStateDescription();
     // Helper: find TX overlay (or nullptr).
     const SliceOverlay* txOverlay() const;
     bool txWaterfallMaskRange(double& lowMhz, double& highMhz) const;
@@ -1094,6 +1114,8 @@ private:
     // Multi-slice overlays (replaces single m_vfoFreqMhz / m_filterLowHz / etc.)
     QVector<SliceOverlay> m_sliceOverlays;
     int m_centerLockSliceId{-1};
+    QVector<SliceLinkPair> m_sliceLinkPairs;
+    QVector<SliceLinkCandidate> m_sliceLinkCandidates;
 
     int    m_filterMinHz{-12000};  // per-mode lower bound (active slice)
     int    m_filterMaxHz{12000};   // per-mode upper bound (active slice)

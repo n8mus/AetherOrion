@@ -399,6 +399,15 @@ void MainWindow::wireRadioModel()
     // ── Wire up radio model ────────────────────────────────────────────────
     connect(&m_radioModel, &RadioModel::connectionStateChanged,
             this, &MainWindow::onConnectionStateChanged);
+    // Slice Link: disconnect teardown never emits sliceRemoved (stale slices
+    // are staged for reconnect reclaim), so dissolve the link explicitly.
+    // Both transitions dissolve — a link never crosses a session boundary
+    // (one engaged on disconnected fixture slices must not survive into a
+    // live session either).
+    connect(&m_radioModel, &RadioModel::connectionStateChanged,
+            this, [this](bool connected) {
+        dissolveAllSliceLinks(connected ? "radio connected" : "radio disconnected");
+    });
     connect(&m_radioModel, &RadioModel::connectionError,
             this, &MainWindow::onConnectionError);
     connect(&m_radioModel, &RadioModel::certFingerprintMismatch,
@@ -1674,6 +1683,10 @@ bool MainWindow::startAutomationBridge(const QString& sockName)
         [this](const QString& arg) { return automationSetSliceReceiveSource(arg); });
     m_automation->setSliceCenterLockHandler(
         [this](int sliceId, bool enabled) { return automationSetCenterLock(sliceId, enabled); });
+    m_automation->setSliceLinkHandler(
+        [this](int aId, int bId, bool on) { return automationSetSliceLink(aId, bId, on); });
+    m_automation->setSliceLinkPeerQuery(
+        [this](int sliceId) { return sliceLinkPeerOf(sliceId); });
     m_automation->setTuneHandler(
         [this](double mhz, int sliceId) { return automationTune(mhz, sliceId); });
     m_automation->setTargetTuneHandler(

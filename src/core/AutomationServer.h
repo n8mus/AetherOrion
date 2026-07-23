@@ -30,6 +30,7 @@ class QTimer;
 namespace AetherSDR {
 
 class RadioModel;
+class SliceModel;
 class AudioEngine;
 class QsoRecorder;
 class AetherClockModel;
@@ -275,6 +276,16 @@ public:
     void setSliceCenterLockHandler(std::function<QJsonObject(int, bool)> handler)
     {
         m_sliceCenterLockHandler = std::move(handler);
+    }
+    // (sliceIdA, sliceIdB, on) — engage/dissolve the cross-pan Slice Link.
+    void setSliceLinkHandler(std::function<QJsonObject(int, int, bool)> handler)
+    {
+        m_sliceLinkHandler = std::move(handler);
+    }
+    // (sliceId) -> linked peer slice id, or -1. Feeds the slice snapshots.
+    void setSliceLinkPeerQuery(std::function<int(int)> query)
+    {
+        m_sliceLinkPeerQuery = std::move(query);
     }
     // (mhz, sliceId) — sliceId -1 targets the active slice.
     void setTuneHandler(std::function<QJsonObject(double, int)> handler)
@@ -641,6 +652,10 @@ private:
     QPointer<QObject> m_connectionDialogHost;    // MainWindow show/hide invokables
     std::function<QJsonObject(const QString&)> m_sliceReceiveSourceHandler;
     std::function<QJsonObject(int, bool)> m_sliceCenterLockHandler;
+    std::function<QJsonObject(int, int, bool)> m_sliceLinkHandler;
+    std::function<int(int)> m_sliceLinkPeerQuery;
+    // linked peer slice id for a snapshot, or -1 (no link / no GUI query).
+    int sliceLinkPeerOf(const SliceModel* s) const;
     std::function<QJsonObject(double, int)> m_tuneHandler;
     std::function<QJsonObject(double)> m_targetTuneHandler;
     std::function<QJsonObject(int, const QString&)> m_memoryActivateHandler;

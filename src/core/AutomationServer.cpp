@@ -1386,7 +1386,9 @@ QWidget* primaryTopLevelWindow()
 // have to annotate every model field as a Q_PROPERTY; one call returns the full
 // assertable state an agent needs. ----
 
-QJsonObject sliceSnapshot(const SliceModel* s)
+// linkedTo: peer slice id when this slice is a Slice Link member, else -1
+// (supplied by the GUI's peer query — the link is client-side state).
+QJsonObject sliceSnapshot(const SliceModel* s, int linkedTo)
 {
     return QJsonObject{
         {QStringLiteral("sliceId"),    s->sliceId()},
@@ -1445,6 +1447,7 @@ QJsonObject sliceSnapshot(const SliceModel* s)
         {QStringLiteral("adaptiveSplatter"),      s->adaptiveSplatter()},
         {QStringLiteral("adaptiveHetReject"),     s->adaptiveHetReject()},
         {QStringLiteral("adaptiveActive"),        s->adaptiveActive()},
+        {QStringLiteral("linkedTo"),              linkedTo},
     };
 }
 
@@ -1883,6 +1886,11 @@ QJsonObject metersSnapshot(MeterModel* m, const QString& radioModel)
 }
 
 } // namespace
+
+int AutomationServer::sliceLinkPeerOf(const SliceModel* s) const
+{
+    return (m_sliceLinkPeerQuery && s) ? m_sliceLinkPeerQuery(s->sliceId()) : -1;
+}
 
 AutomationServer::AutomationServer(QObject* parent)
     : QObject(parent)
@@ -2707,7 +2715,8 @@ const std::vector<AutomationServer::VerbSpec>& AutomationServer::verbRegistry()
             [](AutomationServer& s, A& a, QLocalSocket*) -> QJsonObject {
                 if (a.action.isEmpty())
                     return err(QStringLiteral(
-                        "slice requires an action (add|remove|select|tx|mode|txant|rxant|rxsource)"));
+                        "slice requires an action (add|remove|select|tx|mode|diversity|"
+                        "centerlock|link|txant|rxant|rxsource|fixture|clearfixture)"));
                 return s.doSlice(a.action, a.value);
             });
 
@@ -4767,7 +4776,8 @@ QJsonObject AutomationServer::doGet(const QString& model, const QString& selecto
         data = metersSnapshot(&radio->meterModel(), radio->model());
     } else if (model == QLatin1String("slices")) {
         QJsonArray arr;
-        for (const SliceModel* s : radio->slices()) arr.append(sliceSnapshot(s));
+        for (const SliceModel* s : radio->slices())
+            arr.append(sliceSnapshot(s, sliceLinkPeerOf(s)));
         return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("slices"), arr}};
     } else if (model == QLatin1String("pans")) {
         QJsonArray arr;
@@ -4846,7 +4856,7 @@ QJsonObject AutomationServer::doGet(const QString& model, const QString& selecto
         }
         if (!s)
             return err(QStringLiteral("no slice for selector '") + selector + QStringLiteral("'"));
-        data = sliceSnapshot(s);
+        data = sliceSnapshot(s, sliceLinkPeerOf(s));
     } else if (model == QLatin1String("pan")) {
         const PanadapterModel* p = nullptr;
         if (selector.isEmpty() || selector == QLatin1String("active"))
@@ -5594,6 +5604,33 @@ QJsonObject AutomationServer::doSlice(const QString& action, const QString& arg)
         }
         return m_sliceCenterLockHandler(id, parseBool(state));
     }
+
+    if (action == QLatin1String("link")) {
+        const QStringList parts = arg.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (parts.size() != 3) {
+            return err(QStringLiteral(
+                "slice link requires '<slice-id-a> <slice-id-b> <on|off>'"));
+        }
+        bool okA = false;
+        bool okB = false;
+        const int aId = parts.at(0).toInt(&okA);
+        const int bId = parts.at(1).toInt(&okB);
+        if (!okA || !okB || !radio->slice(aId) || !radio->slice(bId)) {
+            return err(QStringLiteral("slice link requires two valid slice ids"));
+        }
+        const QString state = parts.at(2).trimmed().toLower();
+        const bool validState = state == QLatin1String("1")
+            || state == QLatin1String("true") || state == QLatin1String("on")
+            || state == QLatin1String("0") || state == QLatin1String("false")
+            || state == QLatin1String("off");
+        if (!validState) {
+            return err(QStringLiteral("slice link state must be on or off"));
+        }
+        if (!m_sliceLinkHandler) {
+            return err(QStringLiteral("slice link handler is unavailable"));
+        }
+        return m_sliceLinkHandler(aId, bId, parseBool(state));
+    }
     if (action == QLatin1String("mode")) {
         const QString requestedMode = arg.trimmed().toUpper();
         if (requestedMode.isEmpty()) {
@@ -5718,7 +5755,7 @@ QJsonObject AutomationServer::doSlice(const QString& action, const QString& arg)
     }
     return err(QStringLiteral("unknown slice action: ") + action
                + QStringLiteral(" (add|remove|select|tx|mode|diversity|centerlock|"
-                                "txant|rxant|rxsource|fixture|clearfixture)"));
+                                "link|txant|rxant|rxsource|fixture|clearfixture)"));
 }
 
 QJsonObject AutomationServer::doGps(const QString& action, const QString& format)

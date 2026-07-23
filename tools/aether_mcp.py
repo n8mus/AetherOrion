@@ -587,9 +587,10 @@ TOOLS = [
         "name": "slice",
         "description": (
             "Slice lifecycle / config. action = add | remove | select | tx | "
-            "diversity | centerlock | txant | rxant | rxsource | fixture | "
-            "clearfixture. `value` carries the action's args (e.g. add '14.2', "
-            "select a slice id). See get_state model=slices to inspect."),
+            "diversity | centerlock | link | txant | rxant | rxsource | "
+            "fixture | clearfixture. `value` carries the action's args (e.g. "
+            "add '14.2', select a slice id, link '0 1 on'). See get_state "
+            "model=slices to inspect."),
         "inputSchema": {"type": "object", "properties": {
             "action": {"type": "string"},
             "value": {"type": "string", "description": "action arguments"},
