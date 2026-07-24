@@ -1758,14 +1758,9 @@ MainWindow::MainWindow(QWidget* parent)
     wireDaxIq();
 
     // ── Status bar telemetry ──────────────────────────────────────────────────
-    // Single source of truth for quality-level colors used by the footer label
-    // and the heartbeat throttle indicator.  Both must stay in sync.
-    auto qualityColor = [](const QString& quality) -> QString {
-        if (quality == "Fair") return QStringLiteral("#cc9900");
-        if (quality == "Poor") return QStringLiteral("#cc3333");
-        if (quality == "Good") return QStringLiteral("#00b4d8");
-        return QStringLiteral("#00cc66"); // Excellent / Very Good
-    };
+    // Quality-level colors come from networkQualityColor() (MainWindowHelpers)
+    // so the footer label and the diagnostics tooltip share one mapping and
+    // never diverge (e.g. "Off" is neutral grey in both, not green here).
     // Map an fps cap to the matching quality-level color for the throttle indicator.
     auto fpsCapColor = [](int fpsCap) -> QString {
         if (fpsCap <= 4) return QStringLiteral("#cc3333"); // Poor
@@ -1774,8 +1769,8 @@ MainWindow::MainWindow(QWidget* parent)
     };
 
     connect(&m_radioModel, &RadioModel::networkQualityChanged,
-            this, [this, qualityColor](const QString& quality, int pingMs) {
-        const QString color = qualityColor(quality);
+            this, [this](const QString& quality, int pingMs) {
+        const QString color = networkQualityColor(quality);
         // Append fps cap so users understand why moving the fps slider has no effect.
         // Show "(restoring)" during the min-dwell hold so testers can distinguish
         // stuck throttle from a deliberate stability wait.
@@ -1788,13 +1783,9 @@ MainWindow::MainWindow(QWidget* parent)
         m_networkLabel->setText(QString("[<span style='color:%1'>%2</span>]")
             .arg(color, quality + capSuffix));
         Q_UNUSED(pingMs);
-        QString tooltip = buildNetworkTooltip(m_radioModel);
-        if (m_adaptiveFpsCap > 0) {
-            const QString throttleMsg = dwellPending
-                ? QStringLiteral("Adaptive throttle holding for link stability — restoring shortly\n\n")
-                : QString("Adaptive throttle active: %1 fps cap\n\n").arg(m_adaptiveFpsCap);
-            tooltip.prepend(throttleMsg);
-        }
+        const QString tooltip = buildNetworkTooltip(m_radioModel,
+                                                     m_adaptiveFpsCap,
+                                                     dwellPending);
         m_networkLabel->setToolTip(tooltip);
     });
 
@@ -4752,10 +4743,15 @@ void MainWindow::buildUI()
     netTitle->setAlignment(Qt::AlignCenter);
     netVbox->addWidget(netTitle);
     m_networkLabel = new QLabel("");
+    m_networkLabel->setAccessibleName(tr("Network status"));
+    m_networkLabel->setAccessibleDescription(
+        tr("Network quality; double-click to open full diagnostics"));
     applyStatusBarCompactLabelStyle(m_networkLabel, QStringLiteral("{{color.text.label}}"));
     m_networkLabel->setTextFormat(Qt::RichText);
     m_networkLabel->setAlignment(Qt::AlignCenter);
-    m_networkLabel->setToolTip(buildNetworkTooltip(m_radioModel));
+    m_networkLabel->setToolTip(buildNetworkTooltip(m_radioModel,
+                                                   m_adaptiveFpsCap,
+                                                   m_radioModel.pendingThrottleLift()));
     m_networkLabel->installEventFilter(this);
     m_networkTooltipRefreshTimer.setInterval(1000);
     connect(&m_networkTooltipRefreshTimer, &QTimer::timeout, this, [this] {
@@ -4763,7 +4759,9 @@ void MainWindow::buildUI()
             m_networkTooltipRefreshTimer.stop();
             return;
         }
-        const QString tooltip = buildNetworkTooltip(m_radioModel);
+        const QString tooltip = buildNetworkTooltip(m_radioModel,
+                                                     m_adaptiveFpsCap,
+                                                     m_radioModel.pendingThrottleLift());
         m_networkLabel->setToolTip(tooltip);
         const QPoint pos = m_networkLabel->mapToGlobal(QPoint(m_networkLabel->width() / 2, 0));
         QToolTip::showText(pos, tooltip, m_networkLabel);
