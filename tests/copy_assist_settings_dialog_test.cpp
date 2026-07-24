@@ -4,8 +4,11 @@
 
 #include "gui/CopyAssistSettingsDialog.h"
 
+#include "asr/WhisperAsrBackend.h" // asrLanguageOrDefault (header-inline, whisper-free)
+
 #include <QApplication>
 #include <QComboBox>
+#include <QLabel>
 #include <QSignalSpy>
 
 #include <cstdio>
@@ -65,6 +68,56 @@ int main(int argc, char** argv)
         expect(dlg.currentGpu() == -1, "setCurrentGpu selects the CPU sentinel");
         expect(!gpuSpy.isEmpty() && gpuSpy.last().at(0).toInt() == -1,
                "gpuChanged carries the device index");
+    }
+
+    // ---- Language selector: round-trip, signal, paired visibility ---------
+    {
+        dlg.addLanguage(QStringLiteral("en"), QStringLiteral("English"));
+        dlg.addLanguage(QStringLiteral("es"), QStringLiteral("Spanish"));
+
+        QSignalSpy langSpy(&dlg, &CopyAssistSettingsDialog::languageChanged);
+        dlg.setCurrentLanguage(QStringLiteral("es"));
+        expect(dlg.currentLanguage() == QStringLiteral("es"),
+               "setCurrentLanguage selects by code, currentLanguage round-trips");
+        expect(!langSpy.isEmpty() && langSpy.last().at(0).toString() == QStringLiteral("es"),
+               "languageChanged carries the language code");
+
+        // Unknown code is a no-op (the controller coerces to a supported code
+        // before calling this), so the selection stays put.
+        dlg.setCurrentLanguage(QStringLiteral("zz-nonesuch"));
+        expect(dlg.currentLanguage() == QStringLiteral("es"),
+               "setCurrentLanguage ignores an unsupported code");
+
+        // The label + combo hide/show together (sherpa-onnx path hides the row).
+        auto* langCombo = dlg.findChild<QComboBox*>(QStringLiteral("CopyAssistLanguageCombo"));
+        auto* langLabel = dlg.findChild<QLabel*>(QStringLiteral("CopyAssistLanguageLabel"));
+        dlg.setLanguageSelectorVisible(false);
+        expect(langCombo != nullptr && !langCombo->isVisibleTo(&dlg)
+                   && langLabel != nullptr && !langLabel->isVisibleTo(&dlg),
+               "setLanguageSelectorVisible(false) hides label + combo together");
+        dlg.setLanguageSelectorVisible(true);
+        expect(langCombo != nullptr && langCombo->isVisibleTo(&dlg)
+                   && langLabel != nullptr && langLabel->isVisibleTo(&dlg),
+               "setLanguageSelectorVisible(true) shows label + combo together");
+    }
+
+    // ---- asrLanguageOrDefault: validate/migrate a saved language code -----
+    {
+        const std::vector<AsrLanguage> supported = {
+            {QStringLiteral("en"), QStringLiteral("English")},
+            {QStringLiteral("es"), QStringLiteral("Spanish")},
+            {QStringLiteral("fr"), QStringLiteral("French")},
+        };
+        expect(asrLanguageOrDefault(QStringLiteral("fr"), supported) == QStringLiteral("fr"),
+               "asrLanguageOrDefault keeps a supported code");
+        expect(asrLanguageOrDefault(QStringLiteral("auto"), supported) == QStringLiteral("en"),
+               "asrLanguageOrDefault migrates the retired \"auto\" sentinel to en");
+        expect(asrLanguageOrDefault(QString(), supported) == QStringLiteral("en"),
+               "asrLanguageOrDefault migrates an empty code to en");
+        expect(asrLanguageOrDefault(QStringLiteral("zz-nonesuch"), supported) == QStringLiteral("en"),
+               "asrLanguageOrDefault falls back to en for an unsupported code");
+        expect(asrLanguageOrDefault(QStringLiteral("en"), {}) == QStringLiteral("en"),
+               "asrLanguageOrDefault falls back to en when the list is empty");
     }
 
     // ---- Transcript file logging: state + toggle signal -------------------
