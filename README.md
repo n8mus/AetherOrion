@@ -140,7 +140,8 @@ Pre-built binaries are available from [Releases](https://github.com/aethersdr/Ae
 |----------|----------|-------|
 | **Linux x86_64** | `AetherSDR-*-x86_64.AppImage` | Single file, no install needed. `chmod +x` and run. |
 | **Linux ARM** | `AetherSDR-*-aarch64.AppImage` | Raspberry Pi, ARM laptops. `chmod +x` and run. |
-| **macOS** | `AetherSDR-*-macOS-apple-silicon.dmg` | Apple Silicon (M1+). Intel Macs via Rosetta. Signed & notarized. |
+| **macOS Apple Silicon** | `AetherSDR-*-macOS-apple-silicon.dmg` | Apple Silicon (M1+), macOS 14.4 or newer. Signed & notarized. |
+| **macOS Intel** | `AetherSDR-*-macOS-intel.dmg` | Intel Macs, macOS 14.4 (Sonoma) or newer. Signed & notarized. |
 | **Windows Installer** | `AetherSDR-*-Windows-x64-setup.exe` | Setup wizard with Start Menu shortcut and uninstaller. |
 | **Windows Portable** | `AetherSDR-*-Windows-x64-portable.zip` | No install needed. Extract and run. |
 
@@ -148,9 +149,10 @@ Pre-built binaries are available from [Releases](https://github.com/aethersdr/Ae
 
 ## Building from Source
 
-**Qt 6.8 or newer is required** — the same Qt the release binaries are built
-against (6.8.3 LTS), so what CI compiles is what ships. Distro Qt clears this on
-Debian Trixie, Ubuntu 25.10+, Fedora 41+ and Arch. It does **not** clear on
+**Qt 6.8 or newer is required** — that is the source floor. Release binaries
+are built against Qt 6.12.0 LTS, so what CI compiles is what ships. Distro Qt
+clears this on Debian Trixie, Ubuntu 25.10+, Fedora 41+ and Arch. It does
+**not** clear on
 Ubuntu 24.04 LTS (6.4.2), and on macOS Qt does not come from Homebrew at all —
 both cases are covered in [`docs/BUILDING.md`](docs/BUILDING.md).
 
