@@ -6,7 +6,10 @@ migrations, credentials, or a setter that might write a radio-echoed value.
 
 ## Settings Persistence (AppSettings — NOT QSettings)
 
-**Do NOT use `QSettings` anywhere in AetherSDR.** All client-side settings are
+**Do NOT use `QSettings` anywhere in AetherSDR.** `Static checks` enforces this
+for `src/` with `tools/check_qsettings.py`; the only allowed uses are listed,
+with reasons, in its `ALLOWED` table. Test fixtures that drive the legacy-store
+migration use `QSettings` deliberately and are not scanned. All client-side settings are
 stored via `AppSettings` (`src/core/AppSettings.h`), which persists to a
 **SQLite database** named `AetherSDR.db` in `SettingsPaths::configDir()` —
 `QStandardPaths::GenericConfigLocation` + `/AetherSDR`, i.e.
