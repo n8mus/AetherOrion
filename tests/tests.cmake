@@ -5088,6 +5088,15 @@ target_include_directories(wideband_converter_view_test PRIVATE src)
 target_link_libraries(wideband_converter_view_test PRIVATE aethercore Qt6::Core Qt6::Network Qt6::Test)
 add_test(NAME wideband_converter_view_test COMMAND wideband_converter_view_test)
 
+# HL2 emergency stop (#4581): arm/disarm/fire, and a re-arm racing a fire.
+# SOCKETS: three UDP sockets on 127.0.0.1 (kernel-chosen ports): two sinks for
+# our own sendto() and the armed sender. No fake radio. No bind/descriptor: 77.
+add_executable(hl2_emergency_stop_test tests/hl2_emergency_stop_test.cpp)
+target_include_directories(hl2_emergency_stop_test PRIVATE src)
+target_link_libraries(hl2_emergency_stop_test PRIVATE aethercore Qt6::Core Qt6::Network)
+add_test(NAME hl2_emergency_stop_test COMMAND hl2_emergency_stop_test)
+set_tests_properties(hl2_emergency_stop_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60)
+
 add_executable(hl2_dbref_test tests/hl2_dbref_test.cpp)
 target_include_directories(hl2_dbref_test PRIVATE src)
 add_test(NAME hl2_dbref_test COMMAND hl2_dbref_test)
