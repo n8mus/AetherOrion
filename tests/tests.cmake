@@ -1259,6 +1259,14 @@ target_include_directories(hl2_rxdsp_async_rebuild_test PRIVATE src)
 target_link_libraries(hl2_rxdsp_async_rebuild_test PRIVATE aethercore Qt6::Core Qt6::Test)
 add_test(NAME hl2_rxdsp_async_rebuild_test COMMAND hl2_rxdsp_async_rebuild_test)
 
+# Socket-free injected receiver setup and link edge; no discovery/start or UDP.
+# Holds I/O/build threads to check scheduling, stale completions across removal
+# and reconstruction, and rollback of roles/meters. Uses isolated settings.
+add_executable(hl2_pan_create_async_test tests/hl2_pan_create_async_test.cpp)
+target_include_directories(hl2_pan_create_async_test PRIVATE src tests)
+target_link_libraries(hl2_pan_create_async_test PRIVATE aethercore Qt6::Core Qt6::Network Qt6::Test)
+add_test(NAME hl2_pan_create_async_test COMMAND hl2_pan_create_async_test)
+
 # RFC #5535 approved the automatic RF-gain loop ON THE CONDITION that it is
 # visible -- the clipping AND the regulator's own action. This pins both, and
 # pins the rule that stops the second from making the radio unusable with a
@@ -6725,6 +6733,7 @@ target_link_libraries(CAT_Flex_test PRIVATE Qt6::Core Qt6::Network)
 # directly (rather than linking aethercore) needs the vendored SQLite engine.
 # Conditional targets are guarded with if(TARGET ...).
 set(AETHER_SETTINGS_CONSUMERS
+    hl2_pan_create_async_test
     anan_backend_test
     anan_noise_blanker_readback_test
     tci_rx_audio_test
