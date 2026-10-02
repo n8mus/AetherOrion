@@ -178,6 +178,26 @@ public:
     // sample-rate change.
     Q_INVOKABLE void setSpectrumRateFps(int fps);
 
+    // Panadapter averaging: the operator's FFT AVG as a time constant in ms
+    // (0 = none) and the weighted toggle as the averaging domain (true =
+    // log-recursive, false = power); see Hl2Spectrum. Held here, not in Config,
+    // and re-applied in installChannel(): every zoom builds a fresh Hl2Spectrum.
+    Q_INVOKABLE void setSpectrumAverageMs(int ms);
+    Q_INVOKABLE void setSpectrumLogAverage(bool on);
+    // The NCO moved: forget the running average and the held partial window, so
+    // old-axis IQ does not ghost across the new axis. Not a transport gap, which
+    // keeps the average (see Hl2Spectrum::reset()).
+    Q_INVOKABLE void dropSpectrumAverage();
+    // What the installed spectrum is actually running, for tests. DSP thread.
+    [[nodiscard]] double spectrumAverageMsApplied() const noexcept
+    {
+        return m_spectrum ? m_spectrum->averageTimeMs() : -1.0;
+    }
+    [[nodiscard]] bool spectrumLogAverageApplied() const noexcept
+    {
+        return m_spectrum && m_spectrum->logAverage();
+    }
+
     // Impulse noise blanker, the HL2's only one (no firmware DSP), so NB is shown
     // even with hasRadioSideDsp = false. Runs in WdspChannel::processIq() on the
     // wire samples ahead of fexchange2, before the bandpass smears the impulse.
@@ -441,6 +461,9 @@ private:
     std::unique_ptr<WdspChannel> m_channel;
     std::unique_ptr<Hl2Spectrum> m_spectrum;
     double m_shiftHz = 0.0;   // current slice offset from the NCO, Hz
+    // The operator's panadapter averaging; see setSpectrumAverageMs().
+    int m_spectrumAverageMs = 0;
+    bool m_spectrumLogAverage = false;
     // Noise-blanker state, kept out of m_config so configure() cannot clear it.
     // m_nbOn/m_nbLevel are the REQUEST; m_nbApplied* are what the WDSP stage
     // took. They diverge exactly when something went wrong, which is the whole

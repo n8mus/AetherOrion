@@ -112,6 +112,22 @@ private:
 
 public:
     void setPanFrameRate(const QString& panId, int fps) override;
+    // The operator's FFT AVG (0..100) and weighted toggle. This backend owns
+    // the panadapter's averaging (RFC #5782), so both land in the receiver's
+    // Hl2Spectrum; see averageTimeMsForStep() and Hl2Spectrum::setAverageTimeMs().
+    void setPanAverage(const QString& panId, int average) override;
+    void setPanWeightedAverage(const QString& panId, bool on) override;
+
+    // One FFT AVG step is 10 ms of averaging time constant, so 0..100 spans
+    // 0..1 s: the ANAN's unit (AnanBackend's kMsPerAverageStep), so one setting
+    // means one time constant on both families. A time, not a frame count: a
+    // depth in frames would move with the fps slider. It does not match a Flex,
+    // whose `average=` has no documented unit.
+    static constexpr int kMsPerAverageStep = 10;
+    [[nodiscard]] static constexpr int averageTimeMsForStep(int average) noexcept
+    {
+        return (average < 0 ? 0 : (average > 100 ? 100 : average)) * kMsPerAverageStep;
+    }
     bool createPanadapter() override;
     bool removePanadapter(const QString& panId) override;
     void createNotch(double centerHz, double widthHz) override;
@@ -470,6 +486,12 @@ private:
         bool nbOn = false;
         int  nbLevel = 50;
 
+        // The operator's panadapter averaging, held for the same reason: a
+        // chain built on reconnect or for an added pan starts at none.
+        // panAverage is the operator's 0..100; see averageTimeMsForStep().
+        int  panAverage = 0;
+        bool panWeightedAverage = false;
+
         // Authoritative squelch state, for the blanker's reasons: nothing on
         // this radio echoes it and every rebuilt chain opens with it off.
         // Defaults mirror SliceModel's (off, level 20). The mode decides which
@@ -550,6 +572,11 @@ private:
     void pushNoiseBlanker(const Receiver& r);
     // Same, for the squelch, and needed at the same places for the same reason.
     void pushSquelch(const Receiver& r);
+    // Same, for the panadapter averaging (Receiver::panAverage / weighted).
+    void pushPanAveraging(const Receiver& r);
+    // This receiver's NCO just moved: the averaged bins describe the old
+    // frequency axis. Called beside pushNotchTune() at the two retune sites.
+    void dropPanAverage(const Receiver& r);
 
     // I/O THREAD ONLY: the chains the EP6 fan-out feeds, indexed by DDC. Never m_rx,
     // whose push_back/erase can move storage under the fan-out. Rebuilt by
