@@ -31,6 +31,7 @@
 #include <limits>
 #include <memory>
 #include <utility>
+#include <optional>
 #include <vector>
 
 namespace AetherSDR::hl2 {
@@ -241,6 +242,7 @@ private:
     // Delivers one bandscope block through MetisClient's signal and ages the mirror,
     // so converter-row expiry is testable without a radio.
     friend struct Hl2HealthBlockTestAccess;
+    friend struct Hl2Cl1ReferenceTestAccess;
     void applyKeying(bool key, const TxCoordinator::Operation& operation,
                      const TxCoordinator::Completion& completion, bool cwBreakIn);
     void invalidateTxDspConfiguration();
@@ -394,6 +396,14 @@ private:
     // Clamp, persist, adopt, re-push — the single path for a calibration change
     // whoever asked for it (setup dialog, automation bridge, connect).
     void applyFreqCalPpb(int ppb, bool persist);
+    // Enforce "CL1 on means zero manual ppb" — §4 of
+    // docs/architecture/hl2-frequency-calibration.md. Returns true when it had to
+    // change something, so a live caller knows to re-push frequencies. Called
+    // from applyHardwareOptions() AND from connectRadio(), because the two
+    // documents are persisted separately and can disagree on disk.
+    bool normalizeCl1Calibration(const char* why);
+    // Read the actual pending transport snapshot without starting a socket.
+    std::optional<std::pair<bool, std::uint32_t>> pendingCl1ReferenceForTest() const;
 
     // This radio's calibration and the derived scale. 0 / 1.0 is uncalibrated.
     int m_freqCalPpb = 0;

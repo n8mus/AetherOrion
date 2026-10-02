@@ -10,10 +10,12 @@
 
 #include <QDebug>
 #include <QLoggingCategory>
+#include <QSet>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <mutex>
 #include <span>
 #include <vector>
 
@@ -36,6 +38,19 @@ namespace AetherSDR::hl2 {
 // counters on the I/O thread.
 
 namespace {
+
+// A family switch destroys the transport without power-cycling the radio.
+// Keep unresolved clock recovery until a complete OFF sequence is sent.
+struct Cl1RecoveryRegistry {
+    std::mutex mutex;
+    QSet<QString> serials;
+};
+
+Cl1RecoveryRegistry& cl1RecoveryRegistry()
+{
+    static Cl1RecoveryRegistry registry;
+    return registry;
+}
 
 // View a QByteArray as a byte span for the protocol decoders.
 std::span<const std::uint8_t> asBytes(const QByteArray& d) noexcept
@@ -352,6 +367,13 @@ bool MetisClient::start(const Params& params)
     m_watchdogTimer->start();
     m_connectWatchdog->start(kConnectTimeoutMs);
     armStartRetry();
+
+    // HL2 boots on its crystal. Reapply requested CL1 after priming, or send
+    // OFF only for this serial's unresolved switch earlier in this process.
+    // Ordinary connects and unknown serials must not touch the clock bus.
+    if (m_params.cl1RefClock || cl1RecoveryPending()) {
+        queueCl1Sequence(m_params.cl1RefClock);
+    }
     return true;
 }
 
@@ -524,6 +546,20 @@ void MetisClient::stop()
             && bank[2] == (kI2cStopAtEnd | kIoBoardI2cAddr);
     });
     m_ioBoardTxFreqSent = false;
+    // Same rule, higher stakes: a half-sent VersaClock sequence finishing in
+    // the NEXT session would configure the part from the middle of a table
+    // whose earlier writes never happened — that is not a wrong band relay,
+    // it is a converter with no usable clock.
+    //
+    // "start() re-queues the whole sequence, so nothing is lost" is what this
+    // comment used to say, and for the OFF table it was NOT TRUE: the record
+    // that the radio might still be on CL1 was cleared when the table was
+    // queued, so start() had nothing left to act on and the radio stayed on the
+    // external reference (#5923 review). The record is now released only on a
+    // confirmed send, and dropQueuedCl1Banks() abandons the countdown along with
+    // the banks — so the claim holds in both directions and an interrupted
+    // recovery resumes on the next connect.
+    dropQueuedCl1Banks();
     // Whatever was still queued for the speaker describes a session that has
     // ended, and on a radio with no codec the same bytes would be EADDR writes.
     m_speakerAudio.clear();
@@ -774,6 +810,74 @@ void MetisClient::submitSpeakerAudio(const QByteArray& interleavedInt16)
 void MetisClient::clearSpeakerAudio()
 {
     m_speakerAudio.clear();
+}
+
+void MetisClient::setCl1RefClock(bool externalRef)
+{
+    m_params.cl1RefClock = externalRef;
+    if (!m_running) {
+        return;        // start() re-sends the sequence; see its call site
+    }
+    queueCl1Sequence(externalRef);
+}
+
+bool MetisClient::cl1RecoveryPendingFor(const QString& serial) noexcept
+{
+    if (serial.isEmpty()) {
+        return false;
+    }
+    Cl1RecoveryRegistry& registry = cl1RecoveryRegistry();
+    const std::lock_guard lock(registry.mutex);
+    return registry.serials.contains(serial);
+}
+
+bool MetisClient::isCl1Bank(const Cc& bank) noexcept
+{
+    return bank[0] == kC0I2c1 && bank[1] == kI2cCookieWrite
+        && bank[2] == (kI2cStopAtEnd | kVersaClockI2cAddr);
+}
+
+void MetisClient::queueCl1Sequence(bool externalRef)
+{
+    // Replace rather than append. Two sequences in the queue would apply the
+    // older one LAST — an operator who toggled the setting twice would end on
+    // the state they toggled away from.
+    dropQueuedCl1Banks();
+    // Remember ON before any writes can leave the host. Interrupted sequences
+    // may already have moved the clock; only all 24 completed OFF writes release
+    // this serial's recovery record, including across transport recreation.
+    if (externalRef) {
+        if (m_params.radioSerial.isEmpty()) {
+            // Nothing to key the record on, so nothing could recover it. Worth a
+            // line in the log rather than a silent gap: the radio is going onto
+            // an external reference that no later connect will offer to undo.
+            qCWarning(lcHl2) << "HL2: switching CL1 on for a radio with no serial —"
+                             << "this session cannot offer to switch it back";
+        } else {
+            Cl1RecoveryRegistry& registry = cl1RecoveryRegistry();
+            const std::lock_guard lock(registry.mutex);
+            registry.serials.insert(m_params.radioSerial);
+        }
+    }
+    m_cl1SequenceRadio = m_params.radioSerial;
+    m_cl1SequenceIsOff = !externalRef;
+    m_cl1BanksUnsent = static_cast<int>(kVersaClockCl1Banks);
+    for (const Cc& bank : versaClockCl1Banks(externalRef)) {
+        m_oneShot.push_back(bank);
+    }
+    qCInfo(lcHl2) << "HL2: CL1 reference clock ->"
+                  << (externalRef ? "external 10 MHz" : "onboard crystal")
+                  << "— queued" << kVersaClockCl1Banks << "VersaClock writes";
+}
+
+void MetisClient::dropQueuedCl1Banks()
+{
+    std::erase_if(m_oneShot, isCl1Bank);
+    // Discarded writes cannot complete an OFF sequence or release recovery.
+    m_cl1BanksUnsent = 0;
+    m_cl1BankOnBuiltPacket = false;
+    m_cl1SequenceRadio.clear();
+    m_cl1SequenceIsOff = false;
 }
 
 void MetisClient::setAtuTuneRequest(bool request)
@@ -1127,10 +1231,16 @@ std::array<std::uint8_t, kUsbPacketSize> MetisClient::buildNextControlPacket()
     // thrown away (a test, or a caller that inspects the bytes) must not leave
     // a stale claim that some later packet carried the request.
     m_requestOnBuiltPacket = false;
+    m_cl1BankOnBuiltPacket = false;
     Cc b;
     if (!m_oneShot.empty()) {
         b = m_oneShot.front();
         m_oneShot.pop_front();
+        // Claimed, not yet counted: onControlPacketSent() decides whether this
+        // bank actually reached the wire. Same shape as m_requestOnBuiltPacket
+        // above and for the same reason — a packet built and then discarded must
+        // not retire one of the twenty-four writes.
+        m_cl1BankOnBuiltPacket = isCl1Bank(b);
     } else if (const auto rqst = m_ccRequest.wireBank()) {
         // AFTER the one-shots, ahead of the round robin. After, because a
         // one-shot is a write the operator asked for and a read-back that
@@ -1299,6 +1409,19 @@ void MetisClient::onControlPacketSent(qint64 bytesWritten, qint64 nowMs) noexcep
     m_requestOnBuiltPacket = false;
     if (carriedRequest && bytesWritten > 0)
         m_ccRequest.onRequestSent(nowMs);
+    // Only a complete OFF sequence releases recovery. A session interrupted
+    // earlier leaves the record for the next transport to resend the whole table.
+    const bool carriedCl1 = m_cl1BankOnBuiltPacket;
+    m_cl1BankOnBuiltPacket = false;
+    if (carriedCl1 && bytesWritten > 0 && m_cl1BanksUnsent > 0) {
+        if (--m_cl1BanksUnsent == 0 && m_cl1SequenceIsOff) {
+            Cl1RecoveryRegistry& registry = cl1RecoveryRegistry();
+            const std::lock_guard lock(registry.mutex);
+            registry.serials.remove(m_cl1SequenceRadio);
+            qCInfo(lcHl2) << "HL2: CL1 off sequence complete —"
+                          << m_cl1SequenceRadio << "is back on its crystal";
+        }
+    }
 }
 
 void MetisClient::sendControlPacket()
