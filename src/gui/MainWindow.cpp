@@ -3664,19 +3664,12 @@ void MainWindow::wireRadioSetupDialogSignals(RadioSetupDialog* dlg, const QStrin
 #endif
         // External-device enable evaluation. start()/loadSettings() are
         // idempotent (each guards against re-open), so re-firing them when
-        // unrelated settings change is harmless. Toggling the user-facing
-        // checkbox from off → on is the moment the OS TCC prompt fires —
-        // with user context — instead of every launch (#3257).
-        auto& s = AppSettings::instance();
-        if (m_dialBackend &&
-            s.value("UlanziDialEnabled", "False").toString() == "True") {
-            QMetaObject::invokeMethod(m_dialBackend, &UlanziDialBackend::start,
-                                      Qt::QueuedConnection);
-        } else if (m_dialBackend) {
-            QMetaObject::invokeMethod(m_dialBackend, &UlanziDialBackend::stop,
-                                      Qt::QueuedConnection);
-        }
+        // unrelated settings change is harmless. Toggling the HID checkbox
+        // from off → on is the moment the OS TCC prompt fires — with user
+        // context — instead of every launch (#3257).
+        applyUlanziDialEnabled();
 #ifdef HAVE_HIDAPI
+        auto& s = AppSettings::instance();
         if (m_hidEncoder &&
             s.value("HidEncoderEnabled", "False").toString() == "True") {
             QMetaObject::invokeMethod(m_hidEncoder, [this] {
