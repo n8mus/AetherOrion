@@ -1091,6 +1091,26 @@ void AmpApplet::setSwr(float swr)
 
 void AmpApplet::setPaHeatsinkTemp(float degC)
 {
+    // The PGXL's own reading. Dropped while the radio's is fresh, so the two
+    // sources never take turns writing the readout. See the header.
+    if (m_radioPaHeatsinkTemp.isValid()
+            && m_radioPaHeatsinkTemp.elapsed() < kRelayMeterFreshnessMs) {
+        return;
+    }
+    m_paHeatsinkTemp = degC;
+    m_hasPaHeatsinkTemp = true;
+    updateTempLabel();
+}
+
+void AmpApplet::setRadioPaHeatsinkTemp(float degC, bool valid)
+{
+    if (!valid) {
+        // The meter is gone. Hand the reading back to the PGXL at once rather
+        // than holding it off for the rest of the freshness window.
+        m_radioPaHeatsinkTemp.invalidate();
+        return;
+    }
+    m_radioPaHeatsinkTemp.restart();
     m_paHeatsinkTemp = degC;
     m_hasPaHeatsinkTemp = true;
     updateTempLabel();
@@ -1165,6 +1185,32 @@ void AmpApplet::updateTempLabel()
 }
 
 void AmpApplet::setDrainCurrent(float amps)
+{
+    // The PGXL's own reading. Dropped while the radio's is fresh; see
+    // setPaHeatsinkTemp().
+    if (m_radioDrainCurrent.isValid()
+            && m_radioDrainCurrent.elapsed() < kRelayMeterFreshnessMs) {
+        return;
+    }
+    applyDrainCurrent(amps);
+}
+
+void AmpApplet::setRadioDrainCurrent(float amps, bool valid)
+{
+    if (!valid) {
+        // The last value stays on the gauge, unlike drive, whose row hides when
+        // its meter goes (setDrivePower). Drive has no other source, so a bar
+        // left standing would be a reading nobody is updating. Drain current
+        // does: the PGXL's own value takes over at once, and the radio's ID
+        // meter only goes away with the amplifier, which takes the panel too.
+        m_radioDrainCurrent.invalidate();
+        return;
+    }
+    m_radioDrainCurrent.restart();
+    applyDrainCurrent(amps);
+}
+
+void AmpApplet::applyDrainCurrent(float amps)
 {
     m_drainAmps = amps;
     m_idGauge->setValue(amps);
@@ -1459,16 +1505,6 @@ void AmpApplet::setDirectFailureReason(const QString& reason)
 bool AmpApplet::hasRadioRelay() const
 {
     return m_radioConnected && m_model && !m_model->handle().isEmpty();
-}
-
-void AmpApplet::setMeff(const QString& meff)
-{
-    // The relayed MEffA state (radio amp telemetry, not the 9008 socket). Shown
-    // but never settable from here: a `setup` write carries the whole config group,
-    // which only the direct connection can read. The socket path
-    // (AmpModel::meffaChanged) sets real writability and wins where both exist.
-    if (m_meffaSettable) return;   // the socket owns it; do not downgrade
-    setMeffa(meff, false);
 }
 
 } // namespace AetherSDR
