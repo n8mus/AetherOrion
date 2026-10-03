@@ -1589,6 +1589,10 @@ void RadioModel::wireBackendReceiverState()
                     [this, s](bool on, int level) {
                 if (m_backend) m_backend->setSliceSquelch(s->sliceId(), on, level);
             });
+            connect(s, &SliceModel::apfCommandIssued, this,
+                    [this, s](bool on, int level) {
+                if (m_backend) m_backend->setSliceApf(s->sliceId(), on, level);
+            });
             // FM repeater controls are distinct neutral intents. Flex
             // continues to use SliceModel's wire text; every other backend gets
             // the same operator action through the seam instead of silently

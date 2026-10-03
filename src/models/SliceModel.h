@@ -418,6 +418,10 @@ signals:
     // for why turning the notch on without placing it is not enough.
     void manualNotchCommandIssued(bool on, int position);
     void squelchCommandIssued(bool on, int level);
+    // CW audio peaking filter, enable and level together (setApf/setApfLevel).
+    // Operator setters only, never status application; Flex also gets its
+    // `apf=`/`apf_level=` wire text.
+    void apfCommandIssued(bool on, int level);
     // Receive and transmit incremental tuning.
     void ritCommandIssued(bool on, int hz);
     void xitCommandIssued(bool on, int hz);

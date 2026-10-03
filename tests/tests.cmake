@@ -1323,6 +1323,21 @@ target_include_directories(hl2_rxdsp_squelch_test PRIVATE src)
 target_link_libraries(hl2_rxdsp_squelch_test PRIVATE aethercore Qt6::Core)
 add_test(NAME hl2_rxdsp_squelch_test COMMAND hl2_rxdsp_squelch_test)
 
+# HL2 host-side CW audio peaking filter and AGC-off level (G2 of the silent
+# HL2 control map). A real Hl2RxDsp/WDSP channel, measured audio, no socket.
+add_executable(hl2_apf_agc_off_test tests/hl2_apf_agc_off_test.cpp)
+target_include_directories(hl2_apf_agc_off_test PRIVATE src tests)
+target_link_libraries(hl2_apf_agc_off_test PRIVATE aethercore Qt6::Core Qt6::Network)
+add_test(NAME hl2_apf_agc_off_test COMMAND hl2_apf_agc_off_test)
+
+# The seam half: SliceModel's APF / AGC-off intents reach IRadioBackend through
+# RadioModel's production receiver bindings, and Flex keeps its wire text.
+# Socket-free: a recording backend, no DSP, no wire.
+add_executable(slice_apf_agc_off_seam_test tests/slice_apf_agc_off_seam_test.cpp)
+target_include_directories(slice_apf_agc_off_seam_test PRIVATE src tests)
+target_link_libraries(slice_apf_agc_off_seam_test PRIVATE aethercore Qt6::Core Qt6::Test)
+add_test(NAME slice_apf_agc_off_seam_test COMMAND slice_apf_agc_off_seam_test)
+
 # AM/SAM come back from WDSP's envelope detector with the carrier as a DC
 # pedestal; the blocker on the audio output must strip it without touching the
 # modes that were already zero-mean, and without its corner creeping up into
@@ -7155,6 +7170,8 @@ set(AETHER_SETTINGS_CONSUMERS
     gui_nested_lifetime_test
     rx_applet_squelch_reconciliation_test
     rtl_slice_settings_test
+    slice_apf_agc_off_seam_test
+    hl2_apf_agc_off_test
     automation_persist_diagnostics_test
     weather_radar_loading_test
     hl2_gain_restore_test
