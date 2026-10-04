@@ -1014,6 +1014,8 @@ set(CORE_SOURCES
     src/core/SpeConnection.cpp
     src/core/VkampProtocol.cpp
     src/core/VkampConnection.cpp
+    src/core/Kpa1500Protocol.cpp
+    src/core/Kpa1500Connection.cpp
     src/core/LpMeterProtocol.cpp
     src/core/LpMeterConnection.cpp
     src/core/FirmwareUploader.cpp
@@ -1280,6 +1282,7 @@ set(GUI_SOURCES
     src/gui/SpeApplet.cpp
     src/gui/SpeLcdWidget.cpp
     src/gui/VkampApplet.cpp
+    src/gui/Kpa1500Applet.cpp
     src/gui/LpMeterApplet.cpp
     src/gui/Ctr2ProxyApplet.cpp
     src/gui/MeterApplet.cpp
