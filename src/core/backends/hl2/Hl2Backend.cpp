@@ -3107,6 +3107,47 @@ void Hl2Backend::setSliceNoiseBlanker(int sliceId, bool on, int level)
             Q_ARG(bool, r->nbOn), Q_ARG(int, r->nbLevel));
 }
 
+ReceiveDispatch Hl2Backend::requestSliceDsp(int sliceId, const SliceDspRequest& request)
+{
+    if (!request.valid() || !rx(ddcForSlice(sliceId))) {
+        return ReceiveDispatch::Unsupported;
+    }
+    switch (request.feature) {
+    case SliceDspRequest::Feature::Nb:
+        setSliceNoiseBlanker(sliceId, request.enabled, request.level);
+        break;
+    case SliceDspRequest::Feature::Apf:
+        setSliceApf(sliceId, request.enabled, request.level);
+        break;
+    default:
+        return ReceiveDispatch::Unsupported;
+    }
+    return ReceiveDispatch::Dispatched;
+}
+
+ReceiveDispatch Hl2Backend::requestSliceSquelch(int sliceId, const SliceSquelchRequest& request)
+{
+    if (!request.valid() || !rx(ddcForSlice(sliceId))) {
+        return ReceiveDispatch::Unsupported;
+    }
+    setSliceSquelch(sliceId, request.enabled, request.level);
+    return ReceiveDispatch::Dispatched;
+}
+
+ReceiveDispatch Hl2Backend::requestSliceAudio(int sliceId, const SliceAudioRequest& request)
+{
+    if (!request.valid() || request.origin != SliceAudioRequest::Origin::Operator
+        || !rx(ddcForSlice(sliceId))) {
+        return ReceiveDispatch::Unsupported;
+    }
+    switch (request.field) {
+    case SliceAudioRequest::Field::Gain: setSliceAudioGain(sliceId, request.value); break;
+    case SliceAudioRequest::Field::Mute: setSliceAudioMute(sliceId, request.value != 0); break;
+    case SliceAudioRequest::Field::Pan: setSliceAudioPan(sliceId, request.value); break;
+    }
+    return ReceiveDispatch::Dispatched;
+}
+
 void Hl2Backend::setSliceApf(int sliceId, bool on, int level)
 {
     const int ddc = ddcForSlice(sliceId);
