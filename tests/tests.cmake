@@ -6496,6 +6496,7 @@ set_tests_properties(flex_control_dialog_size_test PROPERTIES
 add_executable(connection_panel_size_test
     tests/connection_panel_size_test.cpp
     src/gui/ConnectionPanel.cpp
+    src/gui/PersistentDialog.cpp
     src/gui/FramelessResizer.cpp
     src/gui/FramelessWindowTitleBar.cpp
 )
@@ -7150,6 +7151,9 @@ set_tests_properties(mini_pan_widget_test PROPERTIES
 add_executable(hl2_pc_audio_lock_test
     tests/hl2_pc_audio_lock_test.cpp
     src/gui/TitleBar.cpp
+    src/gui/BrandMark.cpp
+    src/gui/RadioTabBar.cpp
+    src/gui/WindowCaptionButtons.cpp
     # TitleBar's dialogs (PC-audio tooltip help, message boxes) are frameless,
     # so the resizer + frameless title bar come along; ThemeManager pulls its
     # logging deps, same as container_widget_test.
@@ -7178,6 +7182,9 @@ set_tests_properties(hl2_pc_audio_lock_test PROPERTIES
 add_executable(titlebar_headphone_mute_test
     tests/titlebar_headphone_mute_test.cpp
     src/gui/TitleBar.cpp
+    src/gui/BrandMark.cpp
+    src/gui/RadioTabBar.cpp
+    src/gui/WindowCaptionButtons.cpp
     # TitleBar's dialogs are frameless, so the resizer + frameless title bar
     # come along; ThemeManager pulls its logging deps.
     src/gui/FramelessMessageBox.cpp
@@ -7202,10 +7209,15 @@ set_tests_properties(titlebar_headphone_mute_test PROPERTIES
 
 # Which radio-mixer controls exist on the connected radio:
 # MixerControlAvailability.h's truth table plus the title bar's headphone dim.
-# Same TitleBar link set as titlebar_headphone_mute_test above.
+# Same TitleBar link set as titlebar_headphone_mute_test above — TitleBar's
+# constructor builds the brand mark, the radio strip and the caption controls,
+# so every target that links it needs those three too.
 add_executable(mixer_control_availability_test
     tests/mixer_control_availability_test.cpp
     src/gui/TitleBar.cpp
+    src/gui/BrandMark.cpp
+    src/gui/RadioTabBar.cpp
+    src/gui/WindowCaptionButtons.cpp
     src/gui/FramelessMessageBox.cpp
     src/gui/PersistentDialog.cpp
     src/gui/FramelessResizer.cpp
@@ -7225,6 +7237,42 @@ set_target_properties(mixer_control_availability_test PROPERTIES AUTOMOC ON)
 add_test(NAME mixer_control_availability_test COMMAND mixer_control_availability_test)
 set_tests_properties(mixer_control_availability_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+add_executable(unified_title_bar_test
+    tests/unified_title_bar_test.cpp
+    src/gui/TitleBar.cpp
+    src/gui/BrandMark.cpp
+    src/gui/RadioTabBar.cpp
+    src/gui/WindowCaptionButtons.cpp
+    src/gui/FramelessMessageBox.cpp
+    src/gui/PersistentDialog.cpp
+    src/gui/FramelessResizer.cpp
+    src/gui/FramelessWindowTitleBar.cpp
+    src/gui/DragValuePopup.cpp
+    $<TARGET_OBJECTS:aether_test_settings>
+    src/core/ThemeManager.cpp
+    src/core/ThemeSeedGenerated.cpp
+    $<TARGET_OBJECTS:aether_test_log_manager>
+    $<TARGET_OBJECTS:aether_test_async_log_writer>
+    ${THEME_TEST_RESOURCES}
+)
+target_include_directories(unified_title_bar_test PRIVATE src)
+target_link_libraries(unified_title_bar_test PRIVATE
+    aether_sqlite3
+    Qt6::Core Qt6::Widgets Qt6::Network Qt6::Test
+)
+set_target_properties(unified_title_bar_test PROPERTIES AUTOMOC ON)
+add_test(NAME unified_title_bar_test COMMAND unified_title_bar_test)
+set_tests_properties(unified_title_bar_test PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+if(APPLE)
+    foreach(titlebar_target IN ITEMS unified_title_bar_test titlebar_headphone_mute_test hl2_pc_audio_lock_test
+            mixer_control_availability_test)
+        target_sources(${titlebar_target} PRIVATE src/gui/mac/NativeWindowTitle.mm)
+        target_link_libraries(${titlebar_target} PRIVATE "-framework AppKit")
+    endforeach()
+endif()
 
 # Pure index arithmetic lifted out of RxApplet — no GUI, no radio.
 add_executable(icom_replay_test tests/icom_replay_test.cpp)
@@ -7730,6 +7778,7 @@ set(AETHER_SETTINGS_CONSUMERS
     hl2_pc_audio_lock_test
     titlebar_headphone_mute_test
     mixer_control_availability_test
+    unified_title_bar_test
     amp_applet_test
     container_manager_test
     container_nesting_test

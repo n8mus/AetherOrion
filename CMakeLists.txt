@@ -1442,6 +1442,9 @@ set(GUI_SOURCES
     src/gui/ShackSwitchApplet.cpp
     src/gui/GreenHeronApplet.cpp
     src/gui/TitleBar.cpp
+    src/gui/BrandMark.cpp
+    src/gui/RadioTabBar.cpp
+    src/gui/WindowCaptionButtons.cpp
     src/gui/SupportDialog.cpp
     src/gui/SliceTroubleshootingDialog.cpp
     src/gui/RadioHealthDialog.cpp
@@ -2343,6 +2346,8 @@ endif()
 # macOS app bundle
 if(APPLE)
     target_sources(AetherSDR PRIVATE src/MacStartupAbortGuard.cpp)
+    target_sources(AetherSDR PRIVATE src/gui/mac/NativeWindowTitle.mm)
+    target_link_libraries(AetherSDR PRIVATE "-framework AppKit")
     set_target_properties(AetherSDR PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.aethersdr.AetherSDR"
