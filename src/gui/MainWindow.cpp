@@ -6029,6 +6029,7 @@ void MainWindow::buildUI()
 
     // PA temp (top) + supply voltage (bottom) stacked
     auto* paStack = new QWidget;
+    m_paStack = paStack;
     reserveTelemetryStack(paStack, {
         QStringLiteral("PA 248.0°F"),
         QStringLiteral("PA 120.0°C"),
@@ -6051,7 +6052,7 @@ void MainWindow::buildUI()
     paVbox->addWidget(m_supplyVoltLabel);
     hbox->addWidget(paStack);
 
-    addSep();
+    m_paSeparator = addSep();
 
     // Network label (top) + quality (bottom) stacked
     auto* netStack = new QWidget;
@@ -7820,17 +7821,40 @@ void MainWindow::applyCapabilitiesToUi(bool connected, const RadioCapabilities& 
         m_appletPanel->setHardwareEqVisible(true);
     }
 
-    // ── PA supply voltage: the lower row of the status bar's PA stack ───────
+    // ── The status bar's PA stack: temperature on top, supply rail below ───
     //
-    // m_supplyVoltLabel ONLY. m_paTempLabel and the paVbox around them are left
-    // alone deliberately: an HL2 reports PA temperature genuinely, so hiding the
-    // stack would delete a working readout in order to suppress a broken
-    // sibling. The one being suppressed is fed from the Flex-named "+13.8A"
-    // meter, and MeterModel emits hwTelemetryChanged whenever EITHER half
-    // changes — so on a radio that reports only PA temperature the volts half
-    // arrives as its 0.0f initialiser on every tick.
+    // BOTH rows are now gated, each on its own evidence, and the stack itself
+    // comes down when neither survives.
+    //
+    // The volts row is suppressed on hasSupplyVoltageTelemetry because it is fed
+    // from the Flex-named "+13.8A" meter and MeterModel emits
+    // hwTelemetryChanged whenever EITHER half changes — so on a radio that
+    // reports only PA temperature the volts half arrives as its 0.0f
+    // initialiser on every tick.
+    //
+    // The temperature row was previously left alone on the grounds that hiding
+    // the stack would delete the HL2's genuine reading to suppress a broken
+    // sibling. That reasoning held against hiding the STACK; it does not apply
+    // to a per-radio gate, which is what this is. The row is withdrawn only
+    // when the radio's own capability record says the protocol HAS no
+    // temperature field — a claim about the wire format, not about a value that
+    // has yet to arrive — and only when no PA-current reading is available to
+    // occupy the same row. Radios that report a temperature, or that have made
+    // no such claim, are untouched by construction.
     if (m_appletPanel) {
         m_appletPanel->meterApplet()->setSupplyVoltageTelemetryState(connected);
+    }
+    // A readout the radio can never produce, as distinct from one that has not
+    // arrived yet. The two capability flags are re-checked so a real reading
+    // always wins over the audit if a backend ever declared both.
+    const bool paTemperatureWithdrawn =
+        connected
+        && caps.paTelemetryAudit.has_value()
+        && caps.paTelemetryAudit->temperatureAbsent
+        && !caps.hasPaTemperatureTelemetry
+        && !caps.hasPaCurrentTelemetry;
+    if (m_paTempLabel) {
+        m_paTempLabel->setVisible(!paTemperatureWithdrawn);
     }
     if (m_supplyVoltLabel) {
         m_supplyVoltLabel->setVisible(!connected || caps.hasSupplyVoltageTelemetry);
@@ -7847,17 +7871,24 @@ void MainWindow::applyCapabilitiesToUi(bool connected, const RadioCapabilities& 
             m_hasPaTempTelemetry = false;
             updatePaTempLabel();
         }
-        // Republishing the minimum width cannot currently matter here, and the
-        // call is kept only so the gate stays correct if that stops being true:
-        // paStack's minimum is PINNED by reserveTelemetryStack() with a
-        // "99.99 V" sample, so hiding one of its children leaves
-        // m_statusBarContainer->minimumSizeHint() unchanged, and
-        // updateStatusBarMinimumWidth() only ever READS that hint. So no stale
-        // minimum, gap or clipped size grip is reachable today — and the HL2
-        // reclaims no width from the hidden row either, nor would it:
-        // "PA 248.0°F" is the wider sample.
-        updateStatusBarMinimumWidth();
     }
+    // Both rows withdrawn: take the container down too, and the separator after
+    // it. Its minimum width is PINNED by reserveTelemetryStack(), so hiding only
+    // the children would leave a reserved, empty gap sitting between two
+    // separators.
+    if (m_paStack) {
+        const bool anyPaRow =
+            (m_paTempLabel && m_paTempLabel->isVisibleTo(m_paStack))
+            || (m_supplyVoltLabel && m_supplyVoltLabel->isVisibleTo(m_paStack));
+        m_paStack->setVisible(anyPaRow);
+        if (m_paSeparator) {
+            m_paSeparator->setVisible(anyPaRow);
+        }
+    }
+    // After the hide, not before: hiding the stack drops its pinned minimum out
+    // of m_statusBarContainer->minimumSizeHint(), which this only ever READS.
+    // Hiding one row alone changes nothing, since the pin holds the width.
+    updateStatusBarMinimumWidth();
 
     // CWX/CWK, DVK and FDX status-bar toggles are HIDDEN without the capability:
     // each is a firmware verb (`cwx`, `dvk`, `radio set full_duplex_enabled=`)

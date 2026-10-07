@@ -30,6 +30,24 @@
 #include <memory>
 #include <optional>
 
+namespace AetherSDR::anan {
+// AnanBackend's friend: drives the client-snapshot handler with no client and
+// no socket, which is the only deterministic way to reach LinkStats::alive.
+class AnanLinkStatsTestAccess {
+public:
+    static void setConnected(AnanBackend& backend, bool connected)
+    {
+        backend.m_connected = connected;
+    }
+    static void snapshot(AnanBackend& backend, quint64 rxBytes)
+    {
+        P2Client::LinkCounters counters;
+        counters.rxBytes = rxBytes;
+        backend.onLinkCounters(counters);
+    }
+};
+}  // namespace AetherSDR::anan
+
 using namespace AetherSDR;
 using namespace AetherSDR::anan;
 
@@ -598,6 +616,62 @@ int main(int argc, char** argv)
         // future field cannot be added without this test being revisited.
         backend.setSliceAudioPan(0, 0);
         check(!last.has_value(), "balance publishes nothing, having no delta field");
+    }
+
+    // ---- PA telemetry capability: the readout is withdrawn, not blanked ----
+    {
+        AnanBackend backend;
+        const auto caps = backend.capabilities();
+        check(caps.paTelemetryAudit.has_value(),
+              "ANAN declares a PA telemetry audit");
+        check(caps.paTelemetryAudit && caps.paTelemetryAudit->temperatureAbsent,
+              "the audit states PA temperature is ABSENT FROM THE PROTOCOL -- the"
+              " claim the status bar withdraws its readout on");
+        check(!caps.hasPaTemperatureTelemetry,
+              "and no temperature is claimed as received");
+        // The radio DOES send a supply count, but no known scale fits it (a
+        // 13.8 V rail read as ~40 V on a G2 bench), so the row stays withdrawn.
+        check(!caps.hasSupplyVoltageTelemetry,
+              "no supply voltage is claimed while no scale for its counts is known");
+        check(!caps.hasPaCurrentTelemetry,
+              "no PA drain current is claimed");
+    }
+
+    // ---- LinkStats: silence before the first snapshot, never a zeroed one ----
+    {
+        AnanBackend backend;
+        const auto idle = backend.linkStats();
+        check(!idle.reported,
+              "an unconnected backend reports NO transport, so the consumer keeps"
+              " its own source instead of being handed zeros");
+        check(idle.rttMs < 0 && idle.jitterMs < 0 && idle.gapMs < 0
+                  && idle.gapMaxMs < 0,
+              "every timing field defaults to the struct's negative"
+              " \"not measured\" sentinel, which must not render as zero");
+    }
+
+    // ---- LinkStats::alive: this snapshot's bytes against the last one's ----
+    {
+        AnanBackend backend;
+        AnanLinkStatsTestAccess::setConnected(backend, true);
+
+        AnanLinkStatsTestAccess::snapshot(backend, 1000);
+        check(backend.linkStats().reported && backend.linkStats().alive,
+              "a session's first snapshot compares against zero, so a link that"
+              " carried bytes reads alive on its first tick");
+
+        AnanLinkStatsTestAccess::snapshot(backend, 1000);
+        check(!backend.linkStats().alive, "a second with no new bytes reads dead");
+
+        AnanLinkStatsTestAccess::snapshot(backend, 5000);
+        check(backend.linkStats().alive, "bytes resuming read alive again");
+
+        // A restart that skipped disconnectRadio(), or a dead session's snapshot
+        // delivered after its reset: the new session's total is below the cache.
+        AnanLinkStatsTestAccess::snapshot(backend, 300);
+        check(backend.linkStats().alive && backend.linkStats().rxBytes == 300,
+              "a backward jump is a new session, compared against zero and not"
+              " against the dead session's total");
     }
 
     if (g_failures == 0)

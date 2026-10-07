@@ -1142,6 +1142,19 @@ add_test(NAME anan_speaker_audio_test COMMAND anan_speaker_audio_test)
 # Without this property that is a green pass with zero checks.
 set_tests_properties(anan_speaker_audio_test PROPERTIES SKIP_RETURN_CODE 77)
 
+# ANAN transport counters -> IRadioBackend::LinkStats -- what the status bar's
+# "Network:" field reads: bytes from every radio datagram, packets from DDC
+# frames only, nothing from another host. SOCKET: binds one UDP socket on
+# AnyIPv4, ephemeral port (P2Client::start()), and sends its startup sequence to
+# 127.0.0.1. No listener, no fake peer, no radio.
+add_executable(anan_link_telemetry_test tests/anan_link_telemetry_test.cpp)
+target_include_directories(anan_link_telemetry_test PRIVATE src tests)
+target_link_libraries(anan_link_telemetry_test
+    PRIVATE aethercore Qt6::Core Qt6::Network Qt6::Test)
+add_test(NAME anan_link_telemetry_test COMMAND anan_link_telemetry_test)
+# Exit 77 == no local UDP socket could be bound, so nothing could be observed.
+set_tests_properties(anan_link_telemetry_test PROPERTIES SKIP_RETURN_CODE 77)
+
 # IcomCIV wire layers — pure encode/decode, standalone (no Qt / aethercore).
 # An Icom networked radio is two protocols stacked: CI-V is the command plane
 # and RS-BA1 is the UDP transport it travels inside. Both halves unit-test
