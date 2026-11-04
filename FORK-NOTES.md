@@ -26,7 +26,7 @@ possible merge conflict when pulling from `upstream`.
 | `src/gui/SpectrumOverlayMenu.cpp/.h` | A "WF AVG:" row at the top of the WATERFALL group, `wfAverageChanged`, `setWaterfallAverageAvailable()`, `syncWaterfallAverage()` | Separate controls for the trace and the waterfall: FFT AVG smooths the trace, WF AVG the waterfall. Hidden on every radio that does not declare it |
 | `src/gui/MainWindow_Wiring.cpp` | The WF AVG connection, its availability, and its per-radio/per-pan persistence (`DisplayWfAverage/...`) | Nothing echoes the setting back, so the client owns it |
 | `src/gui/MainWindow_Shortcuts.cpp` | In `toggleCwKeyerPanel()`, under `AETHER_BACKEND_ORION`: on the `orion` family the CWX indicator opens the fork's CW window instead of the CWX panel (setting `OrionCw/replaceCwx`) | Fork rule 2's CW exception: the station's CW window is the console's, on AetherSDR's keying |
-| `src/gui/MainWindow_Menus.cpp` | Under `AETHER_BACKEND_ORION`: the include of `gui/orion/OrionCwUi.h` and one call, `installOrionCwWindow(...)`, adding a Tools item | Tools -> CW window... (Ctrl+Shift+W) |
+| `src/gui/MainWindow_Menus.cpp` | Under `AETHER_BACKEND_ORION`: the include of `gui/orion/OrionCwUi.h` and two calls, `installOrionCwWindow(...)` and `installOrionCwDeck(...)`, each adding a Tools item | Tools -> CW window... (Ctrl+Shift+W) and Tools -> CW panel (Ctrl+Shift+P): the console's CW deck, as a bottom dock of the main window under the spectrum. The deck is the fork's own widget; the dock is added from the fork's installer, so no upstream layout code moves |
 | `src/models/CwRxModel.cpp` | Under `AETHER_BACKEND_ORION`: `orion-fldigi` and `orion-bayes` in `availableBackends()` and `makeBackend()`, plus one include | The Orion console's two CW readers join AetherSDR's own in the reader's decoder list |
 | `src/gui/AppletPanel.cpp/.h` | Under `AETHER_BACKEND_ORION`: the `ROT` applet entry (the DCU-3 rotor tile) beside `GHE`, its bar-order slot and its palette category | The operator asked for the rotor on the right-hand panel, in the same shape as the Green Heron tile |
 | `src/gui/MainWindow.cpp` | Under `AETHER_BACKEND_ORION`: hands the rotor tile the radio model after the panel is built | The panel is built before any radio exists |
@@ -70,7 +70,13 @@ New files that upstream does not have (no merge risk):
   current-QSO record, ported: the Log QSO window and the CW window are
   about one station)
 - `src/gui/orion/OrionCwWindow.cpp/.h` and `src/gui/orion/OrionCwUi.cpp/.h`
-  (the CW window and its Tools entry)
+  (the CW window and its Tools entry; the CW deck's installer)
+- `src/gui/orion/OrionCwDeck.cpp/.h` and `src/gui/orion/OrionDeckStyle.h` (the
+  console's CW deck, src/cw/CwDeck and src/ui/DeckStyle.h, on the fork's
+  pieces: the CW window is the single keyer front, the logbook's index and
+  cty.dat give worked-before and bearings, AetherSDR's callbook fills
+  name/QTH/grid, the rotor tile turns the beam. `orionLogFromContext()` in
+  `OrionLogbookUi` is the LOG path both the window and the deck use)
 - `src/gui/orion/OrionSetupPage.cpp/.h` (Radio Setup -> Orion),
   `src/gui/orion/OrionLogbookUi.cpp/.h` (the Logbook menu, Log QSO window
   and logbook browser) and `src/gui/orion/OrionSkimmerUi.cpp/.h` (the

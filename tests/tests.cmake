@@ -9583,6 +9583,20 @@ if(AETHER_BACKEND_ORION AND UNIX AND NOT APPLE)
 
     # Bench tool, not a test: AetherSDR's ggmorse CW reader against the
     # Orion reader on the same generated or recorded CW.
+    # The CW deck on the CW window: one shared QSO record, the F-keys
+    # keying through the window, wipe, the info line, the arrow walk.
+    # Offscreen Qt; no radio.
+    add_executable(orion_cwdeck_test
+        tests/orion_cwdeck_test.cpp
+        src/gui/orion/OrionCwDeck.cpp
+        src/gui/orion/OrionCwDeck.h
+        src/gui/orion/OrionCwWindow.cpp
+        src/gui/orion/OrionCwWindow.h)
+    target_include_directories(orion_cwdeck_test PRIVATE src tests)
+    target_link_libraries(orion_cwdeck_test PRIVATE aethercore Qt6::Core Qt6::Widgets Qt6::Network Qt6::Test)
+    add_test(NAME orion_cwdeck_test COMMAND orion_cwdeck_test)
+    set_tests_properties(orion_cwdeck_test PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     add_executable(orion_cw_bench tests/orion_cw_bench.cpp)
     target_include_directories(orion_cw_bench PRIVATE src tests third_party/ggmorse/include)
     target_link_libraries(orion_cw_bench PRIVATE aethercore Qt6::Core)

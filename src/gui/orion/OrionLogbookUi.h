@@ -16,6 +16,7 @@ class QMenuBar;
 namespace AetherSDR {
 
 namespace orion::logbook {
+class OrionLogbook;
 class QsoContext;
 }
 
@@ -43,5 +44,21 @@ orion::logbook::QsoContext* orionQsoContext();
 // confirmed grey. Invalid when the logbook has no data, the call is
 // unknown, or the operator turned the colours off.
 QColor orionWorkedSpotColour(const QString& call, double freqMhz);
+
+// The station logbook itself (worked-before, the country, cty.dat). Null
+// until installOrionLogbook() has run.
+orion::logbook::OrionLogbook* orionLogbook();
+
+// LOG from the CW side (the CW window's LOG, the CW deck's LOG IT): the
+// shared QsoContext IS the QSO. Call and the two reports are the
+// operator's; `hz`, `adifMode` and UTC are the station's now; country and
+// zones from cty.dat; whatever the callbook knows (name, QTH, grid) rides
+// along from the record. The NAME box's word is the HANDLE, and stands in
+// for NAME until the callbook speaks. The same call on the same band and
+// mode within five minutes is the same QSO, not a second: refused. On
+// success the record is cleared (every window on it empties) and the
+// logbook's own fan-out runs (cqrlog mirror, uploads). Returns the line
+// for the status bar; `ok` says whether a QSO was written.
+QString orionLogFromContext(qint64 hz, const QString& adifMode, bool* ok = nullptr);
 
 }  // namespace AetherSDR
