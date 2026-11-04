@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include <QAbstractButton>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
@@ -224,6 +225,40 @@ OrionCwWindow::OrionCwWindow(CwxModel* cwx, orion::logbook::QsoContext* ctx, QWi
                             "up or there's nothing to click. The Log QSO window shares it.\n"
                             "Amber = doesn't look like a callsign yet (sends anyway)."));
     memLay->addWidget(m_dxCall);
+    // The report both ways and a LOG button right here: a CW QSO is call +
+    // two reports, and the whole point is never opening the Log QSO window
+    // for one. Enter in either RST box logs, as the button does; the boxes
+    // ride the shared QsoContext like the DX box.
+    const auto rstBox = [this, memRow, memLay](const QString& cap, QLineEdit** out,
+                                               const QString& tip, const char* name) {
+        memLay->addWidget(new QLabel(cap, memRow));
+        auto* e = new QLineEdit(memRow);
+        e->setObjectName(QLatin1String(name));
+        e->setMaxLength(5);
+        e->setMaximumWidth(70);
+        e->setText(QStringLiteral("599"));
+        e->setToolTip(tip);
+        memLay->addWidget(e);
+        connect(e, &QLineEdit::returnPressed, this, [this] { emit logRequested(); });
+        *out = e;
+    };
+    rstBox(QStringLiteral("S"), &m_rstS,
+           tr("RST you SENT him — what [rst sent] keys.\nEnter here logs the QSO."),
+           "orionCwRstS");
+    rstBox(QStringLiteral("R"), &m_rstR, tr("RST he GAVE you.  Enter here logs the QSO."),
+           "orionCwRstR");
+    auto* logBtn = new QPushButton(QStringLiteral("LOG"), memRow);
+    logBtn->setObjectName(QStringLiteral("orionCwLog"));
+    logBtn->setFocusPolicy(Qt::NoFocus);
+    logBtn->setToolTip(tr("Log this QSO to the station log now: the DX call,\n"
+                          "both reports, dial, mode and UTC. Name/QTH/grid\n"
+                          "fill from the callbook afterwards when one is set.\n"
+                          "Clears the boxes for the next contact."));
+    logBtn->setStyleSheet(QStringLiteral("QPushButton { background: #2b62c9; color: #ffffff;"
+                                         " border: 1px solid #3a73dd; border-radius: 3px;"
+                                         " padding: 8px 12px; font-weight: bold; }"));
+    connect(logBtn, &QPushButton::clicked, this, [this] { emit logRequested(); });
+    memLay->addWidget(logBtn);
     memLay->addStretch(1);
 
     // F1-F12 on three rows of four under the DX box: four across is the
@@ -436,6 +471,7 @@ OrionCwWindow::OrionCwWindow(CwxModel* cwx, orion::logbook::QsoContext* ctx, QWi
             m_cwx->setSpeed(v);
         }
         updateStatus();
+        emit speedChanged(v);
     });
     if (m_cwx) {
         // The WinKeyer's pot moves the model; follow it without echoing back.
@@ -444,6 +480,7 @@ OrionCwWindow::OrionCwWindow(CwxModel* cwx, orion::logbook::QsoContext* ctx, QWi
                 const QSignalBlocker block(m_wpm);
                 m_wpm->setValue(wpm);
                 updateStatus();
+                emit speedChanged(wpm);
             }
         });
     }
@@ -466,19 +503,7 @@ OrionCwWindow::OrionCwWindow(CwxModel* cwx, orion::logbook::QsoContext* ctx, QWi
         m_prevLen = 0;
         m_line->clear();
     });
-    connect(stopBtn, &QPushButton::clicked, this, [this] {
-        if (m_cwx) {
-            m_cwx->clearBuffer();
-            m_cwx->resetDrainWatch();
-        }
-        if (m_tuneBtn->isChecked()) {
-            m_tuneBtn->setChecked(false);
-        }
-        m_sentView->clear();
-        m_prevLen = 0;
-        m_line->clear();
-        updateStatus(tr("stopped"));
-    });
+    connect(stopBtn, &QPushButton::clicked, this, &OrionCwWindow::stopKeying);
     connect(m_tuneBtn, &QPushButton::toggled, this, [this](bool on) {
         if (m_tune) {
             m_tune(on);
@@ -532,6 +557,24 @@ OrionCwWindow::OrionCwWindow(CwxModel* cwx, orion::logbook::QsoContext* ctx, QWi
     if (m_ctx) {
         connect(m_ctx, &orion::logbook::QsoContext::changed, this,
                 &OrionCwWindow::applyContext);
+        // The RST boxes write the record as they are typed (textChanged, so a
+        // deck-side fill reaches it too); the echo guard stops the round trip.
+        connect(m_rstS, &QLineEdit::textChanged, this, [this](const QString& t) {
+            if (m_ctxEcho) return;
+            m_ctxEcho = true;
+            m_ctx->setRstSent(t);
+            m_ctxEcho = false;
+        });
+        connect(m_rstR, &QLineEdit::textChanged, this, [this](const QString& t) {
+            if (m_ctxEcho) return;
+            m_ctxEcho = true;
+            m_ctx->setRstRcvd(t);
+            m_ctxEcho = false;
+        });
+        if (!m_ctx->rstSent().isEmpty()) m_rstS->setText(m_ctx->rstSent());
+        else m_ctx->setRstSent(m_rstS->text());
+        if (!m_ctx->rstRcvd().isEmpty()) m_rstR->setText(m_ctx->rstRcvd());
+        else m_ctx->setRstRcvd(m_rstR->text());
     }
 
     resize(760, 620);
@@ -588,6 +631,7 @@ void OrionCwWindow::setRigCwHandler(std::function<void(const QVariantMap&)> appl
     if (m_rigBox) {
         m_rigBox->setVisible(static_cast<bool>(m_rigCw));
     }
+    emit rigCwAvailableChanged(rigCwAvailable());
 }
 
 // The radio's answers, put on the controls without echoing a set back down
@@ -625,6 +669,7 @@ void OrionCwWindow::showRigCw(const QVariantMap& state)
         parts << tr("wt %1").arg(weight);
     }
     m_rigKeyer->setText(parts.isEmpty() ? tr("\u2014") : parts.join(QStringLiteral(" \u00b7 ")));
+    emit rigKeyerTextChanged(m_rigKeyer->text());
 }
 
 void OrionCwWindow::setStationFields(const QString& call, const QString& name, const QString& qth,
@@ -717,17 +762,7 @@ void OrionCwWindow::hideEvent(QHideEvent* e)
 void OrionCwWindow::keyPressEvent(QKeyEvent* e)
 {
     if (e->key() == Qt::Key_Escape) {   // Esc = stop, never close
-        if (m_cwx) {
-            m_cwx->clearBuffer();
-            m_cwx->resetDrainWatch();
-        }
-        if (m_tuneBtn->isChecked()) {
-            m_tuneBtn->setChecked(false);
-        }
-        m_sentView->clear();
-        m_prevLen = 0;
-        m_line->clear();
-        updateStatus(tr("stopped"));
+        stopKeying();
         return;
     }
     QDialog::keyPressEvent(e);
@@ -779,7 +814,10 @@ CwMacroFields OrionCwWindow::macroFieldsNow() const
     f.hisCall = m_hisCall;
     if (m_ctx) {
         f.hisHandle = m_ctx->handle();
-        f.hisName = m_ctx->name();
+        // [his name] keys the name he GAVE when there is one (the deck's
+        // NAME box) and the callbook's otherwise — what you send back is
+        // what he said, not what QRZ says.
+        f.hisName = m_ctx->handle().isEmpty() ? m_ctx->name() : m_ctx->handle();
         f.hisQth = m_ctx->qth();
         f.hisGrid = m_ctx->grid();
         f.rstSent = m_ctx->rstSent();
@@ -795,7 +833,7 @@ void OrionCwWindow::sendLine()
     m_line->clear();
 }
 
-void OrionCwWindow::sendText(const QString& text)
+QString OrionCwWindow::sendText(const QString& text)
 {
     // A field the macro asks for that nobody filled used to key a hole in
     // the message. Refuse, and name the box that is empty — the DX box and
@@ -804,17 +842,17 @@ void OrionCwWindow::sendText(const QString& text)
     const QString out = expandCwMacro(text, macroFieldsNow(), &missing);
     if (!missing.isEmpty()) {
         updateStatus(tr("nothing in %1 — fill it first").arg(missing));
-        if (missing == QLatin1String("his call")) {
+        if (missing == QLatin1String("his call") && isVisible()) {
             m_dxCall->setFocus();
         }
-        return;
+        return missing;
     }
     if (out.isEmpty() || !m_cwx) {
-        return;
+        return QString();
     }
     if (!m_cwx->canSend()) {
         updateStatus(tr("the radio will not take CW text right now"));
-        return;
+        return QString();
     }
     // Sending his call ON THE AIR is the moment the QSO is real — make
     // sure the rest of the station has it even if the box never lost focus
@@ -825,11 +863,116 @@ void OrionCwWindow::sendText(const QString& text)
     m_cwx->send(out);
     m_sentView->setText(out.right(60));
     updateStatus();
+    return QString();
 }
 
 QString OrionCwWindow::fkeySpec(int i) const
 {
     return setting(fkeyKey(i), QLatin1String(kFkeyDefault[i]));
+}
+
+QString OrionCwWindow::fkeyDefault(int i)
+{
+    return (i >= 0 && i < kFkeys) ? QLatin1String(kFkeyDefault[i]) : QString();
+}
+
+// ---- CW deck hooks ---------------------------------------------------------
+
+QString OrionCwWindow::sendTyped(const QString& text)
+{
+    return sendText(text);
+}
+
+void OrionCwWindow::streamChars(const QString& chars)
+{
+    if (chars.isEmpty() || !m_cwx) {
+        return;
+    }
+    if (!m_cwx->canSend()) {
+        updateStatus(tr("the radio will not take CW text right now"));
+        return;
+    }
+    for (const QChar& c : chars) {
+        m_cwx->sendChar(QString(c));
+    }
+    m_sentView->setText((m_sentView->text() + chars).right(60));
+}
+
+void OrionCwWindow::unsendChars(int n)
+{
+    if (n > 0 && m_cwx) {
+        m_cwx->erase(n);
+    }
+}
+
+void OrionCwWindow::stopKeying()
+{
+    if (m_cwx) {
+        m_cwx->clearBuffer();
+        m_cwx->resetDrainWatch();
+    }
+    if (m_tuneBtn->isChecked()) {
+        m_tuneBtn->setChecked(false);
+    }
+    m_sentView->clear();
+    m_prevLen = 0;
+    m_line->clear();
+    updateStatus(tr("stopped"));
+}
+
+int OrionCwWindow::speedWpm() const
+{
+    return m_wpm->value();
+}
+
+void OrionCwWindow::setSpeedWpm(int wpm)
+{
+    m_wpm->setValue(wpm);   // valueChanged -> the model and speedChanged
+}
+
+QAbstractButton* OrionCwWindow::toggle(Toggle t) const
+{
+    switch (t) {
+    case Toggle::Live: return m_live;
+    case Toggle::Word: return m_word;
+    case Toggle::RxDecode: return m_rxOn;
+    }
+    return nullptr;
+}
+
+QSlider* OrionCwWindow::rigSlider(RigCtl c) const
+{
+    switch (c) {
+    case RigCtl::Vol: return m_rigVol;
+    case RigCtl::Pitch: return m_rigPitch;
+    case RigCtl::Qsk: return m_rigQsk;
+    case RigCtl::Rise: return m_rigAttack;
+    }
+    return nullptr;
+}
+
+QString OrionCwWindow::rigKeyerText() const
+{
+    return m_rigKeyer ? m_rigKeyer->text() : QString();
+}
+
+bool OrionCwWindow::rigCwAvailable() const
+{
+    return static_cast<bool>(m_rigCw);
+}
+
+void OrionCwWindow::setTune(bool on)
+{
+    if (m_tune) {
+        m_tuneBtn->setChecked(on);
+    }
+}
+
+void OrionCwWindow::editFkey(int i)
+{
+    if (i >= 0 && i < kFkeys) {
+        editMemory(i);
+    }
 }
 
 void OrionCwWindow::applyFkeyButton(int i)
@@ -865,6 +1008,8 @@ void OrionCwWindow::applyContext()
         }
         m_hisCall = m_ctx->call();
         tintDxCall();
+        if (m_rstS->text() != m_ctx->rstSent()) m_rstS->setText(m_ctx->rstSent());
+        if (m_rstR->text() != m_ctx->rstRcvd()) m_rstR->setText(m_ctx->rstRcvd());
         m_ctxEcho = false;
     }
     // Every tooltip quotes live field values, so they go stale together
@@ -1006,6 +1151,7 @@ void OrionCwWindow::editMemory(int i)
     connect(bb, &QDialogButtonBox::rejected, &d, &QDialog::reject);
     d.exec();
     applyFkeyButton(i);
+    emit fkeysChanged();
 }
 
 }  // namespace AetherSDR

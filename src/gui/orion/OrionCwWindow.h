@@ -29,6 +29,7 @@
 #include <QStringList>
 #include <QVariantMap>
 
+class QAbstractButton;
 class QCheckBox;
 class QComboBox;
 class QLabel;
@@ -83,6 +84,31 @@ public:
     void setRigCwHandler(std::function<void(const QVariantMap&)> apply);
     void showRigCw(const QVariantMap& state);
 
+    // ── The CW deck's hooks (gui/orion/OrionCwDeck) ─────────────────────
+    // The deck is a second front end on this window's keyer, decoder choice
+    // and rig controls — it must never grow a keyer of its own. These are
+    // the hooks it drives; the window stays the single master.
+    // Typed text with the plain-language fields expanded; returns the name
+    // of an empty field the text asked for (nothing keyed), or "".
+    QString sendTyped(const QString& text);
+    void streamChars(const QString& chars);  // live keys: raw, no expansion
+    void unsendChars(int n);                 // live keys: backspace
+    void stopKeying();                       // Esc / STOP, from outside
+    [[nodiscard]] int speedWpm() const;
+    void setSpeedWpm(int wpm);
+    enum class Toggle { Live, Word, RxDecode };
+    [[nodiscard]] QAbstractButton* toggle(Toggle t) const;   // the window's own box
+    enum class RigCtl { Vol, Pitch, Qsk, Rise };
+    [[nodiscard]] QSlider* rigSlider(RigCtl c) const;        // the window's own slider
+    [[nodiscard]] QString rigKeyerText() const;              // "on · 29 wpm · wt 50"
+    [[nodiscard]] bool rigCwAvailable() const;
+    [[nodiscard]] QComboBox* decoderBox() const { return m_decoder; }
+    [[nodiscard]] bool tuneAvailable() const { return static_cast<bool>(m_tune); }
+    void setTune(bool on);                   // the TUNE button, from outside
+    void editFkey(int i);                    // the F-key editor dialog
+    [[nodiscard]] QString fkeySpec(int i) const;   // "label|text"
+    [[nodiscard]] static QString fkeyDefault(int i);
+
 public slots:
     void appendRx(const QString& text);   // decoded CW from AetherSDR's reader
     void setRxStats(float pitchHz, float wpm);
@@ -97,6 +123,15 @@ signals:
     void callDoubleClicked(const QString& call);
     // A DX call is settled (typed and left, or spent on the air).
     void hisCallEntered(const QString& call);
+    // Keying speed moved (spin, pot, deck) — mirrors follow.
+    void speedChanged(int wpm);
+    void rigKeyerTextChanged(const QString& line);
+    void rigCwAvailableChanged(bool on);
+    // The F-key memories were edited (labels on every mirror go stale).
+    void fkeysChanged();
+    // LOG button / Enter in an RST box: log the shared QsoContext as it
+    // stands (the host owns the log and the fan-out).
+    void logRequested();
 
 protected:
     void showEvent(QShowEvent* e) override;
@@ -105,12 +140,11 @@ protected:
     bool eventFilter(QObject* obj, QEvent* ev) override;
 
 private:
-    void sendText(const QString& text);
+    QString sendText(const QString& text);   // returns the empty field name
     void sendLine();
     // The fields an F-key macro can spend, read fresh at every press.
     [[nodiscard]] orion::CwMacroFields macroFieldsNow() const;
     void editMemory(int i);
-    [[nodiscard]] QString fkeySpec(int i) const;   // "label|text"
     void applyFkeyButton(int i);
     void applyContext();                 // ctx -> the DX box
     void pushDxCall(const QString& call);
@@ -126,6 +160,8 @@ private:
 
     QLineEdit* m_line = nullptr;
     QLineEdit* m_dxCall = nullptr;
+    QLineEdit* m_rstS = nullptr;         // report given / taken, shared
+    QLineEdit* m_rstR = nullptr;         //   with LOG and the CW deck
     QLabel* m_status = nullptr;
     QLabel* m_sentView = nullptr;
     QSpinBox* m_wpm = nullptr;

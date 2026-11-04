@@ -1327,6 +1327,55 @@ orion::logbook::QsoContext* orionQsoContext()
     return g_qsoContext;
 }
 
+orion::logbook::OrionLogbook* orionLogbook()
+{
+    return g_book;
+}
+
+QString orionLogFromContext(qint64 hz, const QString& adifMode, bool* ok)
+{
+    if (ok) *ok = false;
+    QsoContext* ctx = g_qsoContext;
+    OrionLogbook* book = g_book;
+    if (!ctx) {
+        return QObject::tr("nothing to log — the logbook is not running");
+    }
+    const QString call = ctx->call().trimmed().toUpper();
+    if (call.isEmpty()) {
+        return QObject::tr("nothing to log — no call");
+    }
+    if (!book || !book->db() || !book->db()->isOpen()) {
+        return QObject::tr("station log is not open");
+    }
+    Qso q;
+    q.call = call;
+    q.freqHz = hz;
+    q.band = orion::logbook::LogDb::bandForHz(hz);
+    q.mode = adifMode.isEmpty() ? QStringLiteral("CW") : adifMode;
+    q.tsUtc = QDateTime::currentDateTimeUtc();
+    q.rstS = ctx->rstSent().isEmpty() ? QStringLiteral("599") : ctx->rstSent();
+    q.rstR = ctx->rstRcvd().isEmpty() ? QStringLiteral("599") : ctx->rstRcvd();
+    q.handle = ctx->handle();
+    q.name = ctx->name().isEmpty() ? ctx->handle() : ctx->name();
+    q.qth = ctx->qth();
+    q.grid = ctx->grid();
+    // Enter-to-log makes a double Enter easy: the same call on the same
+    // band and mode within five minutes is the same QSO, not a second.
+    if (book->db()->hasNearDuplicate(q)) {
+        return QObject::tr("%1 is already logged on %2 %3 in the last 5 min — not logged again")
+            .arg(call, q.band, q.mode);
+    }
+    const qint64 id = book->logQso(q);   // country, zones, the mirror
+    if (id < 0) {
+        return QObject::tr("log write FAILED — %1").arg(call);
+    }
+    if (ok) *ok = true;
+    ctx->clear();   // that QSO is over: every window on the record empties
+    return OrionLogbook::mirrorsToCqrlog()
+               ? QObject::tr("Logged %1 (%2 %3) and sent to cqrlog.").arg(call, q.band, q.mode)
+               : QObject::tr("Logged %1 (%2 %3).").arg(call, q.band, q.mode);
+}
+
 QColor orionWorkedSpotColour(const QString& call, double freqMhz)
 {
     if (!g_book || !workedColoursOn() || call.trimmed().isEmpty()) {
