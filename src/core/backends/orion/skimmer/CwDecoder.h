@@ -7,7 +7,6 @@
 #include <complex>
 #include <cstddef>
 
-#include "core/backends/orion/skimmer/BayesCwEngine.h"
 #include "core/backends/orion/skimmer/FldigiCwEngine.h"
 
 namespace AetherSDR::orion::skim {
@@ -46,13 +45,12 @@ public:
     // stay centered on the station (Hz; reads from any thread).
     double afcHz() const { return afcTotal_.load(std::memory_order_relaxed); }
 
-    // THREE decode brains behind one front end: the battle-tuned legacy
-    // slicer, the ported fldigi engine (the default everywhere since the
-    // 2026-07-15 live A/B), and the Bayesian engine (soft keying +
-    // whole-character duration inference; experimental until it earns a
-    // default the same way — on the air). TTC_CWLEGACY / TTC_CWBAYES /
-    // TTC_CWENGINE override at construction for tests (legacy wins ties).
-    enum class Brain { Legacy, Engine, Bayes };
+    // TWO decode brains behind one front end: the battle-tuned legacy
+    // slicer and the ported fldigi engine (the default everywhere since the
+    // 2026-07-15 live A/B). The console's Bayesian experiment was dropped
+    // (2026-11-03). TTC_CWLEGACY / TTC_CWENGINE override at construction
+    // for tests (legacy wins ties).
+    enum class Brain { Legacy, Engine };
     void setBrain(Brain b) { brain_ = b; }
     // Decode-engine adjustments (fldigi engine only; the other paths
     // ignore them). GUI-thread writes are safe: plain flags/params read
@@ -63,11 +61,8 @@ public:
     void setSom(bool on) { eng_.setSom(on); }
     // Noise squelch on the signal metric (0..100). Higher = the reader
     // needs a stronger signal before it registers keying, so a quiet
-    // band stops printing stray letters. Engine + Bayes paths.
-    void setSquelch(double s) {
-        eng_.setSquelch(s);
-        bayes_.setSquelch(s);
-    }
+    // band stops printing stray letters. Engine path.
+    void setSquelch(double s) { eng_.setSquelch(s); }
     void setAttack(int idx) { eng_.setAttack(idx); }
     void setDecay(int idx) { eng_.setDecay(idx); }
     // DEEP: narrow the matched filter well below real-time comfort —
@@ -83,8 +78,8 @@ signals:
     // Display twin: the best-guess (SOM) characters for the same events.
     // textDecoded stays honest ('*' junk markers) for the skimmer's call
     // miner; this one feeds human eyes — waterfall trace text, SKIM menu
-    // — so the skimmer reads the way the CW window does. Engine + Bayes
-    // paths only (the legacy slicer has no fuzzy matcher).
+    // — so the skimmer reads the way the CW window does. Engine path
+    // only (the legacy slicer has no fuzzy matcher).
     void textLoose(const QString& text);
     void wpmEstimated(int wpm);
 
@@ -102,9 +97,8 @@ private:
     // live A/B (2026-07-15): on the same air the ported engine out-copied
     // real fldigi (VP2MAA session) while the legacy path produced mush —
     // skimmer channels run it too. Legacy stays reachable (TTC_CWLEGACY /
-    // the CW window's FLD box); Bayes via TTC_CWBAYES or setBrain().
+    // the CW window's FLD box).
     FldigiCwEngine eng_;
-    BayesCwEngine bayes_;
     Brain brain_ = Brain::Engine;
     std::atomic<bool> deep_{false};
     int engWpm_ = 0;

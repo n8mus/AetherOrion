@@ -41,7 +41,6 @@ public:
         QString spotterCall;               // "DX de <call>-#:"
         QString ctyPath = QStringLiteral(":/cty.dat");
         QString masterScpPath;             // empty: cqrlog's copy, then the system one
-        bool bayes = false;                // the console's experimental brain
     };
 
     OrionSkimmer(double inputRate, const Settings& settings, QObject* parent = nullptr);

@@ -1018,7 +1018,11 @@ bool OrionCwDeck::eventFilter(QObject* obj, QEvent* ev)
         const bool fkey = k >= Qt::Key_F1 && k <= Qt::Key_F12 && ke->modifiers() == Qt::NoModifier;
         const bool page = (k == Qt::Key_PageUp || k == Qt::Key_PageDown)
                           && ke->modifiers() == Qt::NoModifier;
-        if (fkey || page) {
+        // Esc stops the keying from anywhere in the main window too: F1
+        // from the pan started it, so Esc from the pan must end it (live,
+        // 2026-11-03: the paddle stopped it, the key did not).
+        const bool esc = k == Qt::Key_Escape && ke->modifiers() == Qt::NoModifier;
+        if (fkey || page || esc) {
             QWidget* w = qobject_cast<QWidget*>(obj);
             QWidget* top = w ? w->window() : nullptr;
             bool ours = top && top == window();
@@ -1033,6 +1037,7 @@ bool OrionCwDeck::eventFilter(QObject* obj, QEvent* ev)
                     return true;
                 }
                 if (fkey) keyFkey(k - Qt::Key_F1);
+                else if (esc) stopEverything();
                 else nudgeSpeed(k == Qt::Key_PageUp ? +1 : -1);
                 return true;
             }

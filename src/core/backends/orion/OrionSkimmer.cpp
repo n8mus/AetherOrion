@@ -76,7 +76,6 @@ OrionSkimmer::OrionSkimmer(double inputRate, const Settings& settings, QObject* 
     const QSet<QString> known = loadMasterScp(settings.masterScpPath);
     m_knownCalls = known.size();
     m_engine->setKnownCalls(known);
-    m_engine->setBayes(settings.bayes);
 
     connect(m_engine.get(), &skim::SkimmerEngine::spotFound, this, &OrionSkimmer::spotFound);
     m_feed->start();

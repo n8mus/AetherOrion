@@ -9597,6 +9597,13 @@ if(AETHER_BACKEND_ORION AND UNIX AND NOT APPLE)
     add_test(NAME orion_cwdeck_test COMMAND orion_cwdeck_test)
     set_tests_properties(orion_cwdeck_test PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # The Orion reader's tone meter, on synthetic PCM.
+    add_executable(orion_cwrx_test tests/orion_cwrx_test.cpp)
+    target_include_directories(orion_cwrx_test PRIVATE src tests)
+    target_link_libraries(orion_cwrx_test PRIVATE aethercore Qt6::Core Qt6::Test)
+    add_test(NAME orion_cwrx_test COMMAND orion_cwrx_test)
+    set_tests_properties(orion_cwrx_test PROPERTIES TIMEOUT 60)
+
     add_executable(orion_cw_bench tests/orion_cw_bench.cpp)
     target_include_directories(orion_cw_bench PRIVATE src tests third_party/ggmorse/include)
     target_link_libraries(orion_cw_bench PRIVATE aethercore Qt6::Core)

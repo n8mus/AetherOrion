@@ -624,7 +624,7 @@ radios.
 
 **Step 8, CW skimmer stage 1 (2026-10-18, tested on synthetic IQ only):**
 the Orion console's skimmer, ported (src/core/backends/orion/skimmer/: its
-engine, fldigi and Bayes decoders, and DX-cluster server, as is apart from
+engine, fldigi decoder, and DX-cluster server, as is apart from
 the namespace and the engine watching the LO rather than the dial, since
 here the LO follows the pan view). The RSP2 callback copies IQ into
 OrionSkimmerFeed's ring; its own thread feeds the decoder bank (OpenMP
@@ -637,7 +637,7 @@ Calls are checked against AetherSDR's cty.dat and cqrlog's MASTER.SCP
 localhost:7300 (cqrlog, Not1MM) and, as an "orion"/"skimmer.spot"
 extension event, onto the panadapter through the RBN spot path (violet,
 10 min). Radio Setup -> Orion: on/off (default off), pause outside CW
-(default on), Bayes, channels (24), port (7300); it also pauses while the
+(default on), channels (24), port (7300); it also pauses while the
 radio transmits. Health shows status, channels decoding, the telnet feed
 and dropped IQ.
 

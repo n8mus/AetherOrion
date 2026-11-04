@@ -96,12 +96,6 @@ void SkimmerEngine::setInputRate(double rate) {
     for (auto& c : ch_) c.dec->setInputRate(rate);
 }
 
-void SkimmerEngine::setBayes(bool on) {
-    for (auto& c : ch_)
-        c.dec->setBrain(on ? CwDecoder::Brain::Bayes
-                           : CwDecoder::Brain::Engine);
-}
-
 void SkimmerEngine::processIq(const std::complex<float>* d, size_t n) {
     if (!enabled_.load(std::memory_order_relaxed)) return;
     // Channels are independent (own mixer, own brain, queued signals

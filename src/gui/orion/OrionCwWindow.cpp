@@ -603,7 +603,6 @@ static QString decoderLabel(const QString& key)
 {
     if (key == QLatin1String("ggmorse")) return QObject::tr("AetherSDR");
     if (key == QLatin1String("orion-fldigi")) return QObject::tr("Orion (fldigi)");
-    if (key == QLatin1String("orion-bayes")) return QObject::tr("Orion (Bayes)");
     if (key == QLatin1String("deepfist")) return QObject::tr("DeepFist");
     return key;
 }

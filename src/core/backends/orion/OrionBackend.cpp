@@ -1513,7 +1513,6 @@ void OrionBackend::startSkimmer(const QVariantMap& params)
     OrionSkimmer::Settings s;
     s.channels = settings.value(QStringLiteral("OrionSkimmerChannels"), s.channels).toInt();
     s.telnetPort = settings.value(QStringLiteral("OrionSkimmerPort"), s.telnetPort).toInt();
-    s.bayes = settings.value(QStringLiteral("OrionSkimmerBayes"), false).toBool();
     s.spotterCall = settings.value(QStringLiteral("StationCallsign")).toString().trimmed().toUpper();
     m_skimmer = std::make_unique<OrionSkimmer>(static_cast<double>(spectrum::kCaptureHz), s);
     QString error;
@@ -1620,7 +1619,6 @@ QVariantMap OrionBackend::skimmerState() const
     m.insert(QStringLiteral("enabled"), m_skimmerEnabled);
     m.insert(QStringLiteral("cwOnly"), m_skimmerCwOnly);
     auto& settings = AppSettings::instance();
-    m.insert(QStringLiteral("bayes"), settings.value(QStringLiteral("OrionSkimmerBayes"), false).toBool());
     m.insert(QStringLiteral("channels"), settings.value(QStringLiteral("OrionSkimmerChannels"), 24).toInt());
     m.insert(QStringLiteral("port"), settings.value(QStringLiteral("OrionSkimmerPort"), 7300).toInt());
     m.insert(QStringLiteral("status"), m_skimmerStatus);
@@ -2799,7 +2797,7 @@ void OrionBackend::invokeExtension(const QString& ns, const QString& verb,
     // Orion makes the sidetone and shapes the CW envelope whenever it
     // transmits CW, whatever did the keying, so they apply with the
     // WinKeyer sending. cw.rig.get answers the lot; cw.rig.set takes any of
-    // pitch / qsk / attack and asks the radio back.
+    // volume / pitch / qsk / attack and asks the radio back.
     if (ns == QLatin1String("orion") && verb == QLatin1String("cw.rig.get")) {
         // Also as a status event, so a caller that asked without a request
         // id still hears the answer — the CW window opens long after the
@@ -2813,6 +2811,10 @@ void OrionBackend::invokeExtension(const QString& ns, const QString& verb,
     }
     if (ns == QLatin1String("orion") && verb == QLatin1String("cw.rig.set")) {
         const QVariantMap m = arg.toMap();
+        if (m.contains(QStringLiteral("volume"))) {
+            send(orion::setCwSidetoneVolume(m.value(QStringLiteral("volume")).toInt()));
+            send(orion::queryCwSidetoneVolume());
+        }
         if (m.contains(QStringLiteral("pitch"))) {
             send(orion::setCwSidetonePitch(m.value(QStringLiteral("pitch")).toInt()));
             send(orion::queryCwSidetonePitch());
@@ -2912,7 +2914,7 @@ void OrionBackend::invokeExtension(const QString& ns, const QString& verb,
     }
 
     // The CW skimmer's switches (Radio Setup -> Orion): skimmer.get answers the
-    // state; skimmer.set takes any of enabled / cwOnly / bayes (live) and
+    // state; skimmer.set takes any of enabled / cwOnly (live) and
     // channels / port (applied at the next connect), and persists them.
     if (ns == QLatin1String("orion") && verb == QLatin1String("skimmer.get")) {
         if (requestId != 0) {
@@ -2930,10 +2932,6 @@ void OrionBackend::invokeExtension(const QString& ns, const QString& verb,
         if (m.contains(QStringLiteral("cwOnly"))) {
             m_skimmerCwOnly = m.value(QStringLiteral("cwOnly")).toBool();
             settings.setValue(QStringLiteral("OrionSkimmerCwOnly"), m_skimmerCwOnly);
-        }
-        if (m.contains(QStringLiteral("bayes"))) {
-            settings.setValue(QStringLiteral("OrionSkimmerBayes"),
-                              m.value(QStringLiteral("bayes")).toBool());
         }
         if (m.contains(QStringLiteral("channels"))) {
             settings.setValue(QStringLiteral("OrionSkimmerChannels"),

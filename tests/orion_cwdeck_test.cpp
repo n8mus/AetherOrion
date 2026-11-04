@@ -192,6 +192,15 @@ int main(int argc, char** argv)
     QTest::keyClick(&mw, Qt::Key_F2);
     check(!sent.isEmpty() && sent.last().contains(QStringLiteral("W1AW DE N8EM")),
           "F2 keys from the main window with focus elsewhere");
+    // Esc from the main window, focus elsewhere, stops the keying.
+    win.toggle(OrionCwWindow::Toggle::Live)->setChecked(true);
+    deck->typePane()->setFocus();
+    QTest::keyClicks(deck->typePane(), QStringLiteral("CQ"));
+    mw.menuBar()->setFocus();
+    QSignalSpy cleared(&cwx, &CwxModel::transmissionCancelled);
+    QTest::keyClick(&mw, Qt::Key_Escape);
+    check(cleared.count() >= 1, "Esc from the main window stops the keying");
+    win.toggle(OrionCwWindow::Toggle::Live)->setChecked(false);
     mw.hide();
     sent.clear();
     QTest::keyClick(&mw, Qt::Key_F2);
