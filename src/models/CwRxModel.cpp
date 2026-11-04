@@ -89,9 +89,8 @@ std::shared_ptr<CwRxBackend> makeBackend(const QString& key)
 {
     if (key == "ggmorse") { return std::make_shared<GgmorseRxBackend>(); }
 #ifdef AETHER_BACKEND_ORION
-    // N8EM fork: the Orion console's two readers (FORK-NOTES.md).
-    if (key == "orion-fldigi") { return std::make_shared<orion::OrionCwRxBackend>(false); }
-    if (key == "orion-bayes") { return std::make_shared<orion::OrionCwRxBackend>(true); }
+    // N8EM fork: the Orion console's reader (FORK-NOTES.md).
+    if (key == "orion-fldigi") { return std::make_shared<orion::OrionCwRxBackend>(); }
 #endif
     if (key == kTestBackendKey) { return std::make_shared<StubRxBackend>(); }
 #ifdef HAVE_DEEPFIST
@@ -116,7 +115,6 @@ QStringList CwRxModel::availableBackends()
     QStringList result{QStringLiteral("ggmorse")};
 #ifdef AETHER_BACKEND_ORION
     result.append(QStringLiteral("orion-fldigi"));
-    result.append(QStringLiteral("orion-bayes"));
 #endif
 #ifdef HAVE_DEEPFIST
     result.append(QStringLiteral("deepfist"));

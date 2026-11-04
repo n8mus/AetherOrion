@@ -151,12 +151,8 @@ QWidget* buildOrionSetupPage(RadioModel* model)
     auto* skimCwOnly = new QCheckBox(QObject::tr("Pause outside CW"));
     skimCwOnly->setToolTip(QObject::tr("Stop decoding while the radio is in SSB, AM or FM; "
                                        "resume as soon as it is back in CW."));
-    auto* skimBayes = new QCheckBox(QObject::tr("Bayes decoder (experimental)"));
-    skimBayes->setToolTip(QObject::tr("The console's experimental decoder; takes effect at "
-                                      "the next connect."));
     skimLay->addWidget(skimEnabled);
     skimLay->addWidget(skimCwOnly);
-    skimLay->addWidget(skimBayes);
     auto* skimForm = new QFormLayout;
     auto* skimChannels = new QSpinBox;
     skimChannels->setRange(4, 64);
@@ -234,11 +230,10 @@ QWidget* buildOrionSetupPage(RadioModel* model)
 
     const auto fillSkimmer = [=](const QVariantMap& m) {
         {
-            const QSignalBlocker b1(skimEnabled), b2(skimCwOnly), b3(skimBayes),
-                b4(skimChannels), b5(skimPort);
+            const QSignalBlocker b1(skimEnabled), b2(skimCwOnly), b4(skimChannels),
+                b5(skimPort);
             skimEnabled->setChecked(m.value(QStringLiteral("enabled")).toBool());
             skimCwOnly->setChecked(m.value(QStringLiteral("cwOnly"), true).toBool());
-            skimBayes->setChecked(m.value(QStringLiteral("bayes")).toBool());
             skimChannels->setValue(m.value(QStringLiteral("channels"), 24).toInt());
             skimPort->setValue(m.value(QStringLiteral("port"), 7300).toInt());
         }
@@ -303,8 +298,6 @@ QWidget* buildOrionSetupPage(RadioModel* model)
                      [=](bool on) { setSkimmer(QStringLiteral("enabled"), on); });
     QObject::connect(skimCwOnly, &QCheckBox::toggled, page,
                      [=](bool on) { setSkimmer(QStringLiteral("cwOnly"), on); });
-    QObject::connect(skimBayes, &QCheckBox::toggled, page,
-                     [=](bool on) { setSkimmer(QStringLiteral("bayes"), on); });
     QObject::connect(skimChannels, &QSpinBox::editingFinished, page,
                      [=] { setSkimmer(QStringLiteral("channels"), skimChannels->value()); });
     QObject::connect(skimPort, &QSpinBox::editingFinished, page,

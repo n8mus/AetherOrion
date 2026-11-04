@@ -38,7 +38,6 @@ CwDecoder::CwDecoder(double inputRate, double offsetHz, QObject* parent)
     decim_ = static_cast<int>(inputRate / 2000.0);   // -> 2 ksps envelope
     tickMs_ = 1000.0 * decim_ / inputRate;
     if (std::getenv("TTC_CWENGINE")) brain_ = Brain::Engine; // test hooks
-    if (std::getenv("TTC_CWBAYES"))  brain_ = Brain::Bayes;
     if (std::getenv("TTC_CWLEGACY")) brain_ = Brain::Legacy;
     if (std::getenv("TTC_CWDEEP"))
         deep_.store(true, std::memory_order_relaxed);
@@ -95,7 +94,6 @@ void CwDecoder::processIq(const std::complex<float>* d, size_t n) {
         markHistN_ = 0;
         locked_ = false;
         eng_.reset();
-        bayes_.reset();
         engWpm_ = 0;
     }
     for (size_t i = 0; i < n; ++i) {
@@ -117,9 +115,7 @@ void CwDecoder::processIq(const std::complex<float>* d, size_t n) {
         // dit from the fldigi tracker; DEEP narrows the clamp range for
         // weak-signal work (latency and soft edges traded for SNR).
         const bool legacy = brain_ == Brain::Legacy;
-        const bool bayes = brain_ == Brain::Bayes;
-        const float ditEst = legacy ? float(gapMin_)
-            : float(bayes ? bayes_.dotMs() : eng_.dotMs());
+        const float ditEst = legacy ? float(gapMin_) : float(eng_.dotMs());
         const bool deep = deep_.load(std::memory_order_relaxed);
         static const float kFirLo = [] {   // sweepable floor (TTC_FIRLO)
             const char* v = std::getenv("TTC_FIRLO");
@@ -177,7 +173,7 @@ void CwDecoder::processIq(const std::complex<float>* d, size_t n) {
         // successive-sample phase advance IS the residual frequency error.
         static const bool kNoAfc = std::getenv("TTC_NOAFC") != nullptr;
         if (!kNoAfc
-            && (legacy ? key_ : (bayes ? bayes_.inTone() : eng_.inTone()))) {
+            && (legacy ? key_ : eng_.inTone())) {
             const std::complex<float> d = s * std::conj(afcPrevZ_);
             if (std::abs(d) > 1e-9f) {
                 const double errHz =
@@ -226,16 +222,13 @@ void CwDecoder::processIq(const std::complex<float>* d, size_t n) {
                 static int k = 0;
                 std::fprintf(stderr, "[env] %d %.6f %.6f\n", k++, mag, norm);
             }
-            const QString out =
-                bayes ? bayes_.process(norm) : eng_.process(norm);
+            const QString out = eng_.process(norm);
             if (!out.isEmpty()) emit textDecoded(out);
-            const QString loose =
-                bayes ? bayes_.takeLoose() : eng_.takeLoose();
+            const QString loose = eng_.takeLoose();
             if (!loose.isEmpty()) emit textLoose(loose);
-            const int wpm = bayes ? bayes_.wpm() : eng_.wpm();
-            const double metric = bayes ? bayes_.metric() : eng_.metric();
-            if (wpm != engWpm_ && wpm >= 5 && wpm <= 60 && metric > 10.0
-                && (!bayes || bayes_.locked())) {
+            const int wpm = eng_.wpm();
+            const double metric = eng_.metric();
+            if (wpm != engWpm_ && wpm >= 5 && wpm <= 60 && metric > 10.0) {
                 engWpm_ = wpm;
                 emit wpmEstimated(wpm);
             }

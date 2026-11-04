@@ -27,7 +27,7 @@ possible merge conflict when pulling from `upstream`.
 | `src/gui/MainWindow_Wiring.cpp` | The WF AVG connection, its availability, and its per-radio/per-pan persistence (`DisplayWfAverage/...`) | Nothing echoes the setting back, so the client owns it |
 | `src/gui/MainWindow_Shortcuts.cpp` | In `toggleCwKeyerPanel()`, under `AETHER_BACKEND_ORION`: on the `orion` family the CWX indicator opens the fork's CW window instead of the CWX panel (setting `OrionCw/replaceCwx`) | Fork rule 2's CW exception: the station's CW window is the console's, on AetherSDR's keying |
 | `src/gui/MainWindow_Menus.cpp` | Under `AETHER_BACKEND_ORION`: the include of `gui/orion/OrionCwUi.h` and two calls, `installOrionCwWindow(...)` and `installOrionCwDeck(...)`, each adding a Tools item | Tools -> CW window... (Ctrl+Shift+W) and Tools -> CW panel (Ctrl+Shift+P): the console's CW deck, as a bottom dock of the main window under the spectrum. The deck is the fork's own widget; the dock is added from the fork's installer, so no upstream layout code moves |
-| `src/models/CwRxModel.cpp` | Under `AETHER_BACKEND_ORION`: `orion-fldigi` and `orion-bayes` in `availableBackends()` and `makeBackend()`, plus one include | The Orion console's two CW readers join AetherSDR's own in the reader's decoder list |
+| `src/models/CwRxModel.cpp` | Under `AETHER_BACKEND_ORION`: `orion-fldigi` in `availableBackends()` and `makeBackend()`, plus one include | The Orion console's two CW readers join AetherSDR's own in the reader's decoder list |
 | `src/gui/AppletPanel.cpp/.h` | Under `AETHER_BACKEND_ORION`: the `ROT` applet entry (the DCU-3 rotor tile) beside `GHE`, its bar-order slot and its palette category | The operator asked for the rotor on the right-hand panel, in the same shape as the Green Heron tile |
 | `src/gui/MainWindow.cpp` | Under `AETHER_BACKEND_ORION`: hands the rotor tile the radio model after the panel is built | The panel is built before any radio exists |
 | `src/gui/SpectrumWidget.cpp/.h` | Three colour schemes appended to `WfColorScheme` (Enhanced, Classic, Thermal) with their names and theme tokens | The console's palettes, offered beside AetherSDR's own. Appended, never reordered: the scheme is stored by index |
@@ -49,7 +49,7 @@ New files that upstream does not have (no merge risk):
   skimmer glue `OrionSkimmer` and `OrionSkimmerFeed`, and for the RSP2
   `Rsp2Receiver`, `OrionSpectrum`, `OrionRxAudio`, `SdrPlayApi`)
 - `src/core/backends/orion/skimmer/` (`SkimmerEngine`, `CwDecoder`,
-  `FldigiCwEngine`, `BayesCwEngine`, `SkimServer`, `SkimStft`: ported from
+  `FldigiCwEngine`, `SkimServer`, `SkimStft`: ported from
   the Orion console, GPL-2.0-or-later, namespace and include paths only,
   plus the engine watching the LO instead of the dial and `SkimStft` on
   FFTW; built with OpenMP when found)

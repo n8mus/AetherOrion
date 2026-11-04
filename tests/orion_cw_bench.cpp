@@ -1,5 +1,5 @@
 // Bench tool (not a ctest test): the same CW audio through AetherSDR's
-// ggmorse reader and the fork's Orion reader (fldigi / Bayes / legacy
+// ggmorse reader and the fork's Orion reader (fldigi / legacy
 // brains), scored by character error rate against the text that was sent.
 //
 //   orion_cw_bench                 generated signals, the full table
@@ -427,10 +427,6 @@ std::vector<Reader> readers()
          [](const std::vector<float>& a) {
              return runOrion(a, CwDecoder::Brain::Engine, true, false, 0.0).shown;
          }},
-        {"Orion Bayes",
-         [](const std::vector<float>& a) {
-             return runOrion(a, CwDecoder::Brain::Bayes, true, false).shown;
-         }},
         {"Orion legacy",
          [](const std::vector<float>& a) {
              return runOrion(a, CwDecoder::Brain::Legacy, false, false).shown;
@@ -491,7 +487,7 @@ std::vector<float> readWav(const QString& path)
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
-    for (const char* v : {"TTC_CWLEGACY", "TTC_CWBAYES", "TTC_CWENGINE", "TTC_CWENV"}) {
+    for (const char* v : {"TTC_CWLEGACY", "TTC_CWENGINE", "TTC_CWENV"}) {
         qunsetenv(v);
     }
     const QStringList args = app.arguments();
