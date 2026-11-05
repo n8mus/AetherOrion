@@ -46,9 +46,15 @@ public:
     // Log QSO window's short/long path buttons arm the tile this way.
     void showBearing(double degrees);
 
-    // For tests and the automation bridge.
+    // For tests, the automation bridge and the contest deck's rotor view.
     [[nodiscard]] const RotorCompass* compass() const { return m_compass; }
     [[nodiscard]] double reportedAzimuth() const { return m_reported; }
+    [[nodiscard]] double askedBearing() const { return m_hasAsked ? m_asked : -1.0; }
+    [[nodiscard]] bool hasRadio() const { return m_model != nullptr; }
+
+signals:
+    // The beam's reported heading moved (the contest deck's ROT label).
+    void azimuthReported(double degrees);
 
 public slots:
     // The one place a turn is ever sent from.

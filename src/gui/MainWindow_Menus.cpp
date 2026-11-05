@@ -36,6 +36,9 @@
 #include "CwxPanel.h"
 #ifdef AETHER_BACKEND_ORION
 #include "gui/orion/OrionCwUi.h"
+#ifdef AETHER_ORION_CONTEST
+#include "gui/orion/OrionContestUi.h"
+#endif
 #endif
 #include "DxClusterDialog.h"
 #include "HelpDialog.h"
@@ -1142,6 +1145,25 @@ void MainWindow::buildMenuBar()
             m_cwDecoder.start();
         }
     });
+#ifdef AETHER_ORION_CONTEST
+    // N8EM fork: the contest deck and the contest log (FORK-NOTES.md).
+    installOrionContest(this, toolsMenu, &m_radioModel, &m_cwDecoder,
+        [this] { return activeSlice(); },
+        [this](const QString& call, double freqMhz, const QString& comment) {
+            if (!m_dxCluster || !m_dxCluster->isConnected()) {
+                statusBar()->showMessage(
+                    tr("No DX cluster connected — Tools -> SpotHub."), 4000);
+                return;
+            }
+            m_dxCluster->sendCommand(QStringLiteral("DX %1 %2 %3")
+                                         .arg(freqMhz * 1000.0, 0, 'f', 1)
+                                         .arg(call, comment)
+                                         .trimmed());
+            statusBar()->showMessage(tr("Spotted %1 on %2 MHz.")
+                                         .arg(call)
+                                         .arg(freqMhz, 0, 'f', 6), 4000);
+        });
+#endif
     // N8EM fork: the CW deck under the spectrum (FORK-NOTES.md).
     installOrionCwDeck(this, toolsMenu, &m_radioModel, &m_cwDecoder,
         [this] { return activeSlice(); },

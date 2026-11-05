@@ -204,7 +204,11 @@ void OrionRotorApplet::refresh()
 void OrionRotorApplet::applyState(const QVariantMap& state)
 {
     if (state.contains(QStringLiteral("azimuth"))) {
+        const double was = m_reported;
         m_reported = state.value(QStringLiteral("azimuth"), -1.0).toDouble();
+        if (m_reported != was) {
+            emit azimuthReported(m_reported);
+        }
     }
     const bool connected = orionConnected(m_model);
     const bool open = connected && state.value(QStringLiteral("open"), m_reported >= 0.0).toBool();

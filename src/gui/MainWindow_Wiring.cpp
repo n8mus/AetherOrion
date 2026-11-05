@@ -3,6 +3,9 @@
 // wireAetherDspWidget(), onSliceAdded()/onSliceRemoved(), and
 // panFollowVfo()/revealFrequencyIfNeeded().
 
+#ifdef AETHER_ORION_CONTEST
+#include "gui/orion/OrionContestUi.h"   // N8EM fork (FORK-NOTES.md)
+#endif
 #ifdef AETHER_ORION_LOGBOOK
 #include "gui/orion/OrionLogbookUi.h"   // N8EM fork (FORK-NOTES.md)
 #endif
@@ -4615,6 +4618,14 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             QColor dxccCol;
             if (m_dxccProvider.isEnabled() && spot.source != "Memory")
                 dxccCol = m_dxccProvider.colorForSpot(spot.callsign, spot.rxFreqMhz, spot.mode);
+#ifdef AETHER_ORION_CONTEST
+            // N8EM fork: the running contest's colour first (new mult, workable,
+            // dupe, zero points); invalid while no contest is open (FORK-NOTES.md).
+            if (spot.source != "Memory") {
+                const QColor contestCol = orionContestSpotColour(spot.callsign, spot.rxFreqMhz);
+                if (contestCol.isValid()) dxccCol = contestCol;
+            }
+#endif
 #ifdef AETHER_ORION_LOGBOOK
             // N8EM fork: worked-before colour from the station log (FORK-NOTES.md).
             if (!dxccCol.isValid() && spot.source != "Memory")

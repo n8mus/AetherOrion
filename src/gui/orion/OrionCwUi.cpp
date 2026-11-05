@@ -28,6 +28,9 @@
 #include "core/backends/orion/log/OrionLogbook.h"
 #include "gui/orion/OrionLogbookUi.h"
 #endif
+#ifdef AETHER_ORION_CONTEST
+#include "gui/orion/OrionContestUi.h"
+#endif
 #include "models/CwRxModel.h"
 #include "models/RadioModel.h"
 #include "models/SliceModel.h"
@@ -182,6 +185,11 @@ void installOrionCwWindow(QMainWindow* window, QMenu* menu, RadioModel* model,
     QObject::connect(act, &QAction::triggered, window, open);
     g_ensure = ensure;
     g_open = open;
+}
+
+OrionCwWindow* ensureOrionCwWindow()
+{
+    return g_ensure ? g_ensure() : nullptr;
 }
 
 bool setOrionCwDeckVisible(bool on)
@@ -372,6 +380,9 @@ void installOrionCwDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
 
     QObject::connect(act, &QAction::toggled, window, [=](bool on) {
         if (on) {
+#ifdef AETHER_ORION_CONTEST
+            setOrionContestDeckVisible(false);   // one deck under the pan
+#endif
             build();
             (*deck)->setRig(rigHz(), rigMode());
             g_deckDock->show();

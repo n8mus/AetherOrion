@@ -18,6 +18,8 @@ possible merge conflict when pulling from `upstream`.
 | `src/gui/ConnectionPanel.cpp` | Family normalisation (two places), the "Ten-Tec Orion (serial)" radio-type entry, the hint and placeholder text, a serial branch in `loadRecentManualIps()` that fills the device box instead of clearing it, and an `orion` branch at the top of `probeRadio()` that hands the device path to the session as `orion:<path>` and remembers it (`SerialDevice/<family>`); the serial-family table (`kSerialRadioFamilies`, Omni VII joins it at step 5) that fills the device box; `connectSerialRadio()` | The manual-connect page is how the operator picks the radio; a serial radio has nothing to probe |
 | `src/gui/MainWindow.cpp` | In the startup auto-connect block, under `AETHER_BACKEND_ORION`: a saved `<family>:/dev/...` serial connects directly via `connectSerialRadio()` | "Connect to last radio on start" waits for discovery or a routed IP, which a serial radio never gives |
 | `src/gui/MainWindow_Menus.cpp` | Under `AETHER_ORION_LOGBOOK`: the include of `gui/orion/OrionLogbookUi.h` and one call, `installOrionLogbook(...)`, right after the Tools menu is created; under `AETHER_BACKEND_ORION`: the include of `gui/orion/OrionSkimmerUi.h` and one call, `installOrionSkimmerWindows(...)`, adding two Tools items | The station logbook's "Logbook" menu sits between Tools and View; the skimmer's band map and waterfall open from Tools |
+| `src/gui/MainWindow_Wiring.cpp` | Under `AETHER_ORION_CONTEST`: the include of `gui/orion/OrionContestUi.h` and, in the spot-marker rebuild, `orionContestSpotColour()` ahead of the other colourings | The running contest's new-mult / workable / dupe / zero-point colours on the band map; invalid while no contest is open |
+| `src/gui/MainWindow_Menus.cpp` | Under `AETHER_ORION_CONTEST`: the include of `gui/orion/OrionContestUi.h` and one call, `installOrionContest(...)`, adding two Tools items | Tools -> Contest panel (Ctrl+Shift+C) and Contest log...: the console's contest deck in the bottom dock (exclusive with the CW deck) and its manager window |
 | `src/gui/MainWindow_Wiring.cpp` | Under `AETHER_ORION_LOGBOOK`: the include of `gui/orion/OrionLogbookUi.h` and, in the spot-marker rebuild, `orionWorkedSpotColour()` when the DXCC colouring gave no colour | Spots coloured by worked-before status from the station log (red new, amber new band, green worked, grey confirmed) |
 | `src/gui/PhoneCwApplet.cpp` | `setSelectableMicInputs()` uses the model's mic-input list when it has one, instead of always FlexRadio's MIC/BAL/LINE/ACC/PC | Shows the Orion's MIC and PC; a Flex is unchanged (its list comes from `mic list`) |
 | `src/core/backends/IRadioBackend.h` | `setPanWaterfallRate()` and `setPanWaterfallAverage()`, both default no-ops | The waterfall gets its own copy of each frame from this backend, so it needs its own row interval and its own average; every other backend ignores them |
@@ -71,6 +73,20 @@ New files that upstream does not have (no merge risk):
   about one station)
 - `src/gui/orion/OrionCwWindow.cpp/.h` and `src/gui/orion/OrionCwUi.cpp/.h`
   (the CW window and its Tools entry; the CW deck's installer)
+- `src/core/backends/orion/contest/` (the console's contest core, src/contest
+  and src/net/SntpCheck and src/util/CtyLookup: the rules table, the contest
+  log in its own SQLite file, scoring, Cabrillo with its self-check, the call
+  history, the practice caller, the online-score post and the SNTP clock
+  check; namespace and include paths only, settings under OrionContest/)
+- `src/gui/orion/OrionContestDeck`, `OrionContestWindow`, `OrionQtcDialog`,
+  `OrionMultWindow` (the console's contest deck, manager window, WAE QTC
+  dialog and multiplier grid, ported with the fork's stand-ins in
+  `OrionContestHost` for the console's rotor link and QRZ lookup, the CW
+  window as the keyer front, and `OrionContestSettings.h` mapping its
+  QSettings keys onto AppSettings), and `OrionContestUi` (the Tools items,
+  the bottom dock, the spot walk, the call frame, the spot colours). Not
+  wired on this radio yet: phone MOX from the deck, SO2V's second ear and
+  the TX move to B, parking an abandoned call as a local spot.
 - `src/gui/orion/OrionCwDeck.cpp/.h` and `src/gui/orion/OrionDeckStyle.h` (the
   console's CW deck, src/cw/CwDeck and src/ui/DeckStyle.h, on the fork's
   pieces: the CW window is the single keyer front, the logbook's index and
