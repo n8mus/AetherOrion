@@ -1068,7 +1068,7 @@ void OrionCwWindow::updateRxInfo()
     QString hzPart = QStringLiteral("— Hz");
     if (m_shownHz > 0) {
         const int target =
-            AppSettings::instance().value(QStringLiteral("CwSidetonePitch"), 600).toInt();
+            AppSettings::instance().value(QStringLiteral("OrionCw/pitchHz"), 600).toInt();
         const bool on = std::abs(m_shownHz - target) <= 10.0;
         hzPart = QStringLiteral("<span style='color:%1'>%2 Hz</span>")
                      .arg(on ? QStringLiteral("#8fd48f") : QStringLiteral("#e0b060"))

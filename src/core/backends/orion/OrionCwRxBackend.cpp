@@ -24,12 +24,13 @@ constexpr float kToneOverMedian = 16.0f;   // a line is a tone when 12 dB over t
 
 // Where in that stream the tone sits. Real-valued samples put the signal at
 // +/- the audio pitch, so the reader listens at the operator's sidetone
-// pitch — the note they tune a station onto.
+// pitch — the note they tune a station onto: the radio's own, which the
+// backend keeps in OrionCw/pitchHz as it learns it.
 double pitchHz()
 {
-    const int hz = AppSettings::instance()
-                       .value(QStringLiteral("CwSidetonePitch"), 600)
-                       .toInt();
+    auto& s = AppSettings::instance();
+    int hz = s.value(QStringLiteral("OrionCw/pitchHz"), 0).toInt();
+    if (hz <= 0) hz = s.value(QStringLiteral("OrionCw/rig/pitch"), 600).toInt();
     return hz >= 100 && hz <= 3000 ? static_cast<double>(hz) : 600.0;
 }
 }  // namespace
@@ -123,6 +124,12 @@ void OrionCwRxBackend::feedFixed24(const DecoderPcmBlock& block)
     if (m_pitchFill >= kPitchEvery && static_cast<int>(m_pitchBuf.size()) == kPitchN) {
         m_pitchFill = 0;
         measurePitch();
+        // The sidetone moved (the PITCH slider): follow it without a restart.
+        const double hz = pitchHz();
+        if (!qFuzzyCompare(hz, static_cast<double>(m_pitchHz))) {
+            m_pitchHz = static_cast<float>(hz);
+            m_decoder->retune(hz);
+        }
     }
 }
 
