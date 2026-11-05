@@ -438,6 +438,7 @@ void ContestDeck::buildUi() {
 
         // Score / rate on its own line under the contest name.
         score_ = new QLabel(this);
+        score_->setObjectName(QStringLiteral("orionContestScore"));
         score_->setStyleSheet("color:#8798a8;");
         score_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
         mid->addWidget(score_);
@@ -560,14 +561,17 @@ void ContestDeck::buildUi() {
         // status line: dupe/mult · country · ESM hint
         auto* st = new QHBoxLayout;
         dupe_ = new QLabel(this);
+        dupe_->setObjectName(QStringLiteral("orionContestDupe"));
         dupe_->setStyleSheet("font-weight:bold;");
         st->addWidget(dupe_);
         info_ = new QLabel(this);
+        info_->setObjectName(QStringLiteral("orionContestInfo"));
         info_->setStyleSheet("color:#8798a8;");
         info_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
         st->addWidget(info_, 1);
         st->addStretch(1);
         hint_ = new QLabel(this);
+        hint_->setObjectName(QStringLiteral("orionContestHint"));
         hint_->setStyleSheet("color:#7ee2a8;");
         st->addWidget(hint_);
         mid->addLayout(st);
@@ -673,6 +677,7 @@ void ContestDeck::buildUi() {
         thdr->addStretch(1);
         tt->addLayout(thdr);
         type_ = new QLineEdit(this);
+        type_->setObjectName(QStringLiteral("orionContestType"));
         QFont mf("DejaVu Sans Mono");
         type_->setFont(mf);
         connect(type_, &QLineEdit::returnPressed, this, [this] {
@@ -808,6 +813,7 @@ void ContestDeck::buildUi() {
                 [this] { emit openManagerRequested(); });
         br->addWidget(mgr);
         status_ = new QLabel(this);
+        status_->setObjectName(QStringLiteral("orionContestStatus"));
         status_->setStyleSheet("color:#8798a8; font-size:10px;");
         // A long message must never widen the window (live-found
         // 2026-10-22: with MULTS/SCORE in this row, a practice message
@@ -1065,6 +1071,9 @@ void ContestDeck::rebuildEntryFields() {
         lb->setStyleSheet("color:#8798a8; font-size:10px;");
         box->addWidget(lb);
         auto* e = new QLineEdit(preset, fieldsBox_);
+        // Named for the automation bridge and tests: orionContestExch_<LABEL>.
+        e->setObjectName(QStringLiteral("orionContestExch_")
+                         + QString(label).remove(QLatin1Char(' ')).toUpper());
         e->setMaxLength(qMax(widthCh + 4, 6));
         e->setFixedWidth(22 + widthCh * 10);
         e->installEventFilter(this);     // ↑/↓ speed from here too

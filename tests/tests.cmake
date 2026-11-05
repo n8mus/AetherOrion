@@ -9597,6 +9597,29 @@ if(AETHER_BACKEND_ORION AND UNIX AND NOT APPLE)
     add_test(NAME orion_cwdeck_test COMMAND orion_cwdeck_test)
     set_tests_properties(orion_cwdeck_test PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    if(AETHER_ORION_CONTEST)
+        # The contest deck on the CW window, offscreen: a contest started,
+        # the ESM beats keying through the window, the log, the spot classes.
+        add_executable(orion_contestdeck_test
+            tests/orion_contestdeck_test.cpp
+            src/gui/orion/OrionContestDeck.cpp
+            src/gui/orion/OrionContestDeck.h
+            src/gui/orion/OrionContestHost.h
+            src/gui/orion/OrionContestSettings.h
+            src/gui/orion/OrionMultWindow.cpp
+            src/gui/orion/OrionMultWindow.h
+            src/gui/orion/OrionQtcDialog.cpp
+            src/gui/orion/OrionQtcDialog.h
+            src/gui/orion/OrionCwWindow.cpp
+            src/gui/orion/OrionCwWindow.h)
+        target_include_directories(orion_contestdeck_test PRIVATE src tests)
+        target_compile_definitions(orion_contestdeck_test PRIVATE
+            ORION_TEST_CTY_DAT="${CMAKE_SOURCE_DIR}/resources/cty.dat")
+        target_link_libraries(orion_contestdeck_test PRIVATE aethercore Qt6::Core Qt6::Widgets Qt6::Network Qt6::Sql Qt6::Test)
+        add_test(NAME orion_contestdeck_test COMMAND orion_contestdeck_test)
+        set_tests_properties(orion_contestdeck_test PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    endif()
+
     # The Connect to Radio window for a serial radio: the device box is
     # never blank. Same sources as connection_panel_size_test.
     add_executable(orion_connection_panel_test
