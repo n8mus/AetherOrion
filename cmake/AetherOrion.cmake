@@ -93,7 +93,25 @@ else()
         target_sources(AetherSDR PRIVATE
             src/gui/orion/OrionLogbookUi.cpp
             src/gui/orion/OrionLogbookUi.h)
-        message(STATUS "Ten-Tec Orion ... logbook enabled (Qt6::Sql)")
+        # Contest core (stage 1), ported from the console: the rules table,
+        # the contest log (its own SQLite file), scoring, Cabrillo, the call
+        # history, and the console's cty.dat reader with its per-prefix zones.
+        set(AETHER_ORION_CONTEST ON)
+        target_compile_definitions(aethercore PUBLIC AETHER_ORION_CONTEST)
+        target_sources(aethercore PRIVATE
+            src/core/backends/orion/contest/Cabrillo.cpp
+            src/core/backends/orion/contest/Cabrillo.h
+            src/core/backends/orion/contest/CallHistory.cpp
+            src/core/backends/orion/contest/CallHistory.h
+            src/core/backends/orion/contest/ContestDb.cpp
+            src/core/backends/orion/contest/ContestDb.h
+            src/core/backends/orion/contest/ContestDef.h
+            src/core/backends/orion/contest/ContestDefs.cpp
+            src/core/backends/orion/contest/ContestEngine.cpp
+            src/core/backends/orion/contest/ContestEngine.h
+            src/core/backends/orion/contest/CtyLookup.cpp
+            src/core/backends/orion/contest/CtyLookup.h)
+        message(STATUS "Ten-Tec Orion ... logbook and contest core enabled (Qt6::Sql)")
     else()
         message(STATUS "Ten-Tec Orion ... logbook disabled — Qt6::Sql not found")
     endif()
