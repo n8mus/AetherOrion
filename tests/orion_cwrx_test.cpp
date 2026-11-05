@@ -55,7 +55,7 @@ int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
     QStandardPaths::setTestModeEnabled(true);
-    AppSettings::instance().setValue(QStringLiteral("CwSidetonePitch"), 600);
+    AppSettings::instance().setValue(QStringLiteral("OrionCw/pitchHz"), 600);
     std::mt19937 rng(7);
 
     orion::OrionCwRxBackend rx;

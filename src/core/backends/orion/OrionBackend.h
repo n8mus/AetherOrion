@@ -329,6 +329,10 @@ private:
     int m_waterfallAverage = 0;  // the waterfall's own WF AVG (0 = off)
     // The radio's own CW settings, as it last reported them (-1 = unasked).
     int m_cwRigPitchHz = -1;
+    // The radio's sidetone pitch IS the CW pitch on this radio (see the
+    // definition): the rig's number becomes the host's, the reader's and
+    // the RX offset's.
+    void adoptRigCwPitch(int hz);
     int m_cwRigQsk = -1;
     int m_cwRigAttackMs = -1;
     int m_cwRigKeyerOn = -1;

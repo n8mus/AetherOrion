@@ -110,6 +110,7 @@ public:
     bool tunerIn = false;
     int monitor = 30;
     int sidetone = 40;
+    int pitch = 551;    // the radio's own sidetone pitch (*CT)
     int afMain = 102;   // bytes: 40 %
     QByteArray routing = "MSB";   // phones L, phones R, speaker
     int afSub = 51;     // 20 %
@@ -179,6 +180,8 @@ private:
             reply("@US" + QByteArray::number(afSub));
         } else if (q == "CV") {
             reply("@CV" + QByteArray::number(sidetone));
+        } else if (q == "CT") {
+            reply("@CT" + QByteArray::number(pitch));
         } else if (q == "TO") {
             reply("@TO" + QByteArray::number(monitor));
         } else if (q == "TT") {
@@ -253,6 +256,8 @@ private:
             afSub = cmd.mid(3).toInt();
         } else if (cmd.startsWith("*CV")) {
             sidetone = cmd.mid(3).toInt();
+        } else if (cmd.startsWith("*CT")) {
+            pitch = cmd.mid(3).toInt();
         } else if (cmd.startsWith("*TO")) {
             monitor = cmd.mid(3).toInt();
         } else if (cmd == "*TT1") {
@@ -804,6 +809,37 @@ int main(int argc, char** argv)
     backend.requestTransmitControl(stOn);
     check(waitFor([&] { return radio.sidetone == 30 && lastSidetone().first == true; }, 1000),
           "sidetone on: back at the slider's level (30)");
+
+    std::printf("-- CW pitch: the radio's sidetone pitch is THE pitch (*CT)\n");
+    const auto lastPitch = [&]() -> std::optional<int> {
+        std::optional<int> hz;
+        for (const auto& args : txSpy) {
+            const auto d = args.at(0).value<TransmitDelta>();
+            if (d.cwPitch) hz = d.cwPitch;
+        }
+        return hz;
+    };
+    // The radio answered ?CT551 at connect. The host's connect-time push of
+    // its own default must not move the radio; the host is told 551 back.
+    txSpy.clear();
+    radio.sets.clear();
+    backend.setCwPitch(600);
+    check(waitFor([&] { return lastPitch() == 551; }, 1000),
+          "the host's 600 is answered with the rig's 551");
+    check(!radio.sets.contains("*CT600"), "and the radio was not moved");
+    // The PITCH slider (cw.rig.set) moves the radio, and the host follows.
+    txSpy.clear();
+    radio.sets.clear();
+    {
+        QVariantMap set;
+        set.insert(QStringLiteral("pitch"), 500);
+        backend.invokeExtension(QStringLiteral("orion"), QStringLiteral("cw.rig.set"), 0, set);
+    }
+    check(waitFor([&] { return radio.pitch == 500 && lastPitch() == 500; }, 1000),
+          "PITCH 500: *CT500, and the host is told 500");
+    txSpy.clear();
+    backend.setCwPitch(500);
+    check(txSpy.isEmpty(), "the host agreeing with the rig is quiet");
 
     std::printf("-- failsafe\n");
     radio.sets.clear();

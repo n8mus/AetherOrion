@@ -652,7 +652,7 @@ void OrionBackend::onLine(const QByteArray& line)
         } else if constexpr (std::is_same_v<T, orion::CwRigReply>) {
             using What = orion::CwRigReply::What;
             switch (r.what) {
-            case What::Pitch: m_cwRigPitchHz = r.value; break;
+            case What::Pitch: adoptRigCwPitch(r.value); break;
             case What::QskDelay: m_cwRigQsk = r.value; break;
             case What::AttackDecay: m_cwRigAttackMs = r.value; break;
             case What::KeyerEnabled: m_cwRigKeyerOn = r.value; break;
@@ -875,6 +875,15 @@ void OrionBackend::startupQueries()
     send(queryCwKeyerEnabled());
     send(queryCwKeyerSpeed());
     send(queryCwKeyerWeight());
+    // The radio does not reliably answer ?CT; until it does, the pitch the
+    // operator last set on it (the CW window persists it) is the pitch.
+    {
+        const int saved =
+            AppSettings::instance().value(QStringLiteral("OrionCw/rig/pitch"), 0).toInt();
+        if (saved > 0) {
+            adoptRigCwPitch(saved);
+        }
+    }
     send(queryAfVolume(Rx::Main));
     send(queryAfVolume(Rx::Sub));
     send(queryAudioRouting());
@@ -1480,10 +1489,45 @@ void OrionBackend::setSliceAudioPan(int sliceId, int panPercent)
     }
 }
 
+// One sidetone on this radio: the Orion's own (*CT), which it makes
+// whatever did the keying. AetherSDR's CW pitch (the transmit model's,
+// the zero-beat's target, the RX offset) follows the rig, never the other
+// way round — the host pushes its default (600) at every connect, and that
+// must not overwrite the pitch the operator set on the radio (live,
+// 2026-11-05: zero-beat solved to 600 with the rig at 551). Change the
+// pitch from the CW window's or the deck's PITCH slider.
 void OrionBackend::setCwPitch(int hz)
 {
+    if (m_cwRigPitchHz > 0 && hz != m_cwRigPitchHz) {
+        TransmitDelta d;
+        d.cwPitch = m_cwRigPitchHz;
+        emit transmitChanged(d);   // the host's number converges to the rig's
+        return;
+    }
     m_cwPitchHz = std::clamp(hz, 200, 1200);
     pushRxTuning();
+}
+
+void OrionBackend::adoptRigCwPitch(int hz)
+{
+    if (hz < 200 || hz > 1200) {
+        return;
+    }
+    m_cwRigPitchHz = hz;
+    // The reader listens at this note (OrionCwRxBackend reads it), and the
+    // CW window and deck colour their Hz readout against it.
+    auto& settings = AppSettings::instance();
+    if (settings.value(QStringLiteral("OrionCw/pitchHz")).toInt() != hz) {
+        settings.setValue(QStringLiteral("OrionCw/pitchHz"), hz);
+    }
+    if (m_cwPitchHz == hz) {
+        return;
+    }
+    m_cwPitchHz = hz;
+    pushRxTuning();
+    TransmitDelta d;
+    d.cwPitch = hz;
+    emit transmitChanged(d);
 }
 
 void OrionBackend::stopSdr()
@@ -2818,6 +2862,9 @@ void OrionBackend::invokeExtension(const QString& ns, const QString& verb,
         if (m.contains(QStringLiteral("pitch"))) {
             send(orion::setCwSidetonePitch(m.value(QStringLiteral("pitch")).toInt()));
             send(orion::queryCwSidetonePitch());
+            // The radio does not reliably answer ?CT: the number the
+            // operator just sent is the pitch until it says otherwise.
+            adoptRigCwPitch(m.value(QStringLiteral("pitch")).toInt());
         }
         if (m.contains(QStringLiteral("qsk"))) {
             send(orion::setCwQskDelay(m.value(QStringLiteral("qsk")).toInt()));
