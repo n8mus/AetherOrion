@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Ported from the N8EM Orion console (tests/contesttest.cpp) for the
 // AetherSDR Orion fork (contest stage 1): namespace and include paths, the
-// fork's cty.dat, and without the SNTP check (that comes with the deck).
+// fork's cty.dat.
 //
 //   cmake --build build --target orion_contest_test && ./build/orion_contest_test
 // Contest-engine test: callsign normalization, serial formatting, dupe
@@ -23,6 +23,7 @@
 #include "core/backends/orion/contest/ContestDb.h"
 #include "core/backends/orion/contest/ContestDef.h"
 #include "core/backends/orion/contest/ContestEngine.h"
+#include "core/backends/orion/contest/SntpCheck.h"
 #include "core/backends/orion/contest/CtyLookup.h"
 #include <QXmlStreamReader>
 
@@ -1038,6 +1039,26 @@ static void testSummaryAndScore(const CtyLookup& cty) {
 }
 
 
+static void testSntp() {
+    // Server 1.5 s ahead of us, 40 ms round trip.
+    const qint64 t1 = 1792627200000LL;               // 2026-10-22
+    QByteArray r = SntpCheck::request(t1);
+    CHECK(r.size() == 48 && (quint8(r[0]) & 7) == 3, "sntp: client request");
+    const auto put = [&](int at, qint64 ms) {        // reuse request()'s encoder
+        const QByteArray tmp = SntpCheck::request(ms);
+        for (int i = 0; i < 8; ++i) r[at + i] = tmp[40 + i];
+    };
+    r[0] = char(0x24);                               // version 4, mode 4 (server)
+    r[1] = char(2);                                  // stratum 2
+    put(32, t1 + 20 + 1500);                         // server receive
+    put(40, t1 + 21 + 1500);                         // server transmit
+    qint64 off = 0;
+    CHECK(SntpCheck::offsetMs(r, t1, t1 + 41, &off) && std::llabs(off - 1500) <= 2,
+          "sntp: offset from the four timestamps");
+    r[1] = char(0);
+    CHECK(!SntpCheck::offsetMs(r, t1, t1 + 41, &off), "sntp: kiss-of-death refused");
+}
+
 static void testBackup(const QString& dir) {
     ContestDb db;
     CHECK(db.open(dir + "/bk.sqlite"), "backup: db opens");
@@ -1090,6 +1111,7 @@ int main(int argc, char** argv) {
     testNPlusOne();
     testLogChecks();
     testSummaryAndScore(cty);
+    testSntp();
     testBackup(tmp.path());
 
     std::printf(fails ? "\n%d FAILURES\n" : "\nall ok\n", fails);

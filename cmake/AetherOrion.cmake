@@ -110,7 +110,13 @@ else()
             src/core/backends/orion/contest/ContestEngine.cpp
             src/core/backends/orion/contest/ContestEngine.h
             src/core/backends/orion/contest/CtyLookup.cpp
-            src/core/backends/orion/contest/CtyLookup.h)
+            src/core/backends/orion/contest/CtyLookup.h
+            src/core/backends/orion/contest/OnlineScore.cpp
+            src/core/backends/orion/contest/OnlineScore.h
+            src/core/backends/orion/contest/PracticeEngine.cpp
+            src/core/backends/orion/contest/PracticeEngine.h
+            src/core/backends/orion/contest/SntpCheck.cpp
+            src/core/backends/orion/contest/SntpCheck.h)
         message(STATUS "Ten-Tec Orion ... logbook and contest core enabled (Qt6::Sql)")
     else()
         message(STATUS "Ten-Tec Orion ... logbook disabled — Qt6::Sql not found")
