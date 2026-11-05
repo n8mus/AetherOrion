@@ -1039,18 +1039,38 @@ int main(int argc, char** argv)
     check(disconnectedSpy.count() == 1, "a second disconnect emits nothing");
     check(errorSpy.count() == 0, "no connection errors in a clean session");
 
+    std::printf("-- a radio that ignores the first open and answers the second\n");
+    {
+        // The Orion's habit after a relaunch (live, 2026-11-03): silence for
+        // the first window, an answer within 200 ms of a fresh open.
+        radio.answering = false;
+        const int connectsBefore = connectedSpy.count();
+        const int errorsBefore = errorSpy.count();
+        backend.connectRadio(req);
+        QTimer::singleShot(OrionBackend::kConnectTimeoutMs + 300, [&] { radio.answering = true; });
+        check(waitFor([&] { return backend.isConnected(); },
+                      2 * OrionBackend::kConnectTimeoutMs + 1500),
+              "the link reopened on its own and the radio answered the second try");
+        check(connectedSpy.count() == connectsBefore + 1, "reported connected once");
+        check(errorSpy.count() == errorsBefore, "and no connection error was raised");
+        backend.disconnectRadio();
+        check(waitFor([&] { return !backend.isConnected(); }, 2000), "disconnected again");
+    }
+
     std::printf("-- a silent radio\n");
     radio.answering = false;
     const int connectsBefore = connectedSpy.count();
+    const int disconnectsBefore = disconnectedSpy.count();
+    errorSpy.clear();
     backend.connectRadio(req);
     check(waitFor([&] { return errorSpy.count() == 1; },
-                  OrionBackend::kConnectTimeoutMs + 1500),
-          "a radio that never answers reports a connection error");
+                  OrionBackend::kConnectAttempts * OrionBackend::kConnectTimeoutMs + 1500),
+          "a radio that never answers reports a connection error, after every attempt");
     check(errorSpy.count() == 1
               && errorSpy.at(0).at(0).toString().contains(QStringLiteral("No reply")),
           "and it is the no-reply error: the port reopened after the last session");
     check(connectedSpy.count() == connectsBefore, "and is never reported connected");
-    check(disconnectedSpy.count() == 1, "and emits no disconnected()");
+    check(disconnectedSpy.count() == disconnectsBefore, "and emits no disconnected()");
 
     std::printf("-- a missing device\n");
     RadioConnectRequest missing;

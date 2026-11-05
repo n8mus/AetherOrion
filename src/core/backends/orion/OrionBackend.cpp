@@ -65,6 +65,21 @@ OrionBackend::OrionBackend(QObject* parent)
     m_connectTimer.setSingleShot(true);
     m_connectTimer.setInterval(kConnectTimeoutMs);
     connect(&m_connectTimer, &QTimer::timeout, this, [this] {
+        if (m_connectAttempt < kConnectAttempts) {
+            // Silence on the first open is the radio's habit, not a fault:
+            // close, reopen (the open raises DTR afresh) and ask again.
+            ++m_connectAttempt;
+            qCInfo(lcOrion) << "Orion: no reply on" << m_device << "- reopening, attempt"
+                            << m_connectAttempt << "of" << kConnectAttempts;
+            if (m_port) {
+                closeSerial(*m_port);
+                m_port.reset();
+            }
+            m_rxBuffer.clear();
+            if (openPort()) {
+                return;
+            }
+        }
         failLink(tr("No reply from the Orion on %1. Check the radio is on, the "
                     "cable is connected, and no other program has the port open.")
                      .arg(m_device));
@@ -419,7 +434,12 @@ void OrionBackend::openLink()
     m_lastPollMs = -1;
     m_rttMs = -1;
     m_frequencyQuerySentMs = -1;
+    m_connectAttempt = 1;
+    openPort();
+}
 
+bool OrionBackend::openPort()
+{
     m_port = std::make_unique<QSerialPort>();
     m_port->setPortName(m_device);
     m_port->setBaudRate(57600);
@@ -433,7 +453,7 @@ void OrionBackend::openLink()
         m_port.reset();
         emit connectionError(tr("Cannot open the Orion's serial port %1: %2")
                                  .arg(m_device, reason));
-        return;
+        return false;
     }
     // The Orion's RS-232 side goes silent with DTR low (live-found). On a
     // pty these ioctls fail harmlessly, so their result is not checked.
@@ -458,6 +478,7 @@ void OrionBackend::openLink()
     m_connectTimer.start();
     send(queryFrequency(Rx::Main));
     m_frequencyQuerySentMs = nowMs();
+    return true;
 }
 
 void OrionBackend::closeLink()
