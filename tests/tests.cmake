@@ -9597,6 +9597,25 @@ if(AETHER_BACKEND_ORION AND UNIX AND NOT APPLE)
     add_test(NAME orion_cwdeck_test COMMAND orion_cwdeck_test)
     set_tests_properties(orion_cwdeck_test PROPERTIES TIMEOUT 60 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # The Connect to Radio window for a serial radio: the device box is
+    # never blank. Same sources as connection_panel_size_test.
+    add_executable(orion_connection_panel_test
+        tests/orion_connection_panel_test.cpp
+        src/gui/ConnectionPanel.cpp
+        src/gui/CanonWindow.cpp
+        src/gui/PersistentDialog.cpp
+        src/gui/FramelessResizer.cpp
+        src/gui/FramelessWindowTitleBar.cpp)
+    target_include_directories(orion_connection_panel_test PRIVATE src tests)
+    target_link_libraries(orion_connection_panel_test PRIVATE
+        aethercore Qt6::Core Qt6::Network Qt6::Widgets Qt6::Test)
+    target_compile_definitions(orion_connection_panel_test PRIVATE
+        AETHER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    set_target_properties(orion_connection_panel_test PROPERTIES AUTOMOC ON)
+    add_test(NAME orion_connection_panel_test COMMAND orion_connection_panel_test)
+    set_tests_properties(orion_connection_panel_test PROPERTIES TIMEOUT 60
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     # The Orion reader's tone meter, on synthetic PCM.
     add_executable(orion_cwrx_test tests/orion_cwrx_test.cpp)
     target_include_directories(orion_cwrx_test PRIVATE src tests)

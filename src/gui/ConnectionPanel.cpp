@@ -2717,10 +2717,20 @@ void ConnectionPanel::loadRecentManualIps()
     for (const auto& ip : ips)
         m_manualIpCombo->addItem(ip);
 
-    if (!ips.isEmpty())
+    if (!ips.isEmpty()) {
         m_manualIpCombo->setCurrentText(ips.first());
-    else
+    } else if (const SerialRadioFamily* serial = serialRadioFamily(currentManualFamily())) {
+        // N8EM fork: a serial radio keeps no recent addresses, so an empty
+        // list must not wipe its device box (live, 2026-11-05: the box came
+        // up blank and the operator typed /dev/orion every time). The last
+        // device used, else the station's udev name (FORK-NOTES.md).
+        m_manualIpEdit->setText(AppSettings::instance()
+                                    .value(serialDeviceKey(currentManualFamily()),
+                                           QString::fromLatin1(serial->defaultDevice))
+                                    .toString());
+    } else {
         m_manualIpEdit->clear();
+    }
 }
 
 void ConnectionPanel::rememberManualIp(const QString& ip)
