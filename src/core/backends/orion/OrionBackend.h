@@ -58,6 +58,11 @@ public:
     // Echo guards and timing, in ms (values from the reference program's
     // on-air experience; see the design doc).
     static constexpr int kConnectTimeoutMs = 3000;
+    // The radio sometimes ignores the first open after a relaunch and
+    // answers a fresh one at once (live, 2026-11-03: no reply in 3 s, then
+    // answered in 126 ms on the retry). So the link reopens and asks again
+    // before it gives up.
+    static constexpr int kConnectAttempts = 3;
     static constexpr int kSilenceTimeoutMs = 5000;
     // A poll tick this late means the owner thread stalled, not the radio.
     static constexpr int kStallToleranceMs = 1000;
@@ -267,6 +272,8 @@ private:
     QByteArray m_rxBuffer;
     bool m_connected = false;
     bool m_connecting = false;
+    int m_connectAttempt = 0;             // 1..kConnectAttempts
+    bool openPort();                      // the port and the first query
     // Bumped on every open/close so queued single-shots from an old session
     // drop themselves.
     quint64 m_generation = 0;
