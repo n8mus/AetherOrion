@@ -41,8 +41,11 @@ receiver. The fork's own rules come first; the upstream guide follows.
 
 ## Fork pointers
 
-- Remotes: `origin` = github.com/n8mus/AetherSDR (the fork),
-  `upstream` = github.com/ten9876/AetherSDR.
+- Remotes: `origin` = github.com/n8mus/AetherOrion (this program's own
+  repository since 2026-11-05; its `main` is the fork's work),
+  `fork` = github.com/n8mus/AetherSDR (the old GitHub fork, kept),
+  `upstream` = github.com/ten9876/AetherSDR (merged in from time to time;
+  the local `upstream-main` branch tracks it).
 - Reference program: `~/orion3-sdr-console` (read-only). Its `CLAUDE.md`
   "Station facts" holds the station's devices and quirks.
 - Design: `docs/architecture/orion-backend-design.md`.
