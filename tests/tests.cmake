@@ -9637,6 +9637,15 @@ if(AETHER_BACKEND_ORION AND UNIX AND NOT APPLE)
         add_test(NAME orion_logbook_test COMMAND orion_logbook_test)
         set_tests_properties(orion_logbook_test PROPERTIES TIMEOUT 60)
 
+        # The contest core: the console's contesttest, on the fork's cty.dat.
+        add_executable(orion_contest_test tests/orion_contest_test.cpp)
+        target_include_directories(orion_contest_test PRIVATE src tests)
+        target_compile_definitions(orion_contest_test PRIVATE
+            ORION_TEST_CTY_DAT="${CMAKE_SOURCE_DIR}/resources/cty.dat")
+        target_link_libraries(orion_contest_test PRIVATE aethercore Qt6::Core Qt6::Network Qt6::Sql Qt6::Test)
+        add_test(NAME orion_contest_test COMMAND orion_contest_test)
+        set_tests_properties(orion_contest_test PROPERTIES TIMEOUT 120)
+
         # Online-log uploads against a local stand-in server and a fake tqsl.
         add_executable(orion_upload_test tests/orion_upload_test.cpp)
         target_include_directories(orion_upload_test PRIVATE src tests)
