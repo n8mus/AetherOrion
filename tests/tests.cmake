@@ -9646,6 +9646,15 @@ if(AETHER_BACKEND_ORION AND UNIX AND NOT APPLE)
         add_test(NAME orion_contest_test COMMAND orion_contest_test)
         set_tests_properties(orion_contest_test PROPERTIES TIMEOUT 120)
 
+        # PRACTICE mode's simulated caller, audio off, deterministic clock.
+        add_executable(orion_practice_test tests/orion_practice_test.cpp)
+        target_include_directories(orion_practice_test PRIVATE src tests)
+        target_compile_definitions(orion_practice_test PRIVATE
+            ORION_TEST_CTY_DAT="${CMAKE_SOURCE_DIR}/resources/cty.dat")
+        target_link_libraries(orion_practice_test PRIVATE aethercore Qt6::Core Qt6::Network Qt6::Sql)
+        add_test(NAME orion_practice_test COMMAND orion_practice_test)
+        set_tests_properties(orion_practice_test PROPERTIES TIMEOUT 120)
+
         # Online-log uploads against a local stand-in server and a fake tqsl.
         add_executable(orion_upload_test tests/orion_upload_test.cpp)
         target_include_directories(orion_upload_test PRIVATE src tests)
