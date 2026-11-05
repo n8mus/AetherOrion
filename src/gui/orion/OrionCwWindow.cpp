@@ -882,6 +882,20 @@ QString OrionCwWindow::sendTyped(const QString& text)
     return sendText(text);
 }
 
+void OrionCwWindow::keyExternal(const QString& text)
+{
+    const QString t = text.trimmed();
+    if (t.isEmpty() || !m_cwx) {
+        return;
+    }
+    if (!m_cwx->canSend()) {
+        updateStatus(tr("the radio will not take CW text right now"));
+        return;
+    }
+    m_cwx->send(t);
+    m_sentView->setText(t.right(60));
+}
+
 void OrionCwWindow::streamChars(const QString& chars)
 {
     if (chars.isEmpty() || !m_cwx) {

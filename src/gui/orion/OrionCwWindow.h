@@ -91,6 +91,9 @@ public:
     // Typed text with the plain-language fields expanded; returns the name
     // of an empty field the text asked for (nothing keyed), or "".
     QString sendTyped(const QString& text);
+    // The contest deck's keying: its engine expanded the macro already,
+    // so the text goes out as it is, no fields, no refusal.
+    void keyExternal(const QString& text);
     void streamChars(const QString& chars);  // live keys: raw, no expansion
     void unsendChars(int n);                 // live keys: backspace
     void stopKeying();                       // Esc / STOP, from outside

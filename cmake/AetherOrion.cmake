@@ -117,6 +117,20 @@ else()
             src/core/backends/orion/contest/PracticeEngine.h
             src/core/backends/orion/contest/SntpCheck.cpp
             src/core/backends/orion/contest/SntpCheck.h)
+        target_sources(AetherSDR PRIVATE
+            src/gui/orion/OrionContestDeck.cpp
+            src/gui/orion/OrionContestDeck.h
+            src/gui/orion/OrionContestHost.cpp
+            src/gui/orion/OrionContestHost.h
+            src/gui/orion/OrionContestSettings.h
+            src/gui/orion/OrionContestUi.cpp
+            src/gui/orion/OrionContestUi.h
+            src/gui/orion/OrionContestWindow.cpp
+            src/gui/orion/OrionContestWindow.h
+            src/gui/orion/OrionMultWindow.cpp
+            src/gui/orion/OrionMultWindow.h
+            src/gui/orion/OrionQtcDialog.cpp
+            src/gui/orion/OrionQtcDialog.h)
         message(STATUS "Ten-Tec Orion ... logbook and contest core enabled (Qt6::Sql)")
     else()
         message(STATUS "Ten-Tec Orion ... logbook disabled — Qt6::Sql not found")

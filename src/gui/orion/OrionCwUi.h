@@ -47,6 +47,11 @@ void installOrionCwDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
 // Raise or lower the deck. False when installOrionCwDeck() has not run.
 bool setOrionCwDeckVisible(bool on);
 
+class OrionCwWindow;
+// The CW window, built if it is not yet (not shown): the contest deck keys
+// through it. Null before installOrionCwWindow() has run.
+OrionCwWindow* ensureOrionCwWindow();
+
 // True while the operator wants the fork's CW window instead of AetherSDR's
 // CWX panel (fork rule 2's CW exception; setting OrionCw/replaceCwx,
 // default on). MainWindow asks before it builds the CWX panel.
