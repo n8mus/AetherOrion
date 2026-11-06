@@ -148,6 +148,8 @@ else()
         src/gui/orion/OrionCwWindow.h
         src/gui/orion/OrionCwDeck.cpp
         src/gui/orion/OrionCwDeck.h
+        src/gui/orion/OrionDeckArrows.cpp
+        src/gui/orion/OrionDeckArrows.h
         src/gui/orion/OrionDeckStyle.h
         src/gui/orion/OrionRotorApplet.cpp
         src/gui/orion/OrionRotorApplet.h

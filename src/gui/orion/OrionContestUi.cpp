@@ -21,6 +21,8 @@
 #include "gui/orion/OrionContestWindow.h"
 #include "gui/orion/OrionCwUi.h"
 #include "gui/orion/OrionCwWindow.h"
+#include "gui/orion/OrionDeckArrows.h"
+#include "core/backends/orion/log/LogbookIndex.h"
 #include "gui/orion/OrionLogbookUi.h"
 #include "gui/orion/OrionRotorApplet.h"
 #include "core/backends/orion/log/OrionLogbook.h"
@@ -223,19 +225,31 @@ void installOrionContest(QMainWindow* window, QMenu* menu, RadioModel* model,
         QObject::connect(deck, &ContestDeck::callParked, window, [say](const QString& call, qint64 hz) {
             say(QObject::tr("%1 left at %2 kHz").arg(call).arg(hz / 1000.0, 0, 'f', 1), 4000);
         });
-        // ←/→: the next workable spot up or down the band (dupes and zero
-        // points skipped), the slice tunes there, the call lands.
+        // ←/→: the next workable spot up or down THIS band (dupes and zero
+        // points skipped, other bands left alone), the slice tunes there,
+        // the call lands.
         QObject::connect(deck, &ContestDeck::walkSpots, window, [=](int dir) {
             SliceModel* s = activeSlice ? activeSlice() : nullptr;
             if (!s || !model) return;
+            const QString band =
+                orion::logbook::LogbookIndex::bandForHz(qint64(std::llround(s->frequency() * 1e6)));
             std::vector<const SpotData*> spots;
+            int onBand = 0;
             for (auto it = model->spotModel().spots().cbegin();
                  it != model->spotModel().spots().cend(); ++it) {
                 if (it->rxFreqMhz <= 0.0 || it->callsign.isEmpty()) continue;
-                const char cls = deck->classifySpot(it->callsign,
-                                                    qint64(std::llround(it->rxFreqMhz * 1e6)));
+                const qint64 hz = qint64(std::llround(it->rxFreqMhz * 1e6));
+                if (orion::logbook::LogbookIndex::bandForHz(hz) != band) continue;
+                ++onBand;
+                const char cls = deck->classifySpot(it->callsign, hz);
                 if (cls == 'W' || cls == 'Z') continue;
                 spots.push_back(&*it);
+            }
+            if (spots.empty()) {
+                say(onBand == 0 ? QObject::tr("no spots on %1 to walk").arg(band)
+                                : QObject::tr("no new spot on %1 (grey = dupe or zero points, skipped)")
+                                      .arg(band), 4000);
+                return;
             }
             std::sort(spots.begin(), spots.end(), [](const SpotData* a, const SpotData* b) {
                 return a->rxFreqMhz < b->rxFreqMhz;
@@ -296,6 +310,13 @@ void installOrionContest(QMainWindow* window, QMenu* menu, RadioModel* model,
 
         auto* dock = new QDockWidget(window);
         dock->setObjectName(QStringLiteral("orionContestDeckDock"));
+        // The arrows from anywhere in the main window while the deck is up
+        // (the pan included), as the console had it.
+        auto* arrows = new orion::DeckArrowFilter(window, [deck](int dir) {
+            emit deck->walkSpots(dir);
+        }, deck);
+        QObject::connect(dock, &QDockWidget::visibilityChanged, arrows,
+                         &orion::DeckArrowFilter::setActive);
         dock->setTitleBarWidget(new QWidget(dock));
         dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
         dock->setAllowedAreas(Qt::BottomDockWidgetArea);

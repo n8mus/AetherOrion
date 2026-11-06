@@ -23,6 +23,7 @@
 #include "gui/AppletPanel.h"
 #include "gui/orion/OrionCwDeck.h"
 #include "gui/orion/OrionCwWindow.h"
+#include "gui/orion/OrionDeckArrows.h"
 #include "gui/orion/OrionRotorApplet.h"
 #ifdef AETHER_ORION_LOGBOOK
 #include "core/backends/orion/log/OrionLogbook.h"
@@ -325,7 +326,7 @@ void installOrionCwDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
                 if (it->rxFreqMhz > 0.0 && !it->callsign.isEmpty()) spots.push_back(&*it);
             }
             if (spots.empty()) {
-                say(QObject::tr("no spots on the map"), 2000);
+                say(QObject::tr("no spots on the map to walk"), 3000);
                 return;
             }
             std::sort(spots.begin(), spots.end(), [](const SpotData* a, const SpotData* b) {
@@ -369,6 +370,12 @@ void installOrionCwDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
         // closable by itself — the menu item is the switch.
         auto* dock = new QDockWidget(window);
         dock->setObjectName(QStringLiteral("orionCwDeckDock"));
+        // The arrows from anywhere in the main window while the deck is up.
+        auto* arrows = new orion::DeckArrowFilter(window, [d](int dir) {
+            emit d->walkSpots(dir);
+        }, d);
+        QObject::connect(dock, &QDockWidget::visibilityChanged, arrows,
+                         &orion::DeckArrowFilter::setActive);
         dock->setTitleBarWidget(new QWidget(dock));
         dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
         dock->setAllowedAreas(Qt::BottomDockWidgetArea);
