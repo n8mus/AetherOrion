@@ -86,7 +86,10 @@ bool setOrionContestDeckVisible(bool on)
 
 QColor orionContestSpotColour(const QString& call, double freqMhz)
 {
-    if (!g_deck || !g_deck->contestActive()) {
+    // Contest colours only while contest mode is ON (the deck up), as the
+    // console had it: with the deck away the map shows its usual colours,
+    // the skimmer's violet included.
+    if (!g_deck || !g_deck->contestActive() || !g_dock || !g_dock->isVisible()) {
         return {};
     }
     switch (g_deck->classifySpot(call, qint64(std::llround(freqMhz * 1e6)))) {
@@ -132,6 +135,19 @@ void installOrionContest(QMainWindow* window, QMenu* menu, RadioModel* model,
     const auto say = [window](const QString& text, int ms) {
         if (window->statusBar()) window->statusBar()->showMessage(text, ms);
     };
+    // The console's SPOTS -> Clear spots: every spot off the map at once
+    // (cluster, RBN, skimmer, parked). SpotHub's own Clear is three clicks
+    // away and the map fills faster than that during a contest.
+    auto* clearAct = menu->addAction(QObject::tr("Clear spots"));
+    clearAct->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Backspace")));
+    clearAct->setToolTip(QObject::tr("Remove every spot from the band map now. New spots "
+                                     "keep arriving while a feed is connected."));
+    QObject::connect(clearAct, &QAction::triggered, window, [model, say] {
+        if (!model) return;
+        const int n = model->spotModel().spots().size();
+        model->spotModel().clear();
+        say(QObject::tr("%1 spot(s) cleared").arg(n), 3000);
+    });
     const auto rigHz = [activeSlice]() -> qint64 {
         SliceModel* s = activeSlice ? activeSlice() : nullptr;
         return s ? qint64(std::llround(s->frequency() * 1e6)) : 0;
