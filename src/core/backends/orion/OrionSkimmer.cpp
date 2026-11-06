@@ -1,6 +1,7 @@
 #include "core/backends/orion/OrionSkimmer.h"
 
 #include "core/CtyDatParser.h"
+#include "core/backends/orion/MasterScp.h"
 #include "core/backends/orion/OrionSkimmerFeed.h"
 #include "core/backends/orion/skimmer/SkimServer.h"
 #include "core/backends/orion/skimmer/SkimmerEngine.h"
@@ -18,37 +19,6 @@ Q_DECLARE_LOGGING_CATEGORY(lcOrion)
 
 namespace AetherSDR::orion {
 
-namespace {
-
-// MASTER.SCP, as the console loads it: cqrlog's copy, then the system one.
-QSet<QString> loadMasterScp(const QString& preferred)
-{
-    QSet<QString> out;
-    QStringList paths;
-    if (!preferred.isEmpty()) {
-        paths << preferred;
-    } else {
-        paths << QDir::homePath() + QStringLiteral("/.config/cqrlog/MASTER.SCP")
-              << QStringLiteral("/usr/share/cqrlog/ctyfiles/MASTER.SCP");
-    }
-    for (const QString& p : paths) {
-        QFile f(p);
-        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            continue;
-        }
-        while (!f.atEnd()) {
-            const QByteArray line = f.readLine().trimmed();
-            if (line.isEmpty() || line.startsWith('#')) {
-                continue;
-            }
-            out.insert(QString::fromLatin1(line).toUpper());
-        }
-        break;
-    }
-    return out;
-}
-
-}  // namespace
 
 OrionSkimmer::OrionSkimmer(double inputRate, const Settings& settings, QObject* parent)
     : QObject(parent)

@@ -40,6 +40,8 @@ else()
     # CW skimmer (step 8), ported from the Orion console: a bank of CW decoders
     # fed with the RSP2's raw IQ, and a DX-cluster telnet server on :7300.
     target_sources(aethercore PRIVATE
+        src/core/backends/orion/MasterScp.cpp
+        src/core/backends/orion/MasterScp.h
         src/core/backends/orion/skimmer/CwDecoder.cpp
         src/core/backends/orion/skimmer/CwDecoder.h
         src/core/backends/orion/skimmer/FldigiCwEngine.cpp

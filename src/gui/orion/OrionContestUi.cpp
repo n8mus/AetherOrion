@@ -13,6 +13,7 @@
 #include <cmath>
 #include <vector>
 
+#include "core/backends/orion/MasterScp.h"
 #include "core/backends/orion/contest/ContestDb.h"
 #include "core/backends/orion/contest/CtyLookup.h"
 #include "gui/AppletPanel.h"
@@ -180,6 +181,16 @@ void installOrionContest(QMainWindow* window, QMenu* menu, RadioModel* model,
         auto* callbook = new OrionContestCallbook(window);
         auto* deck = new ContestDeck(d, &cty(), cw, rotor, callbook, window);
         g_deck = deck;
+        // Super check partial and the practice caller pool: MASTER.SCP, the
+        // same file the skimmer checks its finds against.
+        {
+            const QSet<QString> scp = orion::loadMasterScp();
+            deck->setMasterScp(scp);
+            if (scp.isEmpty()) {
+                say(QObject::tr("No MASTER.SCP found (cqrlog's copy or /usr/share/cqrlog/"
+                                "ctyfiles): super check and practice have no call pool"), 8000);
+            }
+        }
 
         QObject::connect(deck, &ContestDeck::openManagerRequested, window, openManager);
         QObject::connect(deck, &ContestDeck::spotDxRequested, window,
