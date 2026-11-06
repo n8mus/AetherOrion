@@ -1755,7 +1755,14 @@ void OrionBackend::setTxSlice(int sliceId)
     if (!rx || !m_connected) {
         return;
     }
-    const char tx = *rx == Rx::Main ? 'A' : 'B';
+    setTxVfo(*rx == Rx::Main ? 'A' : 'B', /*park=*/true);
+}
+
+void OrionBackend::setTxVfo(char tx, bool park)
+{
+    if (!m_connected || (tx != 'A' && tx != 'B')) {
+        return;
+    }
     if (m_txVfo == tx && !m_pendingTxVfo) {
         return;
     }
@@ -1766,7 +1773,7 @@ void OrionBackend::setTxSlice(int sliceId)
     // The operator's split habit: TX onto B parks B just above A (1 kHz in
     // CW, 5 kHz in voice) so he can tune it onto a clear spot; unless B is
     // locked. No mode is sent: the radio's menu copies it to B.
-    if (newlyOnB && !m_vfoLocked[1].value_or(false) && m_rx[0].hz) {
+    if (park && newlyOnB && !m_vfoLocked[1].value_or(false) && m_rx[0].hz) {
         const Mode mode = m_rx[0].mode.value_or(Mode::Usb);
         const qint64 offset = (mode == Mode::Cw || mode == Mode::Cwl) ? kSplitParkCwHz
                                                                       : kSplitParkVoiceHz;
@@ -2817,6 +2824,23 @@ void OrionBackend::setCwSpeed(int wpm)
 void OrionBackend::invokeExtension(const QString& ns, const QString& verb,
                                    quint64 requestId, const QVariant& arg)
 {
+    // SO2V (the contest deck): the transmitter onto B for a pounce WITHOUT
+    // parking B above A (B is on the station), and back onto A after.
+    // {"vfo": "A"|"B"}. Nothing here keys.
+    if (ns == QLatin1String("orion") && verb == QLatin1String("so2v.tx.set")) {
+        const QString vfo = arg.toMap().value(QStringLiteral("vfo")).toString().toUpper();
+        if (!m_connected || (vfo != QLatin1String("A") && vfo != QLatin1String("B"))) {
+            if (requestId != 0) {
+                emit extensionError(requestId, tr("so2v.tx.set needs vfo A or B on a connected radio"));
+            }
+            return;
+        }
+        setTxVfo(vfo.at(0).toLatin1(), /*park=*/false);
+        if (requestId != 0) {
+            emit extensionResult(requestId, true);
+        }
+        return;
+    }
     // The radio's phones/speaker routing (*UC), for the Radio Setup page.
     // Each of left/right/speaker is "M", "S" or "B".
     if (ns == QLatin1String("orion") && verb == QLatin1String("audio.routing.get")) {

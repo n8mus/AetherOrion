@@ -84,9 +84,11 @@ New files that upstream does not have (no merge risk):
   `OrionContestHost` for the console's rotor link and QRZ lookup, the CW
   window as the keyer front, and `OrionContestSettings.h` mapping its
   QSettings keys onto AppSettings), and `OrionContestUi` (the Tools items,
-  the bottom dock, the spot walk, the call frame, the spot colours). Not
-  wired on this radio yet: phone MOX from the deck, SO2V's second ear and
-  the TX move to B, parking an abandoned call as a local spot.
+  the bottom dock, the spot walk, the call frame, the spot colours, SO2V's
+  ears and the pounce through the backend's `so2v.tx.set` verb, phone MOX
+  through the transmit model, an abandoned call parked as a local spot).
+  Not here yet: a second CW reader on VFO B for SO2V (one reader, on the
+  active slice).
 - `src/gui/orion/OrionCwDeck.cpp/.h` and `src/gui/orion/OrionDeckStyle.h` (the
   console's CW deck, src/cw/CwDeck and src/ui/DeckStyle.h, on the fork's
   pieces: the CW window is the single keyer front, the logbook's index and

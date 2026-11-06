@@ -478,6 +478,26 @@ int main(int argc, char** argv)
     }
     check(!movedB, "moving TX back to A does not touch B");
 
+    std::printf("-- SO2V pounce: TX onto B without parking B (so2v.tx.set)\n");
+    {
+        radio.sets.clear();
+        const qint64 bBefore = radio.bfHz;
+        QVariantMap vfo;
+        vfo.insert(QStringLiteral("vfo"), QStringLiteral("B"));
+        backend.invokeExtension(QStringLiteral("orion"), QStringLiteral("so2v.tx.set"), 0, vfo);
+        check(waitFor([&] { return radio.sets.contains("*KVABB"); }, 1000),
+              "the transmitter goes onto B");
+        bool parked = false;
+        for (const QByteArray& s2 : radio.sets) parked = parked || s2.startsWith("*BF");
+        check(!parked && radio.bfHz == bBefore, "and B stays where it was (no park)");
+        check(waitFor([&] { return slices[1].txSlice == true; }, 2000), "the TX badge is on B");
+        radio.sets.clear();
+        vfo.insert(QStringLiteral("vfo"), QStringLiteral("A"));
+        backend.invokeExtension(QStringLiteral("orion"), QStringLiteral("so2v.tx.set"), 0, vfo);
+        check(waitFor([&] { return radio.sets.contains("*KVABA"); }, 1000), "and back onto A");
+        check(waitFor([&] { return slices[0].txSlice == true; }, 2000), "the TX badge is on A");
+    }
+
     std::printf("-- a locked B is never parked or tuned\n");
     radio.bLocked = true;
     check(waitFor([&] { return slices[1].locked == true; }, 10000), "B's front-panel lock is read within a poll lap");

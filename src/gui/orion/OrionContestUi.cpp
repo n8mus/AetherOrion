@@ -1,7 +1,9 @@
 #include "gui/orion/OrionContestUi.h"
 
 #include <QAction>
+#include <QDateTime>
 #include <QDockWidget>
+#include <QMap>
 #include <QKeySequence>
 #include <QMainWindow>
 #include <QMenu>
@@ -13,6 +15,8 @@
 #include <cmath>
 #include <vector>
 
+#include "core/AppSettings.h"
+#include "core/backends/IRadioBackend.h"
 #include "core/backends/orion/MasterScp.h"
 #include "core/backends/orion/contest/ContestDb.h"
 #include "core/backends/orion/contest/CtyLookup.h"
@@ -28,6 +32,7 @@
 #include "gui/orion/OrionRotorApplet.h"
 #include "core/backends/orion/log/OrionLogbook.h"
 #include "models/CwRxModel.h"
+#include "models/TransmitModel.h"
 #include "models/RadioModel.h"
 #include "models/SliceModel.h"
 #include "models/SpotModel.h"
@@ -201,11 +206,12 @@ void installOrionContest(QMainWindow* window, QMenu* menu, RadioModel* model,
                              }
                              spot(call, hz / 1e6, QString());
                          });
-        // Phone contests: Space in the entry is the console's MOX toggle.
-        // AetherSDR's transmit is the TX coordinator's; not wired here yet.
-        QObject::connect(deck, &ContestDeck::pttToggleRequested, window, [say] {
-            say(QObject::tr("Space = MOX is not wired on this radio yet; use MOX on the panel"),
-                4000);
+        // Phone contests: Space in the entry is the console's MOX toggle,
+        // through AetherSDR's own transmit model (the MOX button's path).
+        QObject::connect(deck, &ContestDeck::pttToggleRequested, window, [model] {
+            if (model && model->isConnected()) {
+                model->transmitModel().setMox(!model->transmitModel().isMox());
+            }
         });
         // VFO B: the second slice's dial. SO2V's ears and the transmitter
         // move are the host's; a SUB take tunes A onto B's station.
@@ -225,16 +231,93 @@ void installOrionContest(QMainWindow* window, QMenu* menu, RadioModel* model,
                              say(QObject::tr("SUB: %1 — A tuned to %2 kHz")
                                      .arg(call).arg(bMhz * 1000.0, 0, 'f', 1), 6000);
                          });
-        QObject::connect(deck, &ContestDeck::so2vChanged, window, [say](bool on) {
-            if (on) say(QObject::tr("SO2V: the arrows walk VFO B; the second ear and the "
-                                    "TX move are not wired on this radio yet"), 6000);
+        // SO2V on: A in the left ear, B in the right (the previous routing
+        // remembered and put back on off), VFO B walked by the arrows while
+        // RUN is lit. The transmitter never leaves on B: the deck emits
+        // pounceDone before so2vChanged(false). B's own CW reader is not
+        // here yet (one reader, on the active slice).
+        auto prevRouting = std::make_shared<QVariantMap>();
+        const auto orion = [model] {
+            return model && model->isConnected()
+                   && model->backendDeclaresExtension(QStringLiteral("orion"));
+        };
+        QObject::connect(deck, &ContestDeck::so2vChanged, window, [=](bool on) {
+            if (!orion()) {
+                say(QObject::tr("SO2V: no Orion connected"), 4000);
+                return;
+            }
+            if (on) {
+                static quint64 reqId = 0x534F3256ull;   // "SO2V"
+                const quint64 id = ++reqId;
+                auto* guard = new QObject(window);
+                QObject::connect(model->backend(), &IRadioBackend::extensionResult, guard,
+                                 [=](quint64 rid, const QVariant& result) {
+                                     if (rid != id) return;
+                                     *prevRouting = result.toMap();
+                                     guard->deleteLater();
+                                 });
+                model->invokeBackendExtension(QStringLiteral("orion"),
+                                              QStringLiteral("audio.routing.get"), id);
+                QVariantMap ears;
+                ears.insert(QStringLiteral("left"), QStringLiteral("M"));
+                ears.insert(QStringLiteral("right"), QStringLiteral("S"));
+                model->invokeBackendExtension(QStringLiteral("orion"),
+                                              QStringLiteral("audio.routing.set"), 0, ears);
+                say(QObject::tr("SO2V on: A in the left ear, B in the right — ←/→ walk B "
+                                "while RUN is lit, Enter in SUB pounces (TX on B)"), 6000);
+            } else {
+                if (!prevRouting->isEmpty()) {
+                    model->invokeBackendExtension(QStringLiteral("orion"),
+                                                  QStringLiteral("audio.routing.set"), 0,
+                                                  *prevRouting);
+                    prevRouting->clear();
+                }
+                say(QObject::tr("SO2V off"), 3000);
+            }
         });
-        QObject::connect(deck, &ContestDeck::subPounceRequested, window, [say](const QString& call) {
-            say(QObject::tr("SO2V pounce (TX on B) is not wired on this radio yet — %1").arg(call),
-                6000);
+        // Pounce: the transmitter onto B for this QSO (A keeps the run, B
+        // stays on the station: no park); pounceDone puts it back on A.
+        QObject::connect(deck, &ContestDeck::subPounceRequested, window, [=](const QString& call) {
+            if (!orion()) return;
+            const QList<SliceModel*> slices = model->slices();
+            if (slices.size() > 1 && slices.at(1)->isLocked()) {
+                say(QObject::tr("SO2V: pounce blocked — VFO B is LOCKED"), 6000);
+                return;
+            }
+            QVariantMap vfo;
+            vfo.insert(QStringLiteral("vfo"), QStringLiteral("B"));
+            model->invokeBackendExtension(QStringLiteral("orion"), QStringLiteral("so2v.tx.set"),
+                                          0, vfo);
+            const double bMhz = slices.size() > 1 ? slices.at(1)->frequency() : 0.0;
+            say(QObject::tr("SO2V: TX on B — work %1 on %2 kHz, A holds the run")
+                    .arg(call).arg(bMhz * 1000.0, 0, 'f', 1), 6000);
         });
-        QObject::connect(deck, &ContestDeck::callParked, window, [say](const QString& call, qint64 hz) {
-            say(QObject::tr("%1 left at %2 kHz").arg(call).arg(hz / 1000.0, 0, 'f', 1), 4000);
+        QObject::connect(deck, &ContestDeck::pounceDone, window, [=] {
+            if (!orion()) return;
+            QVariantMap vfo;
+            vfo.insert(QStringLiteral("vfo"), QStringLiteral("A"));
+            model->invokeBackendExtension(QStringLiteral("orion"), QStringLiteral("so2v.tx.set"),
+                                          0, vfo);
+            say(QObject::tr("SO2V: TX back on A"), 4000);
+        });
+        // A typed, unworked call abandoned by turning the knob is parked on
+        // the band map as a local spot (N1MM's "QSYing wipes the call and
+        // spots it"), through the spot model the cluster feeds.
+        QObject::connect(deck, &ContestDeck::callParked, window, [=](const QString& call, qint64 hz) {
+            if (!model) return;
+            static int nextParkedId = -700000;   // its own range, below the passive ids
+            QMap<QString, QString> kvs;
+            kvs[QStringLiteral("callsign")] = call;
+            kvs[QStringLiteral("rx_freq")] = QString::number(hz / 1e6, 'f', 6);
+            kvs[QStringLiteral("tx_freq")] = QString::number(hz / 1e6, 'f', 6);
+            kvs[QStringLiteral("source")] = QStringLiteral("Parked");
+            kvs[QStringLiteral("spotter_callsign")] =
+                AppSettings::instance().value(QStringLiteral("StationCallsign")).toString();
+            kvs[QStringLiteral("lifetime_seconds")] = QString::number(30 * 60);
+            kvs[QStringLiteral("timestamp")] = QString::number(QDateTime::currentSecsSinceEpoch());
+            kvs[QStringLiteral("color")] = QStringLiteral("#FFE0B45D");
+            model->spotModel().applySpotStatus(nextParkedId--, kvs);
+            say(QObject::tr("%1 parked at %2 kHz").arg(call).arg(hz / 1000.0, 0, 'f', 1), 4000);
         });
         // ←/→: the next workable spot up or down THIS band (dupes and zero
         // points skipped, other bands left alone), the slice tunes there,
@@ -242,6 +325,15 @@ void installOrionContest(QMainWindow* window, QMenu* menu, RadioModel* model,
         QObject::connect(deck, &ContestDeck::walkSpots, window, [=](int dir) {
             SliceModel* s = activeSlice ? activeSlice() : nullptr;
             if (!s || !model) return;
+            // SO2V + RUN: the arrows hunt with VFO B, fenced to A's band; the
+            // pan never moves and the landing goes to the SUB line.
+            const bool walkB = deck->arrowsWalkB();
+            const QList<SliceModel*> slices = model->slices();
+            SliceModel* b = slices.size() > 1 ? slices.at(1) : nullptr;
+            if (walkB && !b) {
+                say(QObject::tr("SO2V: no VFO B slice to walk"), 4000);
+                return;
+            }
             const QString band =
                 orion::logbook::LogbookIndex::bandForHz(qint64(std::llround(s->frequency() * 1e6)));
             std::vector<const SpotData*> spots;
@@ -265,7 +357,11 @@ void installOrionContest(QMainWindow* window, QMenu* menu, RadioModel* model,
             std::sort(spots.begin(), spots.end(), [](const SpotData* a, const SpotData* b) {
                 return a->rxFreqMhz < b->rxFreqMhz;
             });
-            const double here = s->frequency();
+            // B on another band is brought back to this band's first spot.
+            const double bHere = b ? b->frequency() : 0.0;
+            const bool bOnBand = b && orion::logbook::LogbookIndex::bandForHz(
+                                          qint64(std::llround(bHere * 1e6))) == band;
+            const double here = walkB ? (bOnBand ? bHere : (dir > 0 ? 0.0 : 1e9)) : s->frequency();
             const double eps = 0.0000201;
             const SpotData* pick = nullptr;
             if (dir > 0) {
@@ -275,12 +371,24 @@ void installOrionContest(QMainWindow* window, QMenu* menu, RadioModel* model,
                     if ((*it)->rxFreqMhz < here - eps) { pick = *it; break; }
             }
             if (!pick) {
-                say(QObject::tr("no new spot %1 (grey = dupe or zero points, skipped)")
-                        .arg(dir > 0 ? QObject::tr("above") : QObject::tr("below")), 4000);
+                say(QObject::tr("no new spot %1 on %2 (grey = dupe or zero points, skipped)")
+                        .arg(dir > 0 ? QObject::tr("above") : QObject::tr("below"), band), 4000);
+                return;
+            }
+            const qint64 pickHz = qint64(std::llround(pick->rxFreqMhz * 1e6));
+            if (walkB) {
+                if (b->isLocked()) {
+                    say(QObject::tr("VFO B is LOCKED"), 4000);
+                    return;
+                }
+                b->setFrequency(pick->rxFreqMhz);
+                deck->setSubCall(pick->callsign, pickHz);
+                say(QObject::tr("VFO B -> %1 %2 kHz").arg(pick->callsign).arg(pickHz / 1000.0, 0, 'f', 1),
+                    4000);
                 return;
             }
             s->setFrequency(pick->rxFreqMhz);
-            deck->prefillCall(pick->callsign, qint64(std::llround(pick->rxFreqMhz * 1e6)));
+            deck->prefillCall(pick->callsign, pickHz);
         });
         if (decoder) {
             QObject::connect(decoder, &CwRxModel::textDecoded, deck,

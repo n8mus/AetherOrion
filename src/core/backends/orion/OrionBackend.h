@@ -141,6 +141,10 @@ public:
     void setPanAttenuator(const QString& panId, int step) override;
     void setActiveSlice(int sliceId) override;
     void setTxSlice(int sliceId) override;
+    // The transmitter's VFO. `park` is the operator's split habit (TX onto
+    // B parks B just above A); the contest deck's SO2V pounce passes false,
+    // because B is already on the station being pounced.
+    void setTxVfo(char tx, bool park);
     ReceiveDispatch requestSliceControl(int sliceId, const SliceControlRequest& request) override;
     ReceiveDispatch requestSliceAudio(int sliceId, const SliceAudioRequest& request) override;
     void setSliceAudioMute(int sliceId, bool mute) override;
