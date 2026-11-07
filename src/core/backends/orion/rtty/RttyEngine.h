@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Ported from the N8EM Orion console (src/rtty/RttyEngine.h) for the AetherSDR
-// Orion fork (RTTY stage 1): namespace and include paths only.
+// Orion fork. Stage 1: namespace, include paths, the sample rate. Stage 3:
+// the console's pacat transmit path is gone; the modulator is pulled by
+// the host's own TX audio producer (gui/orion/OrionRttyTx).
 #pragma once
 #include "core/backends/orion/rtty/RttyDemod.h"
 #include "core/backends/orion/rtty/RttyMod.h"
-#include <QElapsedTimer>
 #include <QObject>
 #include <QString>
-#include <vector>
-
-class QProcess;
-class QTimer;
 
 namespace AetherSDR::orion::rtty {
 
@@ -22,16 +19,16 @@ namespace AetherSDR::orion::rtty {
 //              CW copy (operator's finding — the SDR IQ loses on air).
 //              Decoded text out in lines; calls heard in CQ / DE patterns
 //              out as `heard` for the band map.
-//   transmit — RttyMod -> pacat into the SignaLink (the DVR's path): AFSK
-//              on LSB, mark 2125 / space 2295, 170 Hz shift, 45.45 baud.
-//              start() opens the stream and the modulator diddles until
-//              text arrives; end() lets the queue play out, adds a mark
-//              tail, waits for the pipe to drain and THEN emits txDrained
-//              — the main window drops PTT on that, never before (the
-//              RADE end-of-over pattern). abort() kills it now (Esc).
+//   transmit — RttyMod, pulled: AFSK on LSB, mark 2125 / space 2295,
+//              170 Hz shift, 45.45 baud. txBegin() arms the modulator
+//              (diddling until text arrives), the producer calls txRender()
+//              for each block it pushes down the host's TX audio route,
+//              end() lets the queue play out and adds a mark tail, after
+//              which txRender() returns false and the producer drops PTT
+//              — never before. txAbort() stops it now (Esc).
 //
-// The engine keys nothing itself: PTT, DIG and the radio's mode are the
-// main window's, as everywhere else.
+// The engine keys nothing itself: PTT and the radio's mode are the
+// producer's, as everywhere else.
 class RttyEngine : public QObject {
     Q_OBJECT
 public:
@@ -80,11 +77,14 @@ public:
     void setMyCall(const QString& c) { myCall_ = c.trimmed().toUpper(); }
 
     // ---- transmit ----
-    bool start(const QString& sinkNode);      // pacat up, diddling
+    void txBegin();                           // arm: tones where we receive, diddle
     void send(const QString& text);           // queue text (keyed as it comes)
-    void end();                               // play out, tail, then txDrained
-    void abort();                             // now
-    bool running() const;
+    void end();                               // play out, tail, then txRender() -> false
+    void txAbort();                           // now
+    // Fill `out` with n mono samples of the over. False when the over is
+    // complete (ended, text out, tail played): nothing was written.
+    bool txRender(float* out, int n);
+    bool txActive() const { return txOn_; }
     bool ending() const { return ending_; }
     size_t pending() const { return mod_.pending(); }
 
@@ -93,15 +93,11 @@ signals:
     // A call seen in "CQ ... DE CALL" / "CALL1 DE CALL2": the sender, and
     // whether CALL1 was us.
     void heard(const QString& call, bool toMe);
-    void txDrained();                         // the last bit is on the air
-    void txFailed(const QString& why);
     void txProgress(int pendingChars);        // for the deck's "sent" line
 
 private:
     void onChar(char c);
     void scanLine();
-    void pace();                              // timer: keep pacat fed
-    void stopProcess();
 
     Settings s_;
     int rate_ = 48000;
@@ -114,14 +110,9 @@ private:
     QString lastHeard_;
     qint64 lastHeardSecs_ = 0;
 
-    QProcess* play_ = nullptr;
-    QTimer* pacer_ = nullptr;
-    QElapsedTimer clock_;
-    qint64 written_ = 0;                      // samples handed to pacat
+    bool txOn_ = false;
     bool ending_ = false, tailDone_ = false;
     qint64 tailSamples_ = 0;
-    std::vector<float> fbuf_;
-    std::vector<int16_t> sbuf_;
 };
 
 }  // namespace AetherSDR::orion::rtty

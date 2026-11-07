@@ -1187,7 +1187,7 @@ void MainWindow::buildMenuBar()
                                          .arg(freqMhz, 0, 'f', 6), 4000);
         });
     // N8EM fork: the RTTY deck under the spectrum (FORK-NOTES.md).
-    installOrionRttyDeck(this, toolsMenu, &m_radioModel,
+    installOrionRttyDeck(this, toolsMenu, &m_radioModel, m_audio,
         [this] { return activeSlice(); },
         [this](const QString& call, double freqMhz, const QString& comment) {
             if (!m_dxCluster || !m_dxCluster->isConnected()) {

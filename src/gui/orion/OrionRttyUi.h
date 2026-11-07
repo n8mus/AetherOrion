@@ -13,6 +13,7 @@ class QMenu;
 
 namespace AetherSDR {
 
+class AudioEngine;
 class RadioModel;
 class SliceModel;
 
@@ -20,11 +21,13 @@ class SliceModel;
 // dock under the spectrum, the slot the CW and contest decks use (the
 // three are exclusive). Receive: the modem reads the active slice's audio
 // through the same decoder tap AetherSDR's own RTTY reader uses, with the
-// sideband sense from the slice's mode. Transmit is not wired yet: the
-// deck's F-keys and Enter say so on the status bar. `activeSlice` is the
-// dial and mode; `spot` sends a call to the cluster.
+// sideband sense from the slice's mode. Transmit: an F-key or Enter keys
+// the radio through the producer PTT API and the modulator's AFSK goes
+// down the host's modem audio route (gui/orion/OrionRttyTx), on the PC mic
+// input only. `activeSlice` is the dial and mode; `spot` sends a call to
+// the cluster.
 void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
-                          std::function<SliceModel*()> activeSlice,
+                          AudioEngine* audio, std::function<SliceModel*()> activeSlice,
                           std::function<void(const QString&, double, const QString&)> spot = {});
 
 // Raise or lower the deck. False when installOrionRttyDeck() has not run.

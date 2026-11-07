@@ -145,11 +145,14 @@ else()
             src/gui/orion/OrionMultWindow.h
             src/gui/orion/OrionQtcDialog.cpp
             src/gui/orion/OrionQtcDialog.h)
-        # RTTY deck (stage 2): the console's RTTY panel under the spectrum,
-        # reading the slice's audio through the decoder tap. Receive only.
+        # RTTY deck (stage 2) and its transmit producer (stage 3): the
+        # console's RTTY panel under the spectrum, reading the slice's audio
+        # through the decoder tap, sending down the host's modem audio route.
         target_sources(AetherSDR PRIVATE
             src/gui/orion/OrionRttyDeck.cpp
             src/gui/orion/OrionRttyDeck.h
+            src/gui/orion/OrionRttyTx.cpp
+            src/gui/orion/OrionRttyTx.h
             src/gui/orion/OrionRttyUi.cpp
             src/gui/orion/OrionRttyUi.h)
         message(STATUS "Ten-Tec Orion ... logbook and contest core enabled (Qt6::Sql)")

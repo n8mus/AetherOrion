@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Ported from the N8EM Orion console (src/rtty/RttyEngine.cpp) for the AetherSDR
-// Orion fork (RTTY stage 1): namespace and include paths only.
+// Orion fork. Stage 1: namespace, include paths, the sample rate. Stage 3:
+// the pacat transmit path replaced by a pulled modulator (see the header).
 #include "core/backends/orion/rtty/RttyEngine.h"
 
 #include <QDateTime>
-#include <QProcess>
 #include <QRegularExpression>
 #include "core/AppSettings.h"
-#include <QTimer>
 #include <algorithm>
 #include <cmath>
 
@@ -16,7 +15,6 @@ namespace AetherSDR::orion::rtty {
 namespace {
 constexpr int kRate = 48000;
 
-constexpr int kLeadMs = 140;                  // audio queued ahead of the clock
 constexpr int kTailMs = 200;                  // mark after the last stop bit
 
 const QRegularExpression& callRe() {
@@ -62,7 +60,7 @@ RttyEngine::RttyEngine(int sampleRate, QObject* parent)
     apply(loadSettings());
 }
 
-RttyEngine::~RttyEngine() { stopProcess(); }
+RttyEngine::~RttyEngine() = default;
 
 void RttyEngine::apply(const Settings& s, bool save) {
     s_ = s;
@@ -152,14 +150,7 @@ void RttyEngine::scanLine() {
 
 // ---- transmit --------------------------------------------------------------
 
-bool RttyEngine::running() const {
-    return play_ && play_->state() != QProcess::NotRunning;
-}
-
-bool RttyEngine::start(const QString& sinkNode) {
-    if (running()) return true;
-    if (sinkNode.isEmpty()) { emit txFailed("no SignaLink playback device"); return false; }
-    stopProcess();
+void RttyEngine::txBegin() {
     mod_.clear();
     {
         // Transmit where we receive (fldigi's rule): the AFC's trim rides
@@ -168,36 +159,16 @@ bool RttyEngine::start(const QString& sinkNode) {
         const int mark = int(std::lround(effectiveMarkHz()));
         mp.markHz = mark;
         mp.spaceHz = mark + s_.shiftHz;
+        mp.diddle = s_.diddle;
         mod_.setParams(mp);
     }
     ending_ = tailDone_ = false;
     tailSamples_ = 0;
-    play_ = new QProcess(this);
-    play_->start("pacat", {"--playback", "--raw", "--format=s16le",
-                           QStringLiteral("--rate=%1").arg(rate_), "--channels=1",
-                           "--latency-msec=30", "--device=" + sinkNode});
-    if (!play_->waitForStarted(2000)) {
-        stopProcess();
-        emit txFailed("pacat would not start");
-        return false;
-    }
-    connect(play_, &QProcess::finished, this, [this](int code, QProcess::ExitStatus) {
-        if (play_ && !ending_) emit txFailed(QString("SignaLink playback ended (%1)").arg(code));
-    });
-    written_ = 0;
-    clock_.start();
-    if (!pacer_) {
-        pacer_ = new QTimer(this);
-        pacer_->setInterval(10);
-        connect(pacer_, &QTimer::timeout, this, &RttyEngine::pace);
-    }
-    pacer_->start();
-    pace();
-    return true;
+    txOn_ = true;
 }
 
 void RttyEngine::send(const QString& text) {
-    if (!running()) return;
+    if (!txOn_) return;
     if (ending_) {
         // Text before the over finished draining: the same over goes on.
         ending_ = tailDone_ = false;
@@ -211,71 +182,48 @@ void RttyEngine::send(const QString& text) {
 }
 
 void RttyEngine::end() {
-    if (!running()) return;
-    ending_ = true;                            // pace() finishes the job
+    if (!txOn_) return;
+    ending_ = true;                            // txRender() finishes the job
 }
 
-void RttyEngine::abort() {
+void RttyEngine::txAbort() {
     mod_.clear();
-    ending_ = true;
-    stopProcess();
+    ending_ = tailDone_ = false;
+    tailSamples_ = 0;
+    txOn_ = false;
+    emit txProgress(0);
 }
 
-void RttyEngine::stopProcess() {
-    if (pacer_) pacer_->stop();
-    if (!play_) return;
-    play_->disconnect(this);
-    play_->closeWriteChannel();
-    play_->kill();
-    play_->waitForFinished(300);
-    play_->deleteLater();
-    play_ = nullptr;
-}
-
-// Keep ~140 ms of audio queued past the wall clock: enough that a busy
-// GUI thread never starves pacat, little enough that abort() is quick
-// and the end of the over is on the air within a quarter second of the
-// last character.
-void RttyEngine::pace() {
-    if (!running()) return;
-    const qint64 due = clock_.elapsed() * rate_ / 1000 + kLeadMs * rate_ / 1000;
-    while (written_ < due) {
-        fbuf_.resize((rate_ / 50));
-        if (!ending_) {
-            mod_.render(fbuf_.data(), (rate_ / 50));
-        } else if (mod_.busy()) {
-            // Let the queued text finish; no diddle after it.
-            RttyMod::Params p = mod_.params();
-            if (p.diddle) { p.diddle = false; mod_.setParams(p); }
-            mod_.render(fbuf_.data(), (rate_ / 50));
-        } else if (!tailDone_) {
-            mod_.renderMark(fbuf_.data(), (rate_ / 50));
-            tailSamples_ += (rate_ / 50);
-            if (tailSamples_ >= kTailMs * rate_ / 1000) tailDone_ = true;
-        } else {
-            break;
-        }
-        sbuf_.resize((rate_ / 50));
-        for (int i = 0; i < (rate_ / 50); ++i)
-            sbuf_[i] = int16_t(std::lround(std::clamp(fbuf_[i], -1.0f, 1.0f) * 32000.0f));
-        play_->write(reinterpret_cast<const char*>(sbuf_.data()), (rate_ / 50) * 2);
-        written_ += (rate_ / 50);
-    }
-    if (ending_ && !mod_.busy()) {
-        emit txProgress(0);
-        // Everything is written: wait until the clock says it has played.
-        if (tailDone_ && clock_.elapsed() * rate_ / 1000 >= written_) {
-            RttyMod::Params p = mod_.params();
-            p.diddle = s_.diddle;
-            mod_.setParams(p);
-            tailSamples_ = 0;
-            stopProcess();
-            ending_ = false;
-            emit txDrained();
-        }
-    } else if (!ending_) {
+bool RttyEngine::txRender(float* out, int n) {
+    if (!txOn_ || n <= 0) return false;
+    if (!ending_) {
+        mod_.render(out, size_t(n));
         emit txProgress(int(mod_.pending()));
+        return true;
     }
+    if (mod_.busy()) {
+        // Let the queued text finish; no diddle after it.
+        RttyMod::Params p = mod_.params();
+        if (p.diddle) { p.diddle = false; mod_.setParams(p); }
+        mod_.render(out, size_t(n));
+        emit txProgress(int(mod_.pending()));
+        return true;
+    }
+    if (!tailDone_) {
+        mod_.renderMark(out, size_t(n));
+        tailSamples_ += n;
+        if (tailSamples_ >= qint64(kTailMs) * rate_ / 1000) tailDone_ = true;
+        emit txProgress(0);
+        return true;
+    }
+    // Everything is out: the producer drops PTT after its own drain.
+    RttyMod::Params p = mod_.params();
+    p.diddle = s_.diddle;
+    mod_.setParams(p);
+    tailSamples_ = 0;
+    ending_ = false;
+    txOn_ = false;
+    return false;
 }
 
 }  // namespace AetherSDR::orion::rtty

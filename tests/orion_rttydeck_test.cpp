@@ -105,6 +105,38 @@ int main(int argc, char** argv)
         check(sent.at(0).at(0).toString().contains(QStringLiteral("CQ CQ")), "the F1 text is the macro");
     }
 
+    // The pulled transmit side: an over rendered block by block decodes
+    // on a second engine, and the render ends after the tail.
+    {
+        RttyEngine rx(rate);
+        rx.apply(st, false);
+        rx.setRxEnabled(true);
+        QString heard;
+        QObject::connect(&rx, &RttyEngine::textDecoded, [&heard](const QString& t) { heard += t; });
+        RttyEngine txe(rate);
+        txe.apply(st, false);
+        check(!txe.txActive(), "engine idle before txBegin");
+        txe.txBegin();
+        check(txe.txActive(), "txBegin arms the modulator");
+        std::vector<float> blk(size_t(rate / 50));
+        // Two seconds of diddle, the text, then end(): the over must finish.
+        int blocks = 0;
+        bool sentText = false, finished = false;
+        for (; blocks < 50 * 60; ++blocks) {
+            if (blocks == 100) { txe.send(QStringLiteral("\r\nTEST DE N8EM N8EM K\r\n")); sentText = true; }
+            if (blocks == 101) txe.end();
+            if (!txe.txRender(blk.data(), int(blk.size()))) { finished = true; break; }
+            rx.feedAudio(blk.data(), int(blk.size()));
+        }
+        check(sentText && finished, "the over ends after the text and the tail");
+        check(blocks > 101 && blocks < 50 * 20, "the over took a plausible time (2..20 s)");
+        check(!txe.txActive(), "engine idle again after the over");
+        check(heard.contains(QStringLiteral("N8EM")), "the rendered over decodes on a second engine");
+        txe.txBegin();
+        txe.txAbort();
+        check(!txe.txActive() && !txe.txRender(blk.data(), int(blk.size())), "txAbort stops the render at once");
+    }
+
     std::printf("%s\n", g_failures ? "FAILED" : "all passed");
     return g_failures ? 1 : 0;
 }

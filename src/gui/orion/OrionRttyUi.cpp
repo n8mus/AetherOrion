@@ -28,6 +28,7 @@
 #include "gui/orion/OrionDeckArrows.h"
 #include "gui/orion/OrionLogbookUi.h"
 #include "gui/orion/OrionRttyDeck.h"
+#include "gui/orion/OrionRttyTx.h"
 #include "gui/orion/OrionRotorApplet.h"
 #include "core/backends/orion/contest/CtyLookup.h"
 #include "core/backends/orion/log/OrionLogbook.h"
@@ -43,6 +44,7 @@ using orion::contest::OrionContestCallbook;
 using orion::contest::OrionContestRotor;
 using orion::rtty::RttyDeck;
 using orion::rtty::RttyEngine;
+using orion::rtty::OrionRttyTx;
 
 namespace {
 QPointer<QDockWidget> g_dock;
@@ -74,7 +76,7 @@ bool setOrionRttyDeckVisible(bool on)
 }
 
 void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
-                          std::function<SliceModel*()> activeSlice,
+                          AudioEngine* audio, std::function<SliceModel*()> activeSlice,
                           std::function<void(const QString&, double, const QString&)> spot)
 {
     auto* act = menu->addAction(QObject::tr("RTTY panel"));
@@ -82,7 +84,8 @@ void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
     act->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Y")));
     act->setToolTip(QObject::tr("The RTTY deck under the spectrum: the console's modem reading "
                                 "the slice's audio, CALL/NAME/RST entry with LOG IT, F1-F12, "
-                                "a type-to-send pane. Transmit is not wired on this radio yet."));
+                                "a type-to-send pane. F-keys and Enter transmit through the SignaLink "
+                                "on the PC mic input."));
     g_deckAction = act;
 
     const auto say = [window](const QString& text, int ms) {
@@ -95,7 +98,8 @@ void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
 
     auto deck = std::make_shared<QPointer<RttyDeck>>();
     auto engine = std::make_shared<QPointer<RttyEngine>>();
-    auto audio = std::make_shared<std::unique_ptr<DecoderAudioModel>>();
+    auto rxAudio = std::make_shared<std::unique_ptr<DecoderAudioModel>>();
+    auto tx = std::make_shared<QPointer<OrionRttyTx>>();
 
     const auto build = [=] {
         if (*deck) return;
@@ -120,8 +124,8 @@ void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
 #endif
 
         // Receive: the active slice's audio, 24 kHz mono, into the demod.
-        *audio = std::make_unique<DecoderAudioModel>(*model, DecoderAudioModel::Consumer::Rtty);
-        QObject::connect(audio->get(), &DecoderAudioModel::pcmReady, eng,
+        *rxAudio = std::make_unique<DecoderAudioModel>(*model, DecoderAudioModel::Consumer::Rtty);
+        QObject::connect(rxAudio->get(), &DecoderAudioModel::pcmReady, eng,
                          [eng](const DecoderPcmBlock& block) {
                              if (!block.samples.isEmpty()) {
                                  eng->feedAudio(block.samples.constData(), block.samples.size());
@@ -165,16 +169,39 @@ void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
                              }
                              spot(call, hz / 1e6, QString());
                          });
-        // Transmit: stage 3 (the host's own TX audio path).
-        QObject::connect(d, &RttyDeck::sendRequested, window, [=](const QString&, bool) {
-            say(QObject::tr("RTTY transmit is not wired on this radio yet (receive only)"), 5000);
-            (*deck)->showTx(false);
+        // Transmit: the producer keys and paces; the deck only asks.
+        auto* xmit = new OrionRttyTx(model, audio, eng, window);
+        *tx = xmit;
+        QObject::connect(xmit, &OrionRttyTx::activeChanged, d, &RttyDeck::showTx);
+        QObject::connect(xmit, &OrionRttyTx::finished, window, [say](bool aborted, const QString& why) {
+            if (aborted) say(QObject::tr("RTTY: %1").arg(why), 6000);
+        });
+        const auto beginOver = [=]() -> bool {
+            if (xmit->active()) return true;
+            QString why;
+            if (!xmit->begin(activeSlice ? activeSlice() : nullptr, &why)) {
+                say(QObject::tr("RTTY TX: %1").arg(why), 6000);
+                return false;
+            }
+            return true;
+        };
+        // An F-key or Enter: one over, or more text into the one running;
+        // `hold` (the TX button down) keeps the key up after it.
+        QObject::connect(d, &RttyDeck::sendRequested, window, [=](const QString& text, bool hold) {
+            if (!beginOver()) return;
+            xmit->send(text);
+            if (!hold) xmit->end();
         });
         QObject::connect(d, &RttyDeck::txHoldChanged, window, [=](bool on) {
-            if (on) say(QObject::tr("RTTY transmit is not wired on this radio yet (receive only)"), 5000);
-            (*deck)->showTx(false);
+            if (on) {
+                beginOver();
+            } else if (xmit->active()) {
+                xmit->end();
+            }
         });
-        QObject::connect(d, &RttyDeck::abortRequested, window, [=] { (*deck)->showTx(false); });
+        QObject::connect(d, &RttyDeck::abortRequested, window, [=] {
+            if (xmit->active()) xmit->abort(QObject::tr("stopped by the operator"));
+        });
         // NARROW: 500 Hz on the tone pair, through the slice's filter.
         QObject::connect(d, &RttyDeck::narrowRequested, window, [=](bool on) {
             SliceModel* s = activeSlice ? activeSlice() : nullptr;
@@ -234,7 +261,7 @@ void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
             SliceModel* s = activeSlice ? activeSlice() : nullptr;
             (*deck)->setRig(rigHz(), QStringLiteral("RTTY"));
             if (s && *engine) (*engine)->setSidebandUsb(s->mode().toUpper().startsWith(QLatin1String("USB")));
-            if (s && *audio) (*audio)->setSlice(s);
+            if (s && *rxAudio) (*rxAudio)->setSlice(s);
         });
         feed->start();
 
@@ -260,17 +287,18 @@ void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
 #endif
             build();
             SliceModel* s = activeSlice ? activeSlice() : nullptr;
-            if (s && *audio) (*audio)->setSlice(s);
-            if (*audio) (*audio)->setEnabled(true);
+            if (s && *rxAudio) (*rxAudio)->setSlice(s);
+            if (*rxAudio) (*rxAudio)->setEnabled(true);
             if (*engine) (*engine)->setRxEnabled(true);
             (*deck)->setRig(rigHz(), QStringLiteral("RTTY"));
             g_dock->show();
             (*deck)->setFocus();
             say(QObject::tr("RTTY: reading the slice's audio; the AFC locks the strongest tone pair "
-                            "in the passband. Receive only for now."), 8000);
+                            "in the passband. F-keys transmit on the PC mic input."), 8000);
         } else if (g_dock) {
+            if (*tx && (*tx)->active()) (*tx)->abort(QObject::tr("the RTTY panel closed"));
             if (*engine) (*engine)->setRxEnabled(false);
-            if (*audio) (*audio)->setEnabled(false);
+            if (*rxAudio) (*rxAudio)->setEnabled(false);
             g_dock->hide();
         }
     });
