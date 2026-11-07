@@ -15,7 +15,7 @@ namespace AetherSDR::orion::rtty {
 
 namespace {
 constexpr int kRate = 48000;
-constexpr int kChunk = kRate / 50;            // 20 ms per pacing step
+
 constexpr int kLeadMs = 140;                  // audio queued ahead of the clock
 constexpr int kTailMs = 200;                  // mark after the last stop bit
 
@@ -56,7 +56,8 @@ void RttyEngine::saveSettings(const Settings& s) {
     q.save();
 }
 
-RttyEngine::RttyEngine(QObject* parent) : QObject(parent) {
+RttyEngine::RttyEngine(int sampleRate, QObject* parent)
+    : QObject(parent), rate_(sampleRate > 0 ? sampleRate : kRate) {
     demod_.onChar = [this](char c) { onChar(c); };
     apply(loadSettings());
 }
@@ -67,7 +68,7 @@ void RttyEngine::apply(const Settings& s, bool save) {
     s_ = s;
     const bool rev = s.reverse != usb_;        // USB flips the sense itself
     RttyDemod::Params dp;
-    dp.sampleRate = kRate;
+    dp.sampleRate = rate_;
     dp.markHz = s.markHz;
     dp.spaceHz = s.markHz + s.shiftHz;
     dp.baud = s.baud;
@@ -77,7 +78,7 @@ void RttyEngine::apply(const Settings& s, bool save) {
     dp.afc = s.afc;
     demod_.setParams(dp);                      // resets the channel
     RttyMod::Params mp;
-    mp.sampleRate = kRate;
+    mp.sampleRate = rate_;
     mp.markHz = s.markHz;
     mp.spaceHz = s.markHz + s.shiftHz;
     mp.baud = s.baud;
@@ -173,7 +174,7 @@ bool RttyEngine::start(const QString& sinkNode) {
     tailSamples_ = 0;
     play_ = new QProcess(this);
     play_->start("pacat", {"--playback", "--raw", "--format=s16le",
-                           "--rate=48000", "--channels=1",
+                           QStringLiteral("--rate=%1").arg(rate_), "--channels=1",
                            "--latency-msec=30", "--device=" + sinkNode});
     if (!play_->waitForStarted(2000)) {
         stopProcess();
@@ -237,33 +238,33 @@ void RttyEngine::stopProcess() {
 // last character.
 void RttyEngine::pace() {
     if (!running()) return;
-    const qint64 due = clock_.elapsed() * kRate / 1000 + kLeadMs * kRate / 1000;
+    const qint64 due = clock_.elapsed() * rate_ / 1000 + kLeadMs * rate_ / 1000;
     while (written_ < due) {
-        fbuf_.resize(kChunk);
+        fbuf_.resize((rate_ / 50));
         if (!ending_) {
-            mod_.render(fbuf_.data(), kChunk);
+            mod_.render(fbuf_.data(), (rate_ / 50));
         } else if (mod_.busy()) {
             // Let the queued text finish; no diddle after it.
             RttyMod::Params p = mod_.params();
             if (p.diddle) { p.diddle = false; mod_.setParams(p); }
-            mod_.render(fbuf_.data(), kChunk);
+            mod_.render(fbuf_.data(), (rate_ / 50));
         } else if (!tailDone_) {
-            mod_.renderMark(fbuf_.data(), kChunk);
-            tailSamples_ += kChunk;
-            if (tailSamples_ >= kTailMs * kRate / 1000) tailDone_ = true;
+            mod_.renderMark(fbuf_.data(), (rate_ / 50));
+            tailSamples_ += (rate_ / 50);
+            if (tailSamples_ >= kTailMs * rate_ / 1000) tailDone_ = true;
         } else {
             break;
         }
-        sbuf_.resize(kChunk);
-        for (int i = 0; i < kChunk; ++i)
+        sbuf_.resize((rate_ / 50));
+        for (int i = 0; i < (rate_ / 50); ++i)
             sbuf_[i] = int16_t(std::lround(std::clamp(fbuf_[i], -1.0f, 1.0f) * 32000.0f));
-        play_->write(reinterpret_cast<const char*>(sbuf_.data()), kChunk * 2);
-        written_ += kChunk;
+        play_->write(reinterpret_cast<const char*>(sbuf_.data()), (rate_ / 50) * 2);
+        written_ += (rate_ / 50);
     }
     if (ending_ && !mod_.busy()) {
         emit txProgress(0);
         // Everything is written: wait until the clock says it has played.
-        if (tailDone_ && clock_.elapsed() * kRate / 1000 >= written_) {
+        if (tailDone_ && clock_.elapsed() * rate_ / 1000 >= written_) {
             RttyMod::Params p = mod_.params();
             p.diddle = s_.diddle;
             mod_.setParams(p);

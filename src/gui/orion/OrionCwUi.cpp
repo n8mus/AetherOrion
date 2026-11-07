@@ -31,6 +31,7 @@
 #endif
 #ifdef AETHER_ORION_CONTEST
 #include "gui/orion/OrionContestUi.h"
+#include "gui/orion/OrionRttyUi.h"
 #endif
 #include "models/CwRxModel.h"
 #include "models/RadioModel.h"
@@ -389,6 +390,7 @@ void installOrionCwDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
         if (on) {
 #ifdef AETHER_ORION_CONTEST
             setOrionContestDeckVisible(false);   // one deck under the pan
+            setOrionRttyDeckVisible(false);
 #endif
             build();
             (*deck)->setRig(rigHz(), rigMode());

@@ -38,6 +38,7 @@
 #include "gui/orion/OrionCwUi.h"
 #ifdef AETHER_ORION_CONTEST
 #include "gui/orion/OrionContestUi.h"
+#include "gui/orion/OrionRttyUi.h"
 #endif
 #endif
 #include "DxClusterDialog.h"
@@ -1184,6 +1185,20 @@ void MainWindow::buildMenuBar()
             statusBar()->showMessage(tr("Spotted %1 on %2 MHz.")
                                          .arg(call)
                                          .arg(freqMhz, 0, 'f', 6), 4000);
+        });
+    // N8EM fork: the RTTY deck under the spectrum (FORK-NOTES.md).
+    installOrionRttyDeck(this, toolsMenu, &m_radioModel,
+        [this] { return activeSlice(); },
+        [this](const QString& call, double freqMhz, const QString& comment) {
+            if (!m_dxCluster || !m_dxCluster->isConnected()) {
+                statusBar()->showMessage(
+                    tr("No DX cluster connected — Tools -> SpotHub."), 4000);
+                return;
+            }
+            m_dxCluster->sendCommand(QStringLiteral("DX %1 %2 %3")
+                                         .arg(freqMhz * 1000.0, 0, 'f', 1)
+                                         .arg(call, comment)
+                                         .trimmed());
         });
 #endif
 #endif

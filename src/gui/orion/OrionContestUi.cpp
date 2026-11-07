@@ -25,6 +25,7 @@
 #include "gui/orion/OrionContestHost.h"
 #include "gui/orion/OrionContestWindow.h"
 #include "gui/orion/OrionCwUi.h"
+#include "gui/orion/OrionRttyUi.h"
 #include "gui/orion/OrionCwWindow.h"
 #include "gui/orion/OrionDeckArrows.h"
 #include "core/backends/orion/log/LogbookIndex.h"
@@ -465,6 +466,7 @@ void installOrionContest(QMainWindow* window, QMenu* menu, RadioModel* model,
     QObject::connect(deckAct, &QAction::toggled, window, [=](bool on) {
         if (on) {
             setOrionCwDeckVisible(false);   // one deck under the pan
+            setOrionRttyDeckVisible(false);
             if (!build()) {
                 deckAct->setChecked(false);
                 return;

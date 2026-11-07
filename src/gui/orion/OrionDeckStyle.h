@@ -13,7 +13,7 @@
 namespace AetherSDR::orion {
 
 inline constexpr const char* kDeckStyle =
-    "QWidget#orionCwDeck, QDialog#orionDeckPane { background:#121921; }"
+    "QWidget#orionCwDeck, QWidget#orionRttyDeck, QDialog#orionDeckPane { background:#121921; }"
     "QWidget { color:#e8eef5; }"
     "QLabel { color:#c8d4e0; background:transparent; }"
     "QLineEdit, QSpinBox, QComboBox { background:#1c2430; color:#ffffff;"

@@ -20,6 +20,7 @@ possible merge conflict when pulling from `upstream`.
 | `src/gui/MainWindow_Menus.cpp` | Under `AETHER_ORION_LOGBOOK`: the include of `gui/orion/OrionLogbookUi.h` and one call, `installOrionLogbook(...)`, right after the Tools menu is created; under `AETHER_BACKEND_ORION`: the include of `gui/orion/OrionSkimmerUi.h` and one call, `installOrionSkimmerWindows(...)`, adding two Tools items | The station logbook's "Logbook" menu sits between Tools and View; the skimmer's band map and waterfall open from Tools |
 | `src/gui/MainWindow_Wiring.cpp` | Under `AETHER_ORION_CONTEST`: the include of `gui/orion/OrionContestUi.h` and, in the spot-marker rebuild, `orionContestSpotColour()` ahead of the other colourings | The running contest's new-mult / workable / dupe / zero-point colours on the band map; invalid while no contest is open |
 | `src/gui/MainWindow_Menus.cpp` | Under `AETHER_ORION_CONTEST`: the include of `gui/orion/OrionContestUi.h` and one call, `installOrionContest(...)`, adding two Tools items | Tools -> Contest panel (Ctrl+Shift+C) and Contest log...: the console's contest deck in the bottom dock (exclusive with the CW deck) and its manager window |
+| `src/gui/MainWindow_Menus.cpp` | Under `AETHER_ORION_CONTEST`: the include of `gui/orion/OrionRttyUi.h` and one call, `installOrionRttyDeck(...)`, right after `installOrionContest(...)` | Tools -> RTTY panel (Ctrl+Shift+Y): the console's RTTY deck in the bottom dock (exclusive with the CW and contest decks), reading the active slice's audio through the decoder tap. Receive only until stage 3 |
 | `src/gui/MainWindow_Wiring.cpp` | Under `AETHER_ORION_LOGBOOK`: the include of `gui/orion/OrionLogbookUi.h` and, in the spot-marker rebuild, `orionWorkedSpotColour()` when the DXCC colouring gave no colour | Spots coloured by worked-before status from the station log (red new, amber new band, green worked, grey confirmed) |
 | `src/gui/PhoneCwApplet.cpp` | `setSelectableMicInputs()` uses the model's mic-input list when it has one, instead of always FlexRadio's MIC/BAL/LINE/ACC/PC | Shows the Orion's MIC and PC; a Flex is unchanged (its list comes from `mic list`) |
 | `src/core/backends/IRadioBackend.h` | `setPanWaterfallRate()` and `setPanWaterfallAverage()`, both default no-ops | The waterfall gets its own copy of each frame from this backend, so it needs its own row interval and its own average; every other backend ignores them |
@@ -89,6 +90,16 @@ New files that upstream does not have (no merge risk):
   through the transmit model, an abandoned call parked as a local spot).
   Not here yet: a second CW reader on VFO B for SO2V (one reader, on the
   active slice).
+- `src/core/backends/orion/rtty/` (the console's RTTY modem, src/rtty:
+  ITA2, the mark/space demodulator with its pair AFC, the AFSK modulator
+  and `RttyEngine`, settings under `OrionRtty/`), `src/gui/orion/OrionRttyDeck`
+  (the console's RTTY deck on the fork's stand-ins, as the contest deck)
+  and `src/gui/orion/OrionRttyUi` (the Tools item, the bottom dock, the
+  decoder tap at 24 kHz into the modem, heard calls as "RTTY" spots, the
+  spot walk, NARROW through the slice filter). Not here yet: transmit
+  (the engine still carries the console's pacat path; the host's
+  `submitTxAudio` with the TxCoordinator is stage 3), RY tone lines on the
+  pan, a SignaLink audio tap as the alternative RX source.
 - `src/gui/orion/OrionCwDeck.cpp/.h` and `src/gui/orion/OrionDeckStyle.h` (the
   console's CW deck, src/cw/CwDeck and src/ui/DeckStyle.h, on the fork's
   pieces: the CW window is the single keyer front, the logbook's index and
@@ -103,7 +114,8 @@ New files that upstream does not have (no merge risk):
 - `tests/orion_cat_test.cpp`, `tests/orion_backend_test.cpp`,
   `tests/orion_spectrum_test.cpp`, `tests/orion_rxaudio_test.cpp`,
   `tests/orion_peripherals_test.cpp`, `tests/orion_skimmer_test.cpp`,
-  `tests/orion_logbook_test.cpp`, `tests/orion_upload_test.cpp`
+  `tests/orion_logbook_test.cpp`, `tests/orion_upload_test.cpp`,
+  `tests/orion_rtty_test.cpp`, `tests/orion_rttydeck_test.cpp`
 - `tests/orion/fake_orion.py`
 
 ## Running against the fake radio

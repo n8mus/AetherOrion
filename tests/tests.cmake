@@ -9652,6 +9652,20 @@ if(AETHER_BACKEND_ORION AND UNIX AND NOT APPLE)
     add_test(NAME orion_rtty_test COMMAND orion_rtty_test --quick)
     set_tests_properties(orion_rtty_test PROPERTIES TIMEOUT 300)
 
+    # The RTTY deck offscreen: AFSK from the modulator through the engine
+    # into the read pane, the shared QSO record, F-keys asking to send.
+    if(AETHER_ORION_CONTEST)
+        add_executable(orion_rttydeck_test
+            tests/orion_rttydeck_test.cpp
+            src/gui/orion/OrionRttyDeck.cpp
+            src/gui/orion/OrionRttyDeck.h
+            src/gui/orion/OrionContestHost.h)
+        target_include_directories(orion_rttydeck_test PRIVATE src tests)
+        target_link_libraries(orion_rttydeck_test PRIVATE aethercore Qt6::Core Qt6::Widgets Qt6::Network Qt6::Sql Qt6::Test)
+        add_test(NAME orion_rttydeck_test COMMAND orion_rttydeck_test)
+        set_tests_properties(orion_rttydeck_test PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    endif()
+
     # The Orion reader's tone meter, on synthetic PCM.
     add_executable(orion_cwrx_test tests/orion_cwrx_test.cpp)
     target_include_directories(orion_cwrx_test PRIVATE src tests)

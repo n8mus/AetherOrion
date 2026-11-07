@@ -49,7 +49,11 @@ public:
     static Settings loadSettings();           // rtty/*
     static void saveSettings(const Settings& s);
 
-    explicit RttyEngine(QObject* parent = nullptr);
+    // `sampleRate`: the audio the host feeds and the modulator renders at
+    // (AetherSDR's decoder PCM is 24 kHz; the console's SignaLink capture
+    // was 48 kHz).
+    explicit RttyEngine(int sampleRate = 48000, QObject* parent = nullptr);
+    int sampleRate() const { return rate_; }
     ~RttyEngine() override;
 
     void apply(const Settings& s, bool save = true);   // both directions
@@ -100,6 +104,7 @@ private:
     void stopProcess();
 
     Settings s_;
+    int rate_ = 48000;
     bool usb_ = false;
     RttyDemod demod_;
     RttyMod mod_;
