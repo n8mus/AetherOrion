@@ -9639,6 +9639,19 @@ if(AETHER_BACKEND_ORION AND UNIX AND NOT APPLE)
     set_tests_properties(orion_connection_panel_test PROPERTIES TIMEOUT 60
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # The RTTY modem core: the console's rttytest (ITA2 round trip, modulator
+    # -> demodulator loopback at three speeds and swept SNR, the AFC, a dead
+    # channel, the off-air capture when present). No Qt beyond QtCore.
+    add_executable(orion_rtty_test
+        tests/orion_rtty_test.cpp
+        src/core/backends/orion/rtty/Ita2.cpp
+        src/core/backends/orion/rtty/RttyDemod.cpp
+        src/core/backends/orion/rtty/RttyMod.cpp)
+    target_include_directories(orion_rtty_test PRIVATE src)
+    target_link_libraries(orion_rtty_test PRIVATE Qt6::Core)
+    add_test(NAME orion_rtty_test COMMAND orion_rtty_test --quick)
+    set_tests_properties(orion_rtty_test PROPERTIES TIMEOUT 300)
+
     # The Orion reader's tone meter, on synthetic PCM.
     add_executable(orion_cwrx_test tests/orion_cwrx_test.cpp)
     target_include_directories(orion_cwrx_test PRIVATE src tests)

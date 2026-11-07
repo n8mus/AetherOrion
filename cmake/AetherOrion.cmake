@@ -39,6 +39,18 @@ else()
         src/core/backends/orion/OrionCwRxBackend.h)
     # CW skimmer (step 8), ported from the Orion console: a bank of CW decoders
     # fed with the RSP2's raw IQ, and a DX-cluster telnet server on :7300.
+    # RTTY modem core (stage 1), ported from the console: ITA2, the FSK/AFSK
+    # demodulator with its pair AFC, the AFSK modulator and the engine that
+    # runs both (transmit through pacat for now; the host's TX audio path next).
+    target_sources(aethercore PRIVATE
+        src/core/backends/orion/rtty/Ita2.cpp
+        src/core/backends/orion/rtty/Ita2.h
+        src/core/backends/orion/rtty/RttyDemod.cpp
+        src/core/backends/orion/rtty/RttyDemod.h
+        src/core/backends/orion/rtty/RttyEngine.cpp
+        src/core/backends/orion/rtty/RttyEngine.h
+        src/core/backends/orion/rtty/RttyMod.cpp
+        src/core/backends/orion/rtty/RttyMod.h)
     target_sources(aethercore PRIVATE
         src/core/backends/orion/MasterScp.cpp
         src/core/backends/orion/MasterScp.h
