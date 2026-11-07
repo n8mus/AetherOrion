@@ -78,8 +78,6 @@ bool OrionRttyTx::begin(SliceModel* slice, QString* whyNot)
     if (!m_radio->backendCapabilities().canTransmit) return refuse(tr("this radio cannot transmit"));
     if (!m_radio->backendCapabilities().takesTxAudioOverSeam && !m_radio->backendCapabilities().hostModulates)
         return refuse(tr("this radio takes no host audio"));
-    if (m_radio->transmitModel().micSelection().trimmed().toUpper() != QLatin1String("PC"))
-        return refuse(tr("select the PC mic input first (the SignaLink); the radio's own jack carries no RTTY"));
     if (!m_producer.valid()) return refuse(tr("no transmit producer"));
     m_request = m_producer.request();
     if (!m_request.valid()) return refuse(tr("the transmit request is not valid"));

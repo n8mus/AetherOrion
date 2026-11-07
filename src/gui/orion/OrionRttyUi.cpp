@@ -84,8 +84,7 @@ void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
     act->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+Y")));
     act->setToolTip(QObject::tr("The RTTY deck under the spectrum: the console's modem reading "
                                 "the slice's audio, CALL/NAME/RST entry with LOG IT, F1-F12, "
-                                "a type-to-send pane. F-keys and Enter transmit through the SignaLink "
-                                "on the PC mic input."));
+                                "a type-to-send pane. F-keys and Enter transmit through the SignaLink."));
     g_deckAction = act;
 
     const auto say = [window](const QString& text, int ms) {
@@ -294,7 +293,7 @@ void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
             g_dock->show();
             (*deck)->setFocus();
             say(QObject::tr("RTTY: reading the slice's audio; the AFC locks the strongest tone pair "
-                            "in the passband. F-keys transmit on the PC mic input."), 8000);
+                            "in the passband. F-keys transmit through the SignaLink."), 8000);
         } else if (g_dock) {
             if (*tx && (*tx)->active()) (*tx)->abort(QObject::tr("the RTTY panel closed"));
             if (*engine) (*engine)->setRxEnabled(false);

@@ -293,6 +293,11 @@ private:
     // Transmit state. m_keyIntent: WE keyed it. m_radioTx: the radio says it
     // is transmitting (its ?S reply), whoever keyed it.
     TxPath m_txPath = TxPath::RadioMic;
+    // A modem producer's audio arrived while keyed with the voice selection
+    // on the radio's own mic: the aux (SignaLink) profile is up for this
+    // over and the mic profile comes back on unkey. The SignaLink carries
+    // all data whatever the mic selection says; MIC/PC is for voice.
+    bool m_dataOver = false;
     bool m_keyIntent = false;
     bool m_radioTx = false;
     qint64 m_keyedAtMs = 0;

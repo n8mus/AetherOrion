@@ -11,8 +11,8 @@
 // gui/RxPlaybackTransmitter, which transmits a finite recording; here the
 // stream is open-ended until end() and the engine says the tail is out.
 //
-// On the Orion the audio reaches the SignaLink only on the PC mic input;
-// begin() refuses on the radio's own jack rather than key a silent over.
+// On the Orion the backend sends every modem producer's audio to the
+// SignaLink whatever the voice (MIC/PC) selection is; nothing to pick here.
 
 #include "models/TxController.h"   // TxCoordinator::Request / Context
 

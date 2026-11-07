@@ -416,6 +416,7 @@ void OrionBackend::openLink()
     m_pendingTxVfo.reset();
     m_txPath = TxPath::RadioMic;
     m_keyIntent = false;
+    m_dataOver = false;
     m_radioTx = false;
     m_lastMicReading = -1;
     m_lastAuxReading = -1;
@@ -2321,6 +2322,13 @@ void OrionBackend::unkey()
     if (m_port) {
         send(orion::setPtt(false));
     }
+    if (m_dataOver) {
+        // The data over is done: the operator's mic selection back.
+        m_dataOver = false;
+        if (m_port && m_txPath != TxPath::Pc) {
+            applyRadioMicProfile();
+        }
+    }
     // The RSP2 stays desensitised a moment: the radio is still ringing down.
     m_txGuardReleaseTimer.start();
 }
@@ -2332,6 +2340,7 @@ void OrionBackend::leaveRadioSafe()
     }
     if (m_keyIntent) {
         m_keyIntent = false;
+        m_dataOver = false;
         if (m_txAudio) {
             m_txAudio->setGate(false);
         }
@@ -2429,7 +2438,7 @@ void OrionBackend::updateTxAudioGate()
     }
     const bool leadDone = m_keyIntent && nowMs() - m_keyedAtMs >= kTxAudioLeadMs;
     // A TUNE carrier is clean: no audio into the SignaLink while it is up.
-    m_txAudio->setGate(m_keyIntent && !m_tuning && m_txPath == TxPath::Pc
+    m_txAudio->setGate(m_keyIntent && !m_tuning && (m_txPath == TxPath::Pc || m_dataOver)
                        && (m_radioTx || leadDone));
 }
 
@@ -2593,11 +2602,27 @@ void OrionBackend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz
                                  TxAudioSource source, const TxCoordinator::Context& context)
 {
     Q_UNUSED(source);
-    Q_UNUSED(context);
-    // Only the PC path carries host audio, and the gate (keyed by us, radio
-    // in TX) decides whether any of it reaches the SignaLink.
-    if (!m_txAudio || m_txPath != TxPath::Pc) {
+    if (!m_txAudio) {
         return;
+    }
+    // The SignaLink carries every modem's audio (RTTY, packet, FreeDV, a
+    // WSPR beacon, a TCI client) whatever the voice selection says; the
+    // MIC/PC choice is for the operator's own voice. A block from any
+    // producer but the continuous microphone is data: on the radio's mic
+    // selection it raises the aux profile for this over, and unkey() gives
+    // the mic back. The gate (keyed by us, radio in TX) still decides
+    // whether any of it reaches the SignaLink.
+    const bool data = context.fromProducer() && !context.continuousMicrophone();
+    if (m_txPath != TxPath::Pc) {
+        if (!data) {
+            return;                     // voice on the radio's jack: the PC mic stays home
+        }
+        if (!m_dataOver && m_keyIntent) {
+            qCInfo(lcOrion) << "Orion: data over on the MIC selection -> aux profile for this key";
+            m_dataOver = true;
+            applyPcProfile();
+            updateTxAudioGate();
+        }
     }
     // 50 is unity on the PC mic slider, 100 is +6 dB.
     m_txAudio->submit(int16Stereo, sampleRateHz, static_cast<float>(m_pcMicLevel) / 50.0f);
@@ -2606,7 +2631,7 @@ void OrionBackend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz
 int OrionBackend::finishTxAudio(const TxCoordinator::Context& context)
 {
     Q_UNUSED(context);
-    if (!m_txAudio || m_txPath != TxPath::Pc) {
+    if (!m_txAudio || (m_txPath != TxPath::Pc && !m_dataOver)) {
         return 0;
     }
     // What is still queued for the codec, plus the SignaLink and the radio's

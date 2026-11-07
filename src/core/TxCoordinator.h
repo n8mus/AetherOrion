@@ -215,6 +215,12 @@ public:
         [[nodiscard]] bool permitsDispatch(qint64 monotonicMs) const;
         [[nodiscard]] Dispatch beginDispatch(qint64 monotonicMs) const;
         [[nodiscard]] bool sameContext(const Context& other) const;
+        // N8EM fork: a backend whose radio has one audio input for the
+        // operator's voice and another for data (the Orion's mic jack and
+        // its aux/SignaLink line) tells them apart by the producer: the
+        // continuous microphone is voice, every other producer is data.
+        [[nodiscard]] bool fromProducer() const { return m_producer.valid(); }
+        [[nodiscard]] bool continuousMicrophone() const { return m_continuous; }
     private:
         friend class TxCoordinator;
         Producer m_producer;

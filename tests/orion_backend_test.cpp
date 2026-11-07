@@ -610,6 +610,40 @@ int main(int argc, char** argv)
     backend.setKeying(false, op, {});
     check(waitFor([&] { return !radio.keyed; }, 500), "unkeyed");
 
+    std::printf("-- a modem's over on the MIC selection goes to the SignaLink anyway\n");
+    // The SignaLink carries all data; MIC/PC is the voice selection. A
+    // block from a producer other than the continuous microphone is data.
+    const TxCoordinator::Producer modem = coordinator.registerProducer();
+    const TxCoordinator::Context modemCtx = coordinator.mediaContext(modem, op);
+    check(modemCtx.fromProducer() && !modemCtx.continuousMicrophone(), "a modem's context is not the microphone's");
+    const TxCoordinator::Producer micProducer = coordinator.registerProducer(/*continuousMicrophone=*/true);
+    const TxCoordinator::Context micCtx = coordinator.mediaContext(micProducer, op);
+    check(micCtx.continuousMicrophone(), "the microphone's context says so");
+    radio.sets.clear();
+    confirmSpy.clear();
+    backend.setKeying(true, op, {});
+    check(waitFor([&] { return radio.keyed && confirmSpy.count() >= 1 && confirmSpy.last().at(0).toBool(); }, 3000),
+          "keyed on MIC again, the radio's readback in (the gate's condition)");
+    const quint64 dataBefore = txAudioWritten();
+    backend.submitTxAudio(block, 24000, TxAudioSource::Microphone, micCtx);
+    check(txAudioWritten() == dataBefore, "the microphone's own block stays off the SignaLink on MIC");
+    backend.submitTxAudio(block, 24000, TxAudioSource::Microphone, modemCtx);
+    check(waitFor([&] { return radio.auxGain == 100 && radio.micGain == 0; }, 1000),
+          "the first data block raises the aux profile (aux 100, radio mic 0)");
+    check(txAudioWritten() == dataBefore + 960, "and the data reaches the SignaLink");
+    check(backend.finishTxAudio(modemCtx) >= OrionBackend::kTxAudioTailMs, "finishTxAudio holds PTT for the data tail");
+    radio.sets.clear();
+    txSpy.clear();
+    backend.setKeying(false, op, {});
+    check(waitFor([&] { return radio.sets.contains("*TU"); }, 500), "*TU unkeys the data over");
+    check(waitFor([&] { return radio.auxGain == 0 && radio.micGain == 51 && radio.procLevel == 2; }, 1000),
+          "unkey gives the operator's mic selection back");
+    check(radio.sets.indexOf("*TU") < radio.sets.indexOf("*TI0"), "unkey before the profile change");
+    const quint64 afterData = txAudioWritten();
+    backend.submitTxAudio(block, 24000, TxAudioSource::Microphone, modemCtx);
+    check(txAudioWritten() == afterData, "unkeyed: a late data block goes nowhere");
+    check(waitFor([&] { return sawMox(false); }, 4000), "MOX off once the radio is back in RX");
+
     std::printf("-- TUNE: a low-power FM carrier, then mode and power back\n");
     const auto sawTune = [&](bool on) {
         for (const auto& args : txSpy) {

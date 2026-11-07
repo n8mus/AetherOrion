@@ -20,7 +20,8 @@ possible merge conflict when pulling from `upstream`.
 | `src/gui/MainWindow_Menus.cpp` | Under `AETHER_ORION_LOGBOOK`: the include of `gui/orion/OrionLogbookUi.h` and one call, `installOrionLogbook(...)`, right after the Tools menu is created; under `AETHER_BACKEND_ORION`: the include of `gui/orion/OrionSkimmerUi.h` and one call, `installOrionSkimmerWindows(...)`, adding two Tools items | The station logbook's "Logbook" menu sits between Tools and View; the skimmer's band map and waterfall open from Tools |
 | `src/gui/MainWindow_Wiring.cpp` | Under `AETHER_ORION_CONTEST`: the include of `gui/orion/OrionContestUi.h` and, in the spot-marker rebuild, `orionContestSpotColour()` ahead of the other colourings | The running contest's new-mult / workable / dupe / zero-point colours on the band map; invalid while no contest is open |
 | `src/gui/MainWindow_Menus.cpp` | Under `AETHER_ORION_CONTEST`: the include of `gui/orion/OrionContestUi.h` and one call, `installOrionContest(...)`, adding two Tools items | Tools -> Contest panel (Ctrl+Shift+C) and Contest log...: the console's contest deck in the bottom dock (exclusive with the CW deck) and its manager window |
-| `src/gui/MainWindow_Menus.cpp` | Under `AETHER_ORION_CONTEST`: the include of `gui/orion/OrionRttyUi.h` and one call, `installOrionRttyDeck(...)`, right after `installOrionContest(...)` | Tools -> RTTY panel (Ctrl+Shift+Y): the console's RTTY deck in the bottom dock (exclusive with the CW and contest decks), reading the active slice's audio through the decoder tap; F-keys and Enter transmit through `OrionRttyTx` on the PC mic input |
+| `src/gui/MainWindow_Menus.cpp` | Under `AETHER_ORION_CONTEST`: the include of `gui/orion/OrionRttyUi.h` and one call, `installOrionRttyDeck(...)`, right after `installOrionContest(...)` | Tools -> RTTY panel (Ctrl+Shift+Y): the console's RTTY deck in the bottom dock (exclusive with the CW and contest decks), reading the active slice's audio through the decoder tap; F-keys and Enter transmit through `OrionRttyTx` and the SignaLink |
+| `src/core/TxCoordinator.h` | Two one-line accessors on `TxCoordinator::Context`: `fromProducer()` and `continuousMicrophone()` | The Orion backend tells a modem producer's audio (data, always to the SignaLink) from the continuous microphone's (voice, MIC or PC as selected) |
 | `src/gui/MainWindow_Wiring.cpp` | Under `AETHER_ORION_LOGBOOK`: the include of `gui/orion/OrionLogbookUi.h` and, in the spot-marker rebuild, `orionWorkedSpotColour()` when the DXCC colouring gave no colour | Spots coloured by worked-before status from the station log (red new, amber new band, green worked, grey confirmed) |
 | `src/gui/PhoneCwApplet.cpp` | `setSelectableMicInputs()` uses the model's mic-input list when it has one, instead of always FlexRadio's MIC/BAL/LINE/ACC/PC | Shows the Orion's MIC and PC; a Flex is unchanged (its list comes from `mic list`) |
 | `src/core/backends/IRadioBackend.h` | `setPanWaterfallRate()` and `setPanWaterfallAverage()`, both default no-ops | The waterfall gets its own copy of each frame from this backend, so it needs its own row interval and its own average; every other backend ignores them |
@@ -101,9 +102,12 @@ New files that upstream does not have (no merge risk):
   under a TxCoordinator request, the modulator pulled in 20 ms blocks onto
   `AudioEngine::sendModemTxAudio`, PTT dropped only after the backend's
   drain, the shape of `RxPlaybackTransmitter`; the console's pacat path is
-  gone from the engine). Transmit needs the PC mic input (the SignaLink);
-  the producer refuses on the radio's own jack. Not here yet: RY tone
-  lines on the pan, a SignaLink audio tap as the alternative RX source.
+  gone from the engine). The SignaLink carries every modem producer's
+  audio whatever the MIC/PC voice selection: the backend tells data from
+  voice by the producer (`TxCoordinator::Context::continuousMicrophone()`),
+  raises the aux profile for a data over keyed on the mic selection and
+  gives the mic back on unkey. Not here yet: RY tone lines on the pan, a
+  SignaLink audio tap as the alternative RX source.
 - `src/gui/orion/OrionCwDeck.cpp/.h` and `src/gui/orion/OrionDeckStyle.h` (the
   console's CW deck, src/cw/CwDeck and src/ui/DeckStyle.h, on the fork's
   pieces: the CW window is the single keyer front, the logbook's index and

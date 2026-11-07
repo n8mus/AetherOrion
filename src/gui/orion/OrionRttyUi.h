@@ -23,8 +23,8 @@ class SliceModel;
 // through the same decoder tap AetherSDR's own RTTY reader uses, with the
 // sideband sense from the slice's mode. Transmit: an F-key or Enter keys
 // the radio through the producer PTT API and the modulator's AFSK goes
-// down the host's modem audio route (gui/orion/OrionRttyTx), on the PC mic
-// input only. `activeSlice` is the dial and mode; `spot` sends a call to
+// down the host's modem audio route (gui/orion/OrionRttyTx), through the SignaLink,
+// whatever the mic selection. `activeSlice` is the dial and mode; `spot` sends a call to
 // the cluster.
 void installOrionRttyDeck(QMainWindow* window, QMenu* menu, RadioModel* model,
                           AudioEngine* audio, std::function<SliceModel*()> activeSlice,
